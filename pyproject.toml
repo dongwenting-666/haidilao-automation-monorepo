@@ -1,0 +1,8 @@
+[project]
+name = "haidilao-automation-monorepo"
+version = "0.1.0"
+description = "Monorepo for Haidilao paperwork automations"
+requires-python = ">=3.13"
+
+[tool.uv.workspace]
+members = ["libs/*", "projects/*"]
