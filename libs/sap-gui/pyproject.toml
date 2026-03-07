@@ -1,13 +1,13 @@
 [project]
-name = "sap-file-downloader"
+name = "sap-gui"
 version = "0.1.0"
-description = "Shared SAP file download automation"
+description = "Shared SAP GUI automation via COM/ActiveX"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["pywin32>=306"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sap_file_downloader"]
+packages = ["src/sap_gui"]

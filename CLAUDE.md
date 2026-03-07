@@ -8,11 +8,26 @@ Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python 
 
 ## Repository Layout
 
-- `libs/` — Shared libraries consumed by projects (e.g., `sap-file-downloader`)
+- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`)
 - `projects/` — Standalone automation scripts (e.g., `ksb1-accounting-check`)
 - Each package follows `src/` layout: `src/<package_name>/`
+- `output/` — Default export destination (gitignored)
 
 Projects depend on libs via workspace references (`[tool.uv.sources]` in their `pyproject.toml`).
+
+## SAP GUI Library Structure
+
+```
+libs/sap-gui/src/sap_gui/
+    errors.py          # Exception hierarchy (SAPGuiError, SAPConnectionError, etc.)
+    session.py         # COM connection (SAPSession, SAPSessionManager)
+    navigation.py      # Transaction/field/button helpers (SAPNavigator)
+    export.py          # File export (SAPExporter — ALV grid + classic list)
+    processes/         # Process-specific automation modules
+        ksb1/          # KSB1 cost center report export
+            __init__.py        # execute(), run(), helpers
+            cost_centers.txt   # Default cost center list
+```
 
 ## Commands
 
@@ -20,16 +35,19 @@ Projects depend on libs via workspace references (`[tool.uv.sources]` in their `
 # Install all dependencies
 uv sync
 
-# Run a specific project
+# Run KSB1 export (defaults to previous month, output to <repo>/output/)
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
 
 # Add a dependency to a specific package
-uv add --project libs/sap-file-downloader <package>
+uv add --project libs/sap-gui <package>
 ```
 
 ## Key Conventions
 
-- Environment variables for SAP config (`SAP_USERNAME`, `SAP_PASSWORD`, `SAP_HOST`, `SAP_PORT`); loaded via `python-dotenv` inside `main()`, never at module level
+- SAP GUI 770 must be open before running automations — `sap-gui` uses COM/ActiveX via `pywin32` to connect to the running SAP GUI process (login is handled automatically)
+- SAP date format is `YYYY.MM.DD` (not DD.MM.YYYY)
+- Process-specific SAP flows live in `libs/sap-gui/src/sap_gui/processes/<name>/`; projects are thin CLI wrappers
+- Process data files (e.g., cost center lists) live alongside their process module, not in the project
 - Use `pathlib.Path` for all file path parameters and return types
-- Shared libs should not depend on `python-dotenv` — env loading is the responsibility of the project entry point
+- Environment/config loading is the responsibility of the project entry point, not shared libs
 - New libs go in `libs/`, new automations go in `projects/`
