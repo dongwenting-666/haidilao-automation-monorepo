@@ -5,7 +5,9 @@ description = "KSB1 accounting check automation"
 requires-python = ">=3.13"
 dependencies = [
     "sap-gui",
+    "ollama-client",
     "python-dotenv>=1.0.0",
+    "openpyxl>=3.1.0",
 ]
 
 [build-system]
@@ -17,3 +19,4 @@ packages = ["src/ksb1_accounting_check"]
 
 [tool.uv.sources]
 sap-gui = { workspace = true }
+ollama-client = { workspace = true }

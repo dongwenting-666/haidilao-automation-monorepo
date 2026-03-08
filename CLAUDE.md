@@ -29,6 +29,27 @@ libs/sap-gui/src/sap_gui/
             cost_centers.txt   # Default cost center list
 ```
 
+## KSB1 Accounting Check Structure
+
+```
+projects/ksb1-accounting-check/src/ksb1_accounting_check/
+    main.py            # CLI entry point (argparse, SAP download + report generation)
+    analyze.py         # Data loading, enrichment, per-store comparison, XLSX report
+    rules.py           # Deterministic rule-based analysis (replaces former LLM analysis)
+    llm.py             # LLM-based analysis (kept for future use, not currently imported)
+    prompt.md          # LLM prompt reference (kept for future use)
+    报表科目.xlsx       # Cost element → 报表科目 mapping spreadsheet
+```
+
+### Analysis Rules (`rules.py`)
+
+The KSB1 accounting check uses deterministic rules instead of LLM calls:
+- **Skipped kemus**: `SKIP_KEMUS` — high-volume routine items excluded from analysis
+- **Key cost elements**: `KEY_COST_ELEMENTS` — always reported when they change (threshold: 100 CAD)
+- **General thresholds**: minimum absolute difference of 500 CAD **and** 20% change
+- **Presence checks**: flags cost elements present in one month but absent in the other
+- Uses `对象货币值` (object currency / local CAD) for amounts, not `报表货币值`
+
 ## Commands
 
 ```bash
@@ -37,6 +58,9 @@ uv sync
 
 # Run KSB1 export (defaults to previous month, output to <repo>/output/)
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
+
+# Run tests for KSB1 accounting check
+python -m pytest projects/ksb1-accounting-check/tests/ -v
 
 # Add a dependency to a specific package
 uv add --project libs/sap-gui <package>

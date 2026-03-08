@@ -89,18 +89,17 @@ def execute(
     nav.set_field("wnd[0]/usr/ctxtR_BUDAT-LOW", format_sap_date(date_from))
     nav.set_field("wnd[0]/usr/ctxtR_BUDAT-HIGH", format_sap_date(date_to))
 
-    # 4. Execute report (F8)
+    # 4. Set max hit count via 更多设置 dialog
+    log.info("Setting max hit count to %d...", max_rows)
+    nav.press_button("wnd[0]/usr/btnBUT1")
+    nav.set_field("wnd[1]/usr/txtKAEP_SETT-MAXSEL", str(max_rows))
+    nav.press_button("wnd[1]/tbar[0]/btn[0]")
+
+    # 5. Execute report (F8)
     log.info("Executing report...")
     nav.send_vkey(8)
 
-    # Handle max selection rows popup if it appears
-    try:
-        nav.set_field("wnd[1]/usr/txtKAEP_SETT-MAXSEL", str(max_rows))
-        nav.press_button("wnd[1]/tbar[0]/btn[0]")
-    except SAPNavigationError:
-        pass  # Popup may not appear
-
-    # 5. Export via menu: List → Export → Spreadsheet
+    # 6. Export via menu: List → Export → Spreadsheet
     log.info("Exporting to %s", output_path)
     result = exporter.export_list_to_file(output_path)
 

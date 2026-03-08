@@ -42,15 +42,26 @@ cp .env.example .env
 
 ### KSB1 Accounting Check
 
-Exports KSB1 (Cost Center: Actual Line Items) report to an XLSX file.
+Downloads KSB1 (Cost Center: Actual Line Items) data from SAP, then generates a month-over-month comparison report per store using **deterministic rule-based analysis**. The output is an XLSX workbook with one sheet per store (findings + detail rows), a raw data sheet, and a mapping reference sheet.
+
+Analysis highlights:
+- Cost elements present in one month but missing in the other
+- Significant amount differences (>500 CAD and >20% change)
+- Key cost elements (rent, utilities, insurance, etc.) flagged at a lower threshold (>100 CAD)
+- Report generation takes ~1.5 seconds (no LLM dependency)
 
 ```bash
-# Export previous month (default) — output to <repo>/output/
+# Check previous month (default) — download from SAP + generate report
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
 
-# Custom date range and output directory
+# Check a specific month/year
+uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main 2 2026
+
+# Skip SAP download, reuse existing KSB1 export
+uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main --skip-download
+
+# Custom output directory
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main \
-    --date-from 2026-01-01 --date-to 2026-01-31 \
     --output-dir G:/output
 ```
 
