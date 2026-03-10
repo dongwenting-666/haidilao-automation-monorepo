@@ -200,6 +200,7 @@ def generate_report(
     target_month: int,
     mapping_path: Path = MAPPING_FILE,
     store_keywords: list[str] | None = None,
+    model: str | None = None,
 ) -> Path:
     """Generate the full KSB1 accounting check report.
 
@@ -210,12 +211,20 @@ def generate_report(
         mapping_path: Path to 报表科目.xlsx mapping file.
         store_keywords: List of keywords to filter stores. A store is included
             if any keyword is found in its name. Defaults to 销售公共组 1-8.
+        model: Ollama model name for LLM enhancement. None = rules only.
 
     Returns:
         Path to the generated report.
     """
     prev_month = 12 if target_month == 1 else target_month - 1
     keywords = store_keywords if store_keywords is not None else DEFAULT_STORE_KEYWORDS
+
+    # Initialize LLM client if requested
+    llm_client = None
+    if model:
+        from ksb1_accounting_check.llm import create_client
+        log.info("Initializing LLM (%s) for observation enhancement...", model)
+        llm_client = create_client(model=model)
 
     # Load data
     mapping = load_cost_element_mapping(mapping_path)
@@ -240,6 +249,13 @@ def generate_report(
 
         log.info("Analyzing %s...", store)
         findings = analyze_store(store, prev_month, target_month, kemu_summary)
+
+        # Optional: enhance observations with LLM
+        if llm_client and findings:
+            from ksb1_accounting_check.llm import enhance_findings
+            findings = enhance_findings(
+                llm_client, store, prev_month, target_month, findings, kemu_rows,
+            )
 
         sheet_name = _short_store_name(store)
         ws = wb.create_sheet(title=sheet_name)

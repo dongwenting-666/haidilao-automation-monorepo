@@ -84,6 +84,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip SAP download, use existing KSB1 export file",
     )
     parser.add_argument(
+        "--model",
+        default=None,
+        help="Ollama model for LLM-enhanced observations (e.g., qwen3:8b). Default: rules only.",
+    )
+    parser.add_argument(
         "--language",
         default="ZH",
         help="SAP logon language (default: ZH)",
@@ -137,6 +142,7 @@ def main() -> None:
         ksb1_path=ksb1_path,
         output_path=report_path,
         target_month=month,
+        model=args.model,
     )
     logging.info("Done! Report saved to %s", result)
 
