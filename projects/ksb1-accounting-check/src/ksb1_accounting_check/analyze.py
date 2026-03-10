@@ -201,6 +201,7 @@ def generate_report(
     mapping_path: Path = MAPPING_FILE,
     store_keywords: list[str] | None = None,
     model: str | None = None,
+    prompt_path: Path | None = None,
 ) -> Path:
     """Generate the full KSB1 accounting check report.
 
@@ -212,6 +213,7 @@ def generate_report(
         store_keywords: List of keywords to filter stores. A store is included
             if any keyword is found in its name. Defaults to 销售公共组 1-8.
         model: Ollama model name for LLM enhancement. None = rules only.
+        prompt_path: Override path to LLM prompt file. None = use default.
 
     Returns:
         Path to the generated report.
@@ -222,9 +224,11 @@ def generate_report(
     # Initialize LLM client if requested
     llm_client = None
     if model:
-        from ksb1_accounting_check.llm import create_client
+        from ksb1_accounting_check.llm import create_client, set_prompt_path
         log.info("Initializing LLM (%s) for observation enhancement...", model)
         llm_client = create_client(model=model)
+        if prompt_path is not None:
+            set_prompt_path(prompt_path)
 
     # Load data
     mapping = load_cost_element_mapping(mapping_path)

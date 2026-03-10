@@ -8,8 +8,8 @@ Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python 
 
 ## Repository Layout
 
-- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`)
-- `projects/` — Standalone automation scripts (e.g., `ksb1-accounting-check`)
+- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`)
+- `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`)
 - Each package follows `src/` layout: `src/<package_name>/`
 - `output/` — Default export destination (gitignored)
 
@@ -35,20 +35,40 @@ libs/sap-gui/src/sap_gui/
 projects/ksb1-accounting-check/src/ksb1_accounting_check/
     main.py            # CLI entry point (argparse, SAP download + report generation)
     analyze.py         # Data loading, enrichment, per-store comparison, XLSX report
-    rules.py           # Deterministic rule-based analysis (replaces former LLM analysis)
-    llm.py             # LLM-based analysis (kept for future use, not currently imported)
-    prompt.md          # LLM prompt reference (kept for future use)
+    rules.py           # Deterministic rule-based analysis
+    llm.py             # Optional LLM enhancement (explains WHY findings exist)
+    prompt.md          # LLM enhancer prompt
     报表科目.xlsx       # Cost element → 报表科目 mapping spreadsheet
 ```
 
 ### Analysis Rules (`rules.py`)
 
-The KSB1 accounting check uses deterministic rules instead of LLM calls:
+The KSB1 accounting check uses deterministic rules for anomaly detection:
 - **Skipped kemus**: `SKIP_KEMUS` — high-volume routine items excluded from analysis
 - **Key cost elements**: `KEY_COST_ELEMENTS` — always reported when they change (threshold: 100 CAD)
 - **General thresholds**: minimum absolute difference of 500 CAD **and** 20% change
 - **Presence checks**: flags cost elements present in one month but absent in the other
 - Uses `对象货币值` (object currency / local CAD) for amounts, not `报表货币值`
+
+### LLM Enhancement (`llm.py`)
+
+Optional hybrid approach — pass `--model qwen3:8b` (CLI) or select a model in the GUI:
+- Rules detect anomalies deterministically; LLM explains *why* they exist
+- Pre-computes grouped subtotals so LLM never does arithmetic
+- Batching + retry logic with graceful fallback to rule-based observations
+- `set_prompt_path()` API for overriding prompt file location (used by PyInstaller)
+
+## KSB1 GUI Structure
+
+```
+projects/ksb1-accounting-check-gui/src/ksb1_accounting_check_gui/
+    app.py             # tkinter GUI (credentials, settings, log output)
+    worker.py          # Background worker (SAP download + report generation)
+    paths.py           # Resource path resolution (frozen vs dev mode)
+    log_handler.py     # Thread-safe logging to tkinter Text widget
+```
+
+Build EXE: `cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --noconfirm`
 
 ## Commands
 
@@ -58,6 +78,15 @@ uv sync
 
 # Run KSB1 export (defaults to previous month, output to <repo>/output/)
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
+
+# Run KSB1 with LLM enhancement
+uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main --model qwen3:8b
+
+# Run KSB1 GUI (development mode)
+python -m ksb1_accounting_check_gui
+
+# Build KSB1 GUI EXE
+cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --noconfirm
 
 # Run tests for KSB1 accounting check
 python -m pytest projects/ksb1-accounting-check/tests/ -v

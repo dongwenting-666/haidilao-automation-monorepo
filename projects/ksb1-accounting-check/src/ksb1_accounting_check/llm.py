@@ -13,6 +13,12 @@ log = logging.getLogger(__name__)
 PROMPT_FILE = Path(__file__).resolve().parent / "prompt.md"
 
 
+def set_prompt_path(path: Path) -> None:
+    """Override the default prompt file path (e.g., for PyInstaller bundles)."""
+    global PROMPT_FILE
+    PROMPT_FILE = path
+
+
 def _load_system_prompt() -> str:
     return PROMPT_FILE.read_text(encoding="utf-8")
 
@@ -64,15 +70,9 @@ def _format_detail_rows(raw_rows: list[dict], prev_month: int, curr_month: int) 
 
 
 def _simplify_name(name: str) -> str:
-    """Simplify transaction name for grouping.
-
-    Extracts the meaningful prefix — e.g., 'Salary for First half of Jan..-CA1D-Insurance'
-    becomes 'Insurance', 'accrual 1D tax-EI January' becomes 'accrual tax-EI'.
-    """
+    """Truncate transaction name to 50 chars for grouping similar entries."""
     if not name:
         return "(空)"
-    # Keep it short but distinctive — truncate at 40 chars
-    # Remove trailing month/date specifics for better grouping
     return name[:50]
 
 

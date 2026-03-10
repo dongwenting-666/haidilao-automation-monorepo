@@ -1,0 +1,25 @@
+[project]
+name = "ksb1-accounting-check-gui"
+version = "0.1.0"
+description = "KSB1 accounting check GUI — standalone desktop app"
+requires-python = ">=3.13"
+dependencies = [
+    "ksb1-accounting-check",
+    "sap-gui",
+    "ollama-client",
+    "python-dotenv>=1.0.0",
+    "openpyxl>=3.1.0",
+    "pyinstaller>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ksb1_accounting_check_gui"]
+
+[tool.uv.sources]
+ksb1-accounting-check = { workspace = true }
+sap-gui = { workspace = true }
+ollama-client = { workspace = true }
