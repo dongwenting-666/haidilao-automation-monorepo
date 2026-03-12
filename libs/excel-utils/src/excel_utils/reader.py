@@ -31,7 +31,11 @@ def load_data_rows(
     wb = load_workbook(path, read_only=True, data_only=True)
     ws = wb[sheet_name] if sheet_name else wb.active
 
-    headers = [cell.value for cell in next(ws.iter_rows(max_row=1))]
+    first_row = next(ws.iter_rows(max_row=1), None)
+    if first_row is None:
+        wb.close()
+        raise ValueError(f"Sheet is empty in {path.name}")
+    headers = [cell.value for cell in first_row]
     rows: list[dict[str, Any]] = []
     for row in ws.iter_rows(min_row=2, values_only=True):
         data = dict(zip(headers, row))
@@ -72,8 +76,8 @@ def load_mapping(
         key = row[key_col] if key_col < len(row) else None
         val = row[value_col] if value_col < len(row) else None
         if key is not None and val is not None:
-            # Normalize numeric keys (e.g. cost element codes)
-            str_key = str(int(key) if isinstance(key, (int, float)) else key)
+            # Normalize numeric keys (e.g. cost element codes like 1234.0 → "1234")
+            str_key = str(int(key)) if isinstance(key, float) and key.is_integer() else str(key)
             mapping[str_key] = str(val)
     wb.close()
     logger.info("Loaded %d mappings from %s", len(mapping), path.name)

@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from excel_utils.style import BOLD_FONT, auto_size_columns, set_header_row
-
-logger = logging.getLogger(__name__)
+from excel_utils.style import auto_size_columns, set_header_row
 
 MAX_SHEET_NAME_LEN = 31
 
@@ -59,7 +56,7 @@ def write_data_sheet(
     Returns:
         The created worksheet.
     """
-    ws = wb.create_sheet(title=title[:MAX_SHEET_NAME_LEN])
+    ws = wb.create_sheet(title=truncate_sheet_name(title))
     set_header_row(ws, headers)
 
     for i, row in enumerate(rows, 2):
@@ -94,7 +91,7 @@ def copy_sheet_data(
     src_wb = load_workbook(source_path, read_only=True, data_only=True)
     src_ws = src_wb[sheet_name] if sheet_name else src_wb.active
 
-    ws = wb.create_sheet(title=title[:MAX_SHEET_NAME_LEN])
+    ws = wb.create_sheet(title=truncate_sheet_name(title))
     for row in src_ws.iter_rows(values_only=True):
         if columns is not None:
             ws.append(list(row[:columns]))

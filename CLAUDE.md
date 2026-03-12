@@ -8,7 +8,7 @@ Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python 
 
 ## Repository Layout
 
-- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`)
+- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`, `excel-utils`)
 - `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`)
 - Each package follows `src/` layout: `src/<package_name>/`
 - `output/` — Default export destination (gitignored), organized by tool (`output/ksb1/`, `output/qbi/`)
@@ -48,6 +48,18 @@ libs/qbi-crawler/src/qbi_crawler/
 - **Auto-installs Chromium** on first session start (thread-safe, skipped after first success)
 - Reports supported: `REPORT_DAILY`, `REPORT_TIME_PERIOD`, `REPORT_24H`
 - Default output subdirectory: `output/qbi/`
+
+## Excel Utils Library Structure
+
+```
+libs/excel-utils/src/excel_utils/
+    reader.py          # load_data_rows(), load_mapping() — XLSX reading
+    style.py           # BOLD_FONT, set_header_row(), auto_size_columns()
+    workbook.py        # create_workbook(), write_data_sheet(), copy_sheet_data(), truncate_sheet_name()
+    py.typed           # PEP 561 marker
+```
+
+Shared openpyxl utilities for reading, writing, and styling Excel files. Projects should depend on this via `excel-utils = { workspace = true }` instead of using openpyxl directly.
 
 ## KSB1 Accounting Check Structure
 

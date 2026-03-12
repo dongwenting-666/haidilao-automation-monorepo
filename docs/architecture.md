@@ -7,6 +7,7 @@ haidilao-automation-monorepo/
 ├── libs/                          # Shared libraries
 │   ├── sap-gui/                     # SAP GUI COM automation
 │   ├── qbi-crawler/                 # Quick BI web crawler (Playwright)
+│   ├── excel-utils/                 # Shared Excel generation utilities
 │   └── ollama-client/               # LLM client wrapper
 ├── projects/                      # Automation projects
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
@@ -47,10 +48,12 @@ projects/ksb1-accounting-check-gui
     ├── depends on → libs/sap-gui                    (SAP download)
     ├── depends on → libs/ollama-client               (optional LLM)
     └── depends on → python-dotenv                   (.env loading)
-```
 
 libs/qbi-crawler
     └── depends on → playwright         (browser automation)
+
+libs/excel-utils
+    └── depends on → openpyxl           (Excel read/write)
 ```
 
 Dependencies between workspace packages are declared via `[tool.uv.sources]` in each project's `pyproject.toml` using `workspace = true`.
