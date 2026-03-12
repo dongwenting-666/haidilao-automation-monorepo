@@ -115,7 +115,7 @@ class QBISession:
 
         page = self.page
         logger.info("Navigating to QBI login page")
-        page.goto(LOGIN_URL, wait_until="networkidle")
+        page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60_000)
 
         try:
             # LDAP login form — wait for the dynamically rendered inputs
@@ -154,6 +154,7 @@ class QBISession:
             page.wait_for_url(
                 lambda url: "/auth_sso/login" not in url,
                 timeout=self.timeout_ms,
+                wait_until="domcontentloaded",
             )
         except PlaywrightError as exc:
             raise QBILoginError(
@@ -161,7 +162,7 @@ class QBISession:
             ) from exc
 
         # Wait for the portal to finish loading
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         logger.info("Login successful")
 
     def screenshot(self, path: str | Path, *, full_page: bool = True) -> Path:

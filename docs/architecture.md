@@ -11,11 +11,13 @@ haidilao-automation-monorepo/
 │   └── ollama-client/               # LLM client wrapper
 ├── projects/                      # Automation projects
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
-│   └── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
+│   ├── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
+│   └── daily-store-operation-report/ # Daily store operations Excel report
 ├── docs/                          # Documentation
 ├── output/                        # Default export destination (gitignored)
 │   ├── ksb1/                        # KSB1 accounting check exports
-│   └── qbi/                         # Quick BI dashboard exports
+│   ├── qbi/                         # Quick BI dashboard exports
+│   └── daily-report/                # Daily store operation report exports
 ├── .env                           # Environment variables (gitignored)
 └── pyproject.toml                 # uv workspace root
 ```
@@ -48,6 +50,12 @@ projects/ksb1-accounting-check-gui
     ├── depends on → libs/sap-gui                    (SAP download)
     ├── depends on → libs/ollama-client               (optional LLM)
     └── depends on → python-dotenv                   (.env loading)
+
+projects/daily-store-operation-report
+    ├── depends on → libs/qbi-crawler      (QBI data download)
+    ├── depends on → libs/excel-utils      (workbook creation, data loading)
+    ├── depends on → openpyxl             (direct styling, merged cells)
+    └── depends on → python-dotenv        (env config)
 
 libs/qbi-crawler
     └── depends on → playwright         (browser automation)
@@ -130,4 +138,45 @@ User launches KSB1会计检查.exe
     │
     ├── Log output streams to GUI in real-time
     └── Success: offer to open output folder
+```
+
+## Data Flow: Daily Store Operation Report
+
+```
+Quick BI (qbi.superhi-tech.com) ──Playwright──> qbi-crawler library
+    │
+    ├── Login (LDAP)
+    ├── Download 5 reports (3 daily + 2 time-period)
+    │   ├── Current month MTD
+    │   ├── Previous month same period
+    │   ├── Previous year same period
+    │   ├── Current month time slots
+    │   └── Previous year time slots
+    └── All from 不含税 sheet
+            │
+            ▼
+    DownloadedFiles (5 XLSX paths)
+            │
+            ▼
+    transform.py
+    │
+    ├── _load_all_raw_data() → RawData (26 typed fields)
+    ├── _build_store_metrics() × 8 stores → StoreMetrics
+    └── load_targets() from targets.json
+            │
+            ▼
+    ReportData (dates + 8 StoreMetrics)
+            │
+            ▼
+    4 sheet builders:
+    ├── comparison_sheet (shared) → Sheet 1: MoM (gold)
+    ├── comparison_sheet (shared) → Sheet 3: YoY (blue)
+    ├── yoy_summary → Sheet 2: region summary (gold)
+    └── time_period → Sheet 4: per-store time slots
+            │
+            ▼
+    _format_numbers() → round floats, apply "0.00"
+            │
+            ▼
+    database_report_YYYY_MM_DD.xlsx (output/daily-report/)
 ```

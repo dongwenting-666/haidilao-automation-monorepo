@@ -10,4 +10,5 @@ Architecture and reference documentation for the Haidilao Automation Monorepo.
 - [Excel Utils](./excel-utils.md) — Shared Excel generation utilities (openpyxl readers, writers, styling)
 - [KSB1 Accounting Check](./ksb1-accounting-check.md) — Report pipeline, analysis rules, LLM enhancement, output format
 - [KSB1 GUI & EXE](./ksb1-accounting-check-gui.md) — Desktop GUI application and PyInstaller packaging
+- [Daily Store Operation Report](./daily-store-operation-report.md) — QBI data pipeline, 4-sheet Excel report generation
 - [Edit History](./edit-history/) — Session-level change logs

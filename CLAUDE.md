@@ -9,9 +9,9 @@ Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python 
 ## Repository Layout
 
 - `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`, `excel-utils`)
-- `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`)
+- `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`)
 - Each package follows `src/` layout: `src/<package_name>/`
-- `output/` — Default export destination (gitignored), organized by tool (`output/ksb1/`, `output/qbi/`)
+- `output/` — Default export destination (gitignored), organized by tool (`output/ksb1/`, `output/qbi/`, `output/daily-report/`)
 
 Projects depend on libs via workspace references (`[tool.uv.sources]` in their `pyproject.toml`).
 
@@ -102,6 +102,41 @@ projects/ksb1-accounting-check-gui/src/ksb1_accounting_check_gui/
 
 Build EXE: `cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --noconfirm`
 
+## Daily Store Operation Report Structure
+
+```
+projects/daily-store-operation-report/src/daily_store_operation_report/
+    main.py              # CLI entry point (argparse, --skip-download, explicit file paths)
+    download.py          # QBI download orchestration (5 files via single session)
+    dates.py             # Date range calculations (cur/prev/yoy periods, frozen dataclass)
+    transform.py         # Raw QBI data → RawData → StoreMetrics → ReportData
+    report.py            # Orchestrator: calls sheet builders, _format_numbers, saves workbook
+    constants.py         # Store names, regions, time slots, QBI column names
+    utils.py             # div_or_zero, comp_text, pct_str
+    targets.json         # Monthly revenue + turnover rate targets per store
+    sheets/
+        styles.py        # All openpyxl fill/font/border constants + helpers (typed ws params)
+        comparison_sheet.py  # Shared builder for MoM/YoY detail (SheetTheme + ComparisonConfig)
+        mom.py           # Sheet 1: 对比上月表 (gold theme, thin config wrapper)
+        yoy_summary.py   # Sheet 2: 同比数据 (region-grouped, gold theme)
+        yoy_detail.py    # Sheet 3: 对比上年表 (blue theme, thin config wrapper)
+        time_period.py   # Sheet 4: 分时段-上报 (per-store colors)
+```
+
+### Key Design Decisions
+
+- **Parameterized comparison sheets** — `comparison_sheet.py` with `SheetTheme` + `ComparisonConfig` dataclasses eliminates ~85% duplication between MoM and YoY detail sheets
+- **Typed raw data pipeline** — `RawData` dataclass (typed fields) → `StoreMetrics` per store → `ReportData` for all sheets
+- **Date normalization** — `_normalize_date()` handles both `datetime` and string dates from openpyxl
+- **Late formatting** — Raw floats stored in dataclasses; `_format_numbers()` rounds to 2 decimals at save time
+- **Nonzero-store averaging** — Region turnover averages exclude stores with no data to avoid dilution
+
+### Data Flow
+
+Downloads 5 QBI reports (3 daily + 2 time-period) for current month, previous month same period, and previous year same period. All use the `不含税` sheet. Key fields: `营业桌数(考核)`, `营业收入(不含税)`, `就餐人数`, `优惠总金额(不含税)`, `翻台率(考核)`.
+
+Revenue displayed in 万 (÷10000). Time progress = day_of_month / days_in_month. 去年同周同日 = report_date - 364 days. `compute_metrics()` accepts `DownloadedFiles` dataclass (not individual paths).
+
 ## Commands
 
 ```bash
@@ -125,6 +160,12 @@ python -m pytest projects/ksb1-accounting-check/tests/ -v
 
 # Add a dependency to a specific package
 uv add --project libs/sap-gui <package>
+
+# Run daily store operation report (downloads from QBI + generates Excel)
+uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10
+
+# Run with pre-downloaded files (skip QBI login)
+uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10 --skip-download --data-dir output/qbi
 
 # Install Playwright browser (required once for qbi-crawler)
 playwright install chromium
