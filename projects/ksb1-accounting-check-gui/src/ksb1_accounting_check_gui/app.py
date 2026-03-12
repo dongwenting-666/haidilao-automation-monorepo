@@ -153,7 +153,7 @@ class App:
         self.year_var.set(year)
 
         # Default output dir
-        default_dir = exe_dir() / "output"
+        default_dir = exe_dir() / "output" / "ksb1"
         self.output_dir_var.set(str(default_dir))
 
     def _toggle_password(self) -> None:

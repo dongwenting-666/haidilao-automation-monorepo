@@ -22,7 +22,7 @@ def _find_repo_root() -> Path:
     return current
 
 
-DEFAULT_OUTPUT_DIR = _find_repo_root() / "output"
+DEFAULT_OUTPUT_DIR = _find_repo_root() / "output" / "ksb1"
 
 
 def _prev_month_year() -> tuple[int, int]:

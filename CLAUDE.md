@@ -8,10 +8,10 @@ Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python 
 
 ## Repository Layout
 
-- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`)
+- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`)
 - `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`)
 - Each package follows `src/` layout: `src/<package_name>/`
-- `output/` — Default export destination (gitignored)
+- `output/` — Default export destination (gitignored), organized by tool (`output/ksb1/`, `output/qbi/`)
 
 Projects depend on libs via workspace references (`[tool.uv.sources]` in their `pyproject.toml`).
 
@@ -28,6 +28,26 @@ libs/sap-gui/src/sap_gui/
             __init__.py        # execute(), run(), helpers
             cost_centers.txt   # Default cost center list
 ```
+
+## QBI Crawler Library Structure
+
+```
+libs/qbi-crawler/src/qbi_crawler/
+    auth.py            # QBISession — Playwright browser lifecycle + LDAP login
+    constants.py       # BASE_URL for Quick BI portal
+    dashboard.py       # Report navigation, date filtering, XLSX export
+    errors.py          # Exception hierarchy (QBIError, QBILoginError, QBITimeoutError)
+    py.typed           # PEP 561 marker
+```
+
+### Key Design Decisions
+
+- **Playwright** (not requests/Selenium) because Quick BI is a React SPA with JS-rendered content
+- **Direct URL navigation** with menuIds instead of sidebar clicks (avoids iframe detachment)
+- **Keyboard input** for Ant Design DatePicker (not `fill()` — elements are not directly editable)
+- **Auto-installs Chromium** on first session start (thread-safe, skipped after first success)
+- Reports supported: `REPORT_DAILY`, `REPORT_TIME_PERIOD`, `REPORT_24H`
+- Default output subdirectory: `output/qbi/`
 
 ## KSB1 Accounting Check Structure
 
@@ -93,11 +113,15 @@ python -m pytest projects/ksb1-accounting-check/tests/ -v
 
 # Add a dependency to a specific package
 uv add --project libs/sap-gui <package>
+
+# Install Playwright browser (required once for qbi-crawler)
+playwright install chromium
 ```
 
 ## Key Conventions
 
 - SAP GUI 770 must be open before running automations — `sap-gui` uses COM/ActiveX via `pywin32` to connect to the running SAP GUI process (login is handled automatically)
+- QBI crawler uses Playwright (headless Chromium) — no SAP GUI required, but needs network access to `qbi.superhi-tech.com`
 - SAP date format is `YYYY.MM.DD` (not DD.MM.YYYY)
 - Process-specific SAP flows live in `libs/sap-gui/src/sap_gui/processes/<name>/`; projects are thin CLI wrappers
 - Process data files (e.g., cost center lists) live alongside their process module, not in the project

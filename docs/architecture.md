@@ -6,12 +6,15 @@
 haidilao-automation-monorepo/
 ├── libs/                          # Shared libraries
 │   ├── sap-gui/                     # SAP GUI COM automation
+│   ├── qbi-crawler/                 # Quick BI web crawler (Playwright)
 │   └── ollama-client/               # LLM client wrapper
 ├── projects/                      # Automation projects
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
 │   └── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
 ├── docs/                          # Documentation
 ├── output/                        # Default export destination (gitignored)
+│   ├── ksb1/                        # KSB1 accounting check exports
+│   └── qbi/                         # Quick BI dashboard exports
 ├── .env                           # Environment variables (gitignored)
 └── pyproject.toml                 # uv workspace root
 ```
@@ -24,6 +27,7 @@ haidilao-automation-monorepo/
 | Package Manager | [uv](https://docs.astral.sh/uv/) with workspaces |
 | Build Backend | hatchling |
 | SAP Integration | COM/ActiveX via pywin32 |
+| Web Crawling | Playwright (headless Chromium) |
 | Report Output | openpyxl (XLSX) |
 | LLM Enhancement | Ollama (local, optional) |
 | Desktop GUI | tkinter |
@@ -43,6 +47,10 @@ projects/ksb1-accounting-check-gui
     ├── depends on → libs/sap-gui                    (SAP download)
     ├── depends on → libs/ollama-client               (optional LLM)
     └── depends on → python-dotenv                   (.env loading)
+```
+
+libs/qbi-crawler
+    └── depends on → playwright         (browser automation)
 ```
 
 Dependencies between workspace packages are declared via `[tool.uv.sources]` in each project's `pyproject.toml` using `workspace = true`.
