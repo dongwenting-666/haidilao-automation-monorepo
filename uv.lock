@@ -4,6 +4,7 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
+    "excel-utils",
     "haidilao-automation-monorepo",
     "ksb1-accounting-check",
     "ksb1-accounting-check-gui",
@@ -59,6 +60,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/d3/38/af70d7ab1ae9d4da4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa", size = 18059, upload-time = "2024-10-25T17:25:39.051Z" },
 ]
+
+[[package]]
+name = "excel-utils"
+version = "0.1.0"
+source = { editable = "libs/excel-utils" }
+dependencies = [
+    { name = "openpyxl" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "openpyxl", specifier = ">=3.1.0" }]
 
 [[package]]
 name = "greenlet"
