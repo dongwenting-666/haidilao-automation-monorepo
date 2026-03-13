@@ -12,6 +12,9 @@ build/
 # Output
 output/
 
+# User-specific config
+user_cost_centers.txt
+
 # IDE
 .vscode/
 .idea/

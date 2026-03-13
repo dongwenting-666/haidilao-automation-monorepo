@@ -16,7 +16,7 @@ from ksb1_accounting_check_gui.paths import exe_dir, resource_path
 from ksb1_accounting_check_gui.worker import run_download_and_generate, run_generate_only
 
 WINDOW_TITLE = "KSB1 会计检查"
-WINDOW_SIZE = "700x600"
+WINDOW_SIZE = "700x720"
 
 
 def _prev_month_year() -> tuple[int, int]:
@@ -103,6 +103,16 @@ class App:
         ).pack(side=tk.LEFT, padx=8)
         ttk.Label(llm_frame, text="留空 = 仅规则分析（推荐）", foreground="gray").pack(side=tk.LEFT)
 
+        # --- Cost centers ---
+        cc_frame = ttk.LabelFrame(self.root, text="成本中心（每行一个）", padding=8)
+        cc_frame.pack(fill=tk.X, **pad)
+
+        self.cost_center_text = tk.Text(cc_frame, height=5, width=60)
+        cc_scroll = ttk.Scrollbar(cc_frame, orient=tk.VERTICAL, command=self.cost_center_text.yview)
+        self.cost_center_text.configure(yscrollcommand=cc_scroll.set)
+        cc_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.cost_center_text.pack(fill=tk.X, expand=True)
+
         # --- Action buttons ---
         btn_frame = ttk.Frame(self.root, padding=8)
         btn_frame.pack(fill=tk.X)
@@ -156,6 +166,12 @@ class App:
         default_dir = exe_dir() / "output" / "ksb1"
         self.output_dir_var.set(str(default_dir))
 
+        # Load saved cost centers (user's own), falling back to bundled default
+        self._cc_save_path = exe_dir() / "user_cost_centers.txt"
+        cc_path = self._cc_save_path if self._cc_save_path.exists() else resource_path("cost_centers.txt")
+        if cc_path.exists():
+            self.cost_center_text.insert("1.0", cc_path.read_text(encoding="utf-8").strip())
+
     def _toggle_password(self) -> None:
         self.password_entry.configure(show="" if self.show_pw_var.get() else "*")
 
@@ -200,6 +216,13 @@ class App:
         m = self.model_var.get().strip()
         return m if m else None
 
+    def _save_cost_centers(self) -> Path:
+        """Save cost center text area content to disk and return the file path."""
+        content = self.cost_center_text.get("1.0", tk.END).strip()
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        self._cc_save_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return self._cc_save_path
+
     def _validate_common(self) -> bool:
         """Validate common inputs. Returns True if valid."""
         month = self.month_var.get()
@@ -236,6 +259,10 @@ class App:
             return
         if not self._validate_common():
             return
+        cc_content = self.cost_center_text.get("1.0", tk.END).strip()
+        if not cc_content:
+            messagebox.showwarning("输入错误", "请输入至少一个成本中心")
+            return
 
         self._clear_log()
         self._set_running(True)
@@ -245,7 +272,7 @@ class App:
             "username": username,
             "password": password,
             "language": self.language_var.get(),
-            "cost_center_file": resource_path("cost_centers.txt"),
+            "cost_center_file": self._save_cost_centers(),
         })
         threading.Thread(target=run_download_and_generate, kwargs=kwargs, daemon=True).start()
 

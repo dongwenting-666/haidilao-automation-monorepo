@@ -94,7 +94,7 @@ Optional hybrid approach — pass `--model qwen3:8b` (CLI) or select a model in 
 
 ```
 projects/ksb1-accounting-check-gui/src/ksb1_accounting_check_gui/
-    app.py             # tkinter GUI (credentials, settings, log output)
+    app.py             # tkinter GUI (credentials, settings, cost centers, log output)
     worker.py          # Background worker (SAP download + report generation)
     paths.py           # Resource path resolution (frozen vs dev mode)
     log_handler.py     # Thread-safe logging to tkinter Text widget
