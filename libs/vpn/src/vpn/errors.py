@@ -1,4 +1,7 @@
-"""VPN error hierarchy."""
+"""VPN error hierarchy and shared constants."""
+
+MAX_POLL_ATTEMPTS = 15
+POLL_INTERVAL_SECONDS = 2
 
 
 class VPNError(Exception):

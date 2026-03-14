@@ -67,19 +67,31 @@ Shared openpyxl utilities for reading, writing, and styling Excel files. Project
 ```
 libs/vpn/src/vpn/
     __init__.py        # Public API: ensure_vpn()
-    connect.py         # SealSuite/CorpLink window automation via pywinauto
-    errors.py          # VPNError, VPNAppNotFoundError, VPNConnectionError
+    connect.py         # Platform dispatcher (imports _windows or _darwin)
+    errors.py          # VPNError hierarchy + shared constants (MAX_POLL_ATTEMPTS, POLL_INTERVAL_SECONDS)
+    _windows.py        # Windows: pywinauto + winreg
+    _darwin.py         # macOS: log parsing + AppleScript (System Events)
     py.typed           # PEP 561 marker
 ```
 
 ### Key Design Decisions
 
 - **Middleware pattern** — call `ensure_vpn()` before any automation that needs corporate network
-- **pywinauto accessibility API** (`btn.invoke()`) instead of screen clicks — works when window is behind others or screen is locked
-- **Electron workaround** — SealSuite only exposes its a11y tree after receiving focus once; `_ensure_accessibility_tree()` handles this transparently
-- **Smart session management** — reads the "Time connected" counter; only cycles the connection if session age exceeds `max_connected_hours` (default 6h, session expires at 7h30m)
-- **Exe discovery** — checks `SEALSUITE_EXE` env var first, then Windows registry (`Uninstall\CorpLink`), no hardcoded paths
+- **Cross-platform** — `connect.py` dispatches to `_windows.py` or `_darwin.py` based on `sys.platform`; public API is identical
+- **Smart session management** — cycles the connection if session age exceeds `max_connected_hours` (default 6h, session expires at 7h30m)
+- **App discovery** — checks `SEALSUITE_EXE` env var first, then platform-specific lookup (Windows registry / macOS `/Applications/`)
 - **VPN auth** — Lark OAuth with QR code scan, valid for ~30 days; the only manual step
+
+#### Windows (`_windows.py`)
+- **pywinauto accessibility API** (`btn.invoke()`) instead of screen clicks — works when window is behind others or screen is locked
+- **Electron workaround** — SealSuite only exposes its a11y tree after receiving focus once; `_ensure_accessibility_tree()` handles this
+- **Session age** — reads the "Time connected" counter via spatial proximity to the label element
+
+#### macOS (`_darwin.py`)
+- **Log-based status detection** (no permissions needed) — parses `/usr/local/corplink/logs/corplink.log` backwards for `reportVpnStatus` / `VPN Disconnected` events
+- **AppleScript GUI automation** (needs Accessibility permission) — uses `entire contents of webArea` to find the AXCheckBox toggle (deeply nested in Electron's a11y tree)
+- **Session age** — parsed from log timestamp of last `reportVpnStatus` event (local time, naive datetime)
+- **Accessibility permission** — one-time setup: add Terminal/iTerm2/Cursor to System Settings > Privacy & Security > Accessibility
 
 ### Usage
 

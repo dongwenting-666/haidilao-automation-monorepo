@@ -3,7 +3,7 @@ name = "vpn"
 version = "0.1.0"
 description = "SealSuite VPN middleware — ensures VPN is connected before automation runs"
 requires-python = ">=3.13"
-dependencies = ["pywinauto>=0.6.9"]
+dependencies = ["pywinauto>=0.6.9; sys_platform == 'win32'"]
 
 [build-system]
 requires = ["hatchling"]

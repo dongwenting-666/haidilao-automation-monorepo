@@ -1,4 +1,6 @@
-"""SealSuite VPN middleware — call ensure_vpn() before any automation.
+"""SealSuite / CorpLink VPN middleware — call ensure_vpn() before any automation.
+
+Cross-platform: Windows (pywinauto) and macOS (log parsing + AppleScript).
 
 Usage:
     from vpn import ensure_vpn
