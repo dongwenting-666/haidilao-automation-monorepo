@@ -15,6 +15,9 @@ output/
 # User-specific config
 user_cost_centers.txt
 
+# Logs
+scripts/logs/
+
 # IDE
 .vscode/
 .idea/

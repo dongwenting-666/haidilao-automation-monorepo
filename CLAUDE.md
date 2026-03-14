@@ -8,7 +8,8 @@ Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python 
 
 ## Repository Layout
 
-- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`, `excel-utils`)
+- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`, `excel-utils`, `vpn`)
+- `scripts/` — Standalone utility scripts (e.g., `vpn_reconnect.py` for scheduled VPN keep-alive)
 - `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`)
 - Each package follows `src/` layout: `src/<package_name>/`
 - `output/` — Default export destination (gitignored), organized by tool (`output/ksb1/`, `output/qbi/`, `output/daily-report/`)
@@ -60,6 +61,34 @@ libs/excel-utils/src/excel_utils/
 ```
 
 Shared openpyxl utilities for reading, writing, and styling Excel files. Projects should depend on this via `excel-utils = { workspace = true }` instead of using openpyxl directly.
+
+## VPN Library Structure
+
+```
+libs/vpn/src/vpn/
+    __init__.py        # Public API: ensure_vpn()
+    connect.py         # SealSuite/CorpLink window automation via pywinauto
+    errors.py          # VPNError, VPNAppNotFoundError, VPNConnectionError
+    py.typed           # PEP 561 marker
+```
+
+### Key Design Decisions
+
+- **Middleware pattern** — call `ensure_vpn()` before any automation that needs corporate network
+- **pywinauto accessibility API** (`btn.invoke()`) instead of screen clicks — works when window is behind others or screen is locked
+- **Electron workaround** — SealSuite only exposes its a11y tree after receiving focus once; `_ensure_accessibility_tree()` handles this transparently
+- **Smart session management** — reads the "Time connected" counter; only cycles the connection if session age exceeds `max_connected_hours` (default 6h, session expires at 7h30m)
+- **Exe discovery** — checks `SEALSUITE_EXE` env var first, then Windows registry (`Uninstall\CorpLink`), no hardcoded paths
+- **VPN auth** — Lark OAuth with QR code scan, valid for ~30 days; the only manual step
+
+### Usage
+
+```python
+from vpn import ensure_vpn
+ensure_vpn()  # blocks until VPN is ready, raises VPNError on failure
+```
+
+Standalone keep-alive: `python scripts/vpn_reconnect.py --loop`
 
 ## KSB1 Accounting Check Structure
 
