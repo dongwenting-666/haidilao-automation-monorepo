@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import time
+
 from sap_gui.errors import SAPNavigationError, SAPStatusBarError
 
 
@@ -13,8 +16,6 @@ class SAPNavigator:
 
     def login(self, username: str, password: str, language: str = "ZH") -> None:
         """Log in to SAP from the login screen. Skips if already logged in."""
-        import time
-
         try:
             if self._session.Info.User:
                 return  # Already authenticated
@@ -37,14 +38,27 @@ class SAPNavigator:
         self.check_status_bar()
 
     def run_transaction(self, tcode: str) -> None:
-        """Navigate to a transaction by code (e.g. 'KSB1')."""
-        try:
-            self._session.findById("wnd[0]/tbar[0]/okcd").text = f"/n{tcode}"
-        except Exception as exc:
-            raise SAPNavigationError(
-                f"Failed to navigate to transaction {tcode}"
-            ) from exc
-        self.send_vkey(0)  # Enter
+        """Navigate to a transaction by code (e.g. 'KSB1').
+
+        On macOS, uses ``session.startTransaction()`` which bypasses modal
+        popups (e.g. the spreadsheet viewer left by a list export).
+        On Windows, uses the classic okcd + Enter approach.
+        """
+        if sys.platform == "darwin":
+            try:
+                self._session.startTransaction(tcode)
+            except Exception as exc:
+                raise SAPNavigationError(
+                    f"Failed to navigate to transaction {tcode}"
+                ) from exc
+        else:
+            try:
+                self._session.findById("wnd[0]/tbar[0]/okcd").text = f"/n{tcode}"
+            except Exception as exc:
+                raise SAPNavigationError(
+                    f"Failed to navigate to transaction {tcode}"
+                ) from exc
+            self.send_vkey(0)  # Enter
         self.check_status_bar()
 
     def set_field(self, field_id: str, value: str) -> None:

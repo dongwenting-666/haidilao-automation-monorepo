@@ -5,7 +5,7 @@ Architecture and reference documentation for the Haidilao Automation Monorepo.
 ## Contents
 
 - [Architecture Overview](./architecture.md) — Monorepo structure, package relationships, data flow
-- [SAP GUI Library](./sap-gui.md) — COM automation API reference (session, navigation, export)
+- [SAP GUI Library](./sap-gui.md) — Cross-platform SAP GUI automation (COM on Windows, Scripting Console on macOS)
 - [QBI Crawler](./qbi-crawler.md) — Quick BI web crawler (Playwright, LDAP login, XLSX export)
 - [Excel Utils](./excel-utils.md) — Shared Excel generation utilities (openpyxl readers, writers, styling)
 - [KSB1 Accounting Check](./ksb1-accounting-check.md) — Report pipeline, analysis rules, LLM enhancement, output format

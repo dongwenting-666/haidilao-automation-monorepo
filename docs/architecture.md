@@ -5,9 +5,10 @@
 ```
 haidilao-automation-monorepo/
 ├── libs/                          # Shared libraries
-│   ├── sap-gui/                     # SAP GUI COM automation
+│   ├── sap-gui/                     # SAP GUI automation (cross-platform)
 │   ├── qbi-crawler/                 # Quick BI web crawler (Playwright)
 │   ├── excel-utils/                 # Shared Excel generation utilities
+│   ├── vpn/                          # SealSuite VPN automation (cross-platform)
 │   └── ollama-client/               # LLM client wrapper
 ├── projects/                      # Automation projects
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
@@ -29,7 +30,7 @@ haidilao-automation-monorepo/
 | Language | Python >= 3.13 |
 | Package Manager | [uv](https://docs.astral.sh/uv/) with workspaces |
 | Build Backend | hatchling |
-| SAP Integration | COM/ActiveX via pywin32 |
+| SAP Integration | Windows: COM/ActiveX via pywin32; macOS: Scripting Console bridge (AppleScript + Nashorn JS) |
 | Web Crawling | Playwright (headless Chromium) |
 | Report Output | openpyxl (XLSX) |
 | LLM Enhancement | Ollama (local, optional) |
@@ -85,15 +86,16 @@ All packages use Python src-layout:
 1. **Libs vs Projects** — Reusable automation logic lives in `libs/`. Projects are thin CLI/GUI entry points that compose library functionality.
 2. **Process modules** — SAP transaction-specific flows (e.g., KSB1) live in `libs/sap-gui/src/sap_gui/processes/<name>/`, keeping the core library generic.
 3. **Data files with code** — Process-specific data (cost center lists, mapping files) live alongside their process module, not in the project.
-4. **Environment at the edge** — Only project entry points load `.env` and resolve credentials. Libraries accept parameters, never read environment variables.
+4. **Environment at the edge** — Only project entry points load `.env` and resolve credentials. Libraries accept parameters; env vars are only used for optional overrides (e.g., `SAP_CONNECTION`, `SAPGUI_APP`).
 5. **pathlib everywhere** — All file path parameters and return types use `pathlib.Path`.
 6. **Hybrid analysis** — Deterministic rules detect anomalies; optional LLM explains *why* they exist. Rules always run, LLM is opt-in.
 
 ## Data Flow: KSB1 Accounting Check
 
 ```
-SAP GUI (running) ──COM/ActiveX──> sap-gui library
+SAP GUI ──COM (Win) / Scripting Console (macOS)──> sap-gui library
     │
+    ├── [macOS] Auto-launch SAP GUI if not running (auto_launch=True)
     ├── Login (auto)
     ├── Navigate to KSB1
     ├── Upload cost centers

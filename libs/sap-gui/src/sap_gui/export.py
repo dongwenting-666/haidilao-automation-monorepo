@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -21,13 +23,52 @@ class SAPExporter:
 
     def _fill_save_dialog(
         self, output_dir: str, filename: str, dialog_window: int = 1
-    ) -> None:
-        """Fill DY_PATH/DY_FILENAME in the save dialog and press save."""
+    ) -> Path:
+        """Fill DY_PATH/DY_FILENAME in the save dialog and press save.
+
+        Returns the path where SAP will actually write the file.  On
+        Windows this is ``output_dir / filename``.  On macOS, SAP GUI for
+        Java's security policy blocks custom DY_PATH values (triggers
+        *Security Access Violation*), so we keep the default download
+        directory and only set DY_FILENAME.
+        """
         wnd = f"wnd[{dialog_window}]"
+
+        # Wait for the save dialog to appear — menu selections and button
+        # presses that trigger the dialog may need a moment to process.
+        for _ in range(10):
+            try:
+                self._session.findById(f"{wnd}/usr/ctxtDY_PATH").text
+                break
+            except Exception:  # COM/bridge errors while dialog hasn't appeared
+                time.sleep(1.0)
+        else:
+            raise SAPExportError(
+                "Save dialog did not appear within 10 s. "
+                "The export menu may not have triggered correctly."
+            )
+
         try:
-            self._session.findById(f"{wnd}/usr/ctxtDY_PATH").text = output_dir
-            self._session.findById(f"{wnd}/usr/ctxtDY_FILENAME").text = filename
+            if sys.platform == "darwin":
+                # Read the default download path — do NOT overwrite it.
+                actual_dir = (
+                    self._session.findById(f"{wnd}/usr/ctxtDY_PATH").text
+                )
+                if not actual_dir:
+                    raise SAPExportError(
+                        "Could not read default save directory from SAP dialog"
+                    )
+            else:
+                self._session.findById(
+                    f"{wnd}/usr/ctxtDY_PATH"
+                ).text = output_dir
+                actual_dir = output_dir
+            self._session.findById(
+                f"{wnd}/usr/ctxtDY_FILENAME"
+            ).text = filename
             self._session.findById(f"{wnd}/tbar[0]/btn[0]").press()
+        except SAPExportError:
+            raise
         except Exception as exc:
             raise SAPExportError(
                 "Failed to fill save dialog. The export dialog may not have appeared."
@@ -35,6 +76,7 @@ class SAPExporter:
         # Handle potential "replace existing file?" popup — only dismiss
         # if a popup actually appeared at a higher window index
         self._navigator.dismiss_popup(window=dialog_window + 1, vkey=0)
+        return (Path(actual_dir) / filename).resolve()
 
     def _wait_for_file(self, output_path: Path, timeout: float) -> None:
         """Wait for a file to appear on disk."""
@@ -46,6 +88,25 @@ class SAPExporter:
                     f"within {timeout}s"
                 )
             time.sleep(0.5)
+
+    def _export_and_save(
+        self,
+        output_path: Path,
+        dialog_window: int,
+        timeout: float,
+    ) -> Path:
+        """Fill the save dialog, wait for the file, and move if needed.
+
+        When the actual save location differs from the desired output
+        (macOS default Downloads dir), moves the file to the target path.
+        """
+        actual_save_path = self._fill_save_dialog(
+            str(output_path.parent), output_path.name, dialog_window
+        )
+        self._wait_for_file(actual_save_path, timeout)
+        if actual_save_path != output_path:
+            shutil.move(actual_save_path, output_path)
+        return output_path
 
     def export_alv_to_file(
         self,
@@ -70,9 +131,7 @@ class SAPExporter:
                 "Ensure an ALV grid is displayed on screen."
             ) from exc
 
-        self._fill_save_dialog(str(output_path.parent), output_path.name)
-        self._wait_for_file(output_path, timeout)
-        return output_path
+        return self._export_and_save(output_path, 1, timeout)
 
     def export_list_to_file(
         self,
@@ -98,8 +157,4 @@ class SAPExporter:
 
         self._navigator.select_menu(menu_path)
 
-        self._fill_save_dialog(
-            str(output_path.parent), output_path.name, dialog_window
-        )
-        self._wait_for_file(output_path, timeout)
-        return output_path
+        return self._export_and_save(output_path, dialog_window, timeout)

@@ -2,223 +2,82 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Detailed documentation lives in `docs/`. See [docs/README.md](docs/README.md) for the full index.
+
 ## Project Overview
 
 Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python >= 3.13 and **hatchling** as the build backend.
 
 ## Repository Layout
 
-- `libs/` — Shared libraries consumed by projects (e.g., `sap-gui`, `ollama-client`, `qbi-crawler`, `excel-utils`, `vpn`)
-- `scripts/` — Standalone utility scripts (e.g., `vpn_reconnect.py` for scheduled VPN keep-alive)
-- `projects/` — Automation projects (e.g., `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`)
-- Each package follows `src/` layout: `src/<package_name>/`
-- `output/` — Default export destination (gitignored), organized by tool (`output/ksb1/`, `output/qbi/`, `output/daily-report/`)
+- `libs/` — Shared libraries: `sap-gui`, `qbi-crawler`, `excel-utils`, `vpn`, `ollama-client`
+- `projects/` — Automation projects: `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`
+- `scripts/` — Standalone utility scripts (e.g., `vpn_reconnect.py`)
+- `output/` — Default export destination (gitignored): `output/ksb1/`, `output/qbi/`, `output/daily-report/`
+- `docs/` — Architecture docs, library references, edit history
 
-Projects depend on libs via workspace references (`[tool.uv.sources]` in their `pyproject.toml`).
+Each package follows `src/` layout. Projects depend on libs via `[tool.uv.sources]` workspace references.
 
-## SAP GUI Library Structure
+## Key Libraries
 
-```
-libs/sap-gui/src/sap_gui/
-    errors.py          # Exception hierarchy (SAPGuiError, SAPConnectionError, etc.)
-    session.py         # COM connection (SAPSession, SAPSessionManager)
-    navigation.py      # Transaction/field/button helpers (SAPNavigator)
-    export.py          # File export (SAPExporter — ALV grid + classic list)
-    processes/         # Process-specific automation modules
-        ksb1/          # KSB1 cost center report export
-            __init__.py        # execute(), run(), helpers
-            cost_centers.txt   # Default cost center list
-```
+| Library | Purpose | Docs |
+|---------|---------|------|
+| `sap-gui` | Cross-platform SAP GUI automation (COM on Windows, Scripting Console on macOS) | [docs/sap-gui.md](docs/sap-gui.md) |
+| `qbi-crawler` | Quick BI dashboard export via Playwright | [docs/qbi-crawler.md](docs/qbi-crawler.md) |
+| `excel-utils` | Shared openpyxl utilities (read, write, style) | [docs/excel-utils.md](docs/excel-utils.md) |
+| `vpn` | SealSuite VPN automation (cross-platform) | — |
 
-## QBI Crawler Library Structure
+## SAP GUI Quick Reference
 
-```
-libs/qbi-crawler/src/qbi_crawler/
-    auth.py            # QBISession — Playwright browser lifecycle + LDAP login
-    constants.py       # BASE_URL for Quick BI portal
-    dashboard.py       # Report navigation, date filtering, XLSX export
-    errors.py          # Exception hierarchy (QBIError, QBILoginError, QBITimeoutError)
-    py.typed           # PEP 561 marker
-```
-
-### Key Design Decisions
-
-- **Playwright** (not requests/Selenium) because Quick BI is a React SPA with JS-rendered content
-- **Direct URL navigation** with menuIds instead of sidebar clicks (avoids iframe detachment)
-- **Keyboard input** for Ant Design DatePicker (not `fill()` — elements are not directly editable)
-- **Auto-installs Chromium** on first session start (thread-safe, skipped after first success)
-- Reports supported: `REPORT_DAILY`, `REPORT_TIME_PERIOD`, `REPORT_24H`
-- Default output subdirectory: `output/qbi/`
-
-## Excel Utils Library Structure
-
-```
-libs/excel-utils/src/excel_utils/
-    reader.py          # load_data_rows(), load_mapping() — XLSX reading
-    style.py           # BOLD_FONT, set_header_row(), auto_size_columns()
-    workbook.py        # create_workbook(), write_data_sheet(), copy_sheet_data(), truncate_sheet_name()
-    py.typed           # PEP 561 marker
-```
-
-Shared openpyxl utilities for reading, writing, and styling Excel files. Projects should depend on this via `excel-utils = { workspace = true }` instead of using openpyxl directly.
-
-## VPN Library Structure
-
-```
-libs/vpn/src/vpn/
-    __init__.py        # Public API: ensure_vpn()
-    connect.py         # Platform dispatcher (imports _windows or _darwin)
-    errors.py          # VPNError hierarchy + shared constants (MAX_POLL_ATTEMPTS, POLL_INTERVAL_SECONDS)
-    _windows.py        # Windows: pywinauto + winreg
-    _darwin.py         # macOS: log parsing + AppleScript (System Events)
-    py.typed           # PEP 561 marker
-```
-
-### Key Design Decisions
-
-- **Middleware pattern** — call `ensure_vpn()` before any automation that needs corporate network
-- **Cross-platform** — `connect.py` dispatches to `_windows.py` or `_darwin.py` based on `sys.platform`; public API is identical
-- **Smart session management** — cycles the connection if session age exceeds `max_connected_hours` (default 6h, session expires at 7h30m)
-- **App discovery** — checks `SEALSUITE_EXE` env var first, then platform-specific lookup (Windows registry / macOS `/Applications/`)
-- **VPN auth** — Lark OAuth with QR code scan, valid for ~30 days; the only manual step
-
-#### Windows (`_windows.py`)
-- **pywinauto accessibility API** (`btn.invoke()`) instead of screen clicks — works when window is behind others or screen is locked
-- **Electron workaround** — SealSuite only exposes its a11y tree after receiving focus once; `_ensure_accessibility_tree()` handles this
-- **Session age** — reads the "Time connected" counter via spatial proximity to the label element
-
-#### macOS (`_darwin.py`)
-- **Log-based status detection** (no permissions needed) — parses `/usr/local/corplink/logs/corplink.log` backwards for `reportVpnStatus` / `VPN Disconnected` events
-- **AppleScript GUI automation** (needs Accessibility permission) — uses `entire contents of webArea` to find the AXCheckBox toggle (deeply nested in Electron's a11y tree)
-- **Session age** — parsed from log timestamp of last `reportVpnStatus` event (local time, naive datetime)
-- **Accessibility permission** — one-time setup: add Terminal/iTerm2/Cursor to System Settings > Privacy & Security > Accessibility
-
-### Usage
-
-```python
-from vpn import ensure_vpn
-ensure_vpn()  # blocks until VPN is ready, raises VPNError on failure
-```
-
-Standalone keep-alive: `python scripts/vpn_reconnect.py --loop`
-
-## KSB1 Accounting Check Structure
-
-```
-projects/ksb1-accounting-check/src/ksb1_accounting_check/
-    main.py            # CLI entry point (argparse, SAP download + report generation)
-    analyze.py         # Data loading, enrichment, per-store comparison, XLSX report
-    rules.py           # Deterministic rule-based analysis
-    llm.py             # Optional LLM enhancement (explains WHY findings exist)
-    prompt.md          # LLM enhancer prompt
-    报表科目.xlsx       # Cost element → 报表科目 mapping spreadsheet
-```
-
-### Analysis Rules (`rules.py`)
-
-The KSB1 accounting check uses deterministic rules for anomaly detection:
-- **Skipped kemus**: `SKIP_KEMUS` — high-volume routine items excluded from analysis
-- **Key cost elements**: `KEY_COST_ELEMENTS` — always reported when they change (threshold: 100 CAD)
-- **General thresholds**: minimum absolute difference of 500 CAD **and** 20% change
-- **Presence checks**: flags cost elements present in one month but absent in the other
-- Uses `对象货币值` (object currency / local CAD) for amounts, not `报表货币值`
-
-### LLM Enhancement (`llm.py`)
-
-Optional hybrid approach — pass `--model qwen3:8b` (CLI) or select a model in the GUI:
-- Rules detect anomalies deterministically; LLM explains *why* they exist
-- Pre-computes grouped subtotals so LLM never does arithmetic
-- Batching + retry logic with graceful fallback to rule-based observations
-- `set_prompt_path()` API for overriding prompt file location (used by PyInstaller)
-
-## KSB1 GUI Structure
-
-```
-projects/ksb1-accounting-check-gui/src/ksb1_accounting_check_gui/
-    app.py             # tkinter GUI (credentials, settings, cost centers, log output)
-    worker.py          # Background worker (SAP download + report generation)
-    paths.py           # Resource path resolution (frozen vs dev mode)
-    log_handler.py     # Thread-safe logging to tkinter Text widget
-```
-
-Build EXE: `cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --noconfirm`
-
-## Daily Store Operation Report Structure
-
-```
-projects/daily-store-operation-report/src/daily_store_operation_report/
-    main.py              # CLI entry point (argparse, --skip-download, explicit file paths)
-    download.py          # QBI download orchestration (5 files via single session)
-    dates.py             # Date range calculations (cur/prev/yoy periods, frozen dataclass)
-    transform.py         # Raw QBI data → RawData → StoreMetrics → ReportData
-    report.py            # Orchestrator: calls sheet builders, _format_numbers, saves workbook
-    constants.py         # Store names, regions, time slots, QBI column names
-    utils.py             # div_or_zero, comp_text, pct_str
-    targets.json         # Monthly revenue + turnover rate targets per store
-    sheets/
-        styles.py        # All openpyxl fill/font/border constants + helpers (typed ws params)
-        comparison_sheet.py  # Shared builder for MoM/YoY detail (SheetTheme + ComparisonConfig)
-        mom.py           # Sheet 1: 对比上月表 (gold theme, thin config wrapper)
-        yoy_summary.py   # Sheet 2: 同比数据 (region-grouped, gold theme)
-        yoy_detail.py    # Sheet 3: 对比上年表 (blue theme, thin config wrapper)
-        time_period.py   # Sheet 4: 分时段-上报 (per-store colors)
-```
-
-### Key Design Decisions
-
-- **Parameterized comparison sheets** — `comparison_sheet.py` with `SheetTheme` + `ComparisonConfig` dataclasses eliminates ~85% duplication between MoM and YoY detail sheets
-- **Typed raw data pipeline** — `RawData` dataclass (typed fields) → `StoreMetrics` per store → `ReportData` for all sheets
-- **Date normalization** — `_normalize_date()` handles both `datetime` and string dates from openpyxl
-- **Late formatting** — Raw floats stored in dataclasses; `_format_numbers()` rounds to 2 decimals at save time
-- **Nonzero-store averaging** — Region turnover averages exclude stores with no data to avoid dilution
-
-### Data Flow
-
-Downloads 5 QBI reports (3 daily + 2 time-period) for current month, previous month same period, and previous year same period. All use the `不含税` sheet. Key fields: `营业桌数(考核)`, `营业收入(不含税)`, `就餐人数`, `优惠总金额(不含税)`, `翻台率(考核)`.
-
-Revenue displayed in 万 (÷10000). Time progress = day_of_month / days_in_month. 去年同周同日 = report_date - 364 days. `compute_metrics()` accepts `DownloadedFiles` dataclass (not individual paths).
+- **Platform dispatch**: `session.py` imports `_win32.py` or `_darwin.py` based on `sys.platform`
+- **macOS auto-launch**: `SAPSession(auto_launch=True)` launches SAP GUI, connects, and polls for session readiness
+- **macOS bridge**: AppleScript pastes JS into Scripting Console, reads results from temp files
+- **KSB1 macOS**: `_run_darwin()` batches entire flow into one JS call (~38s vs ~150s)
+- **macOS constraints**: DY_PATH read-only, cost centers via AWT clipboard, post-export modal bypassed via `startTransaction()`
 
 ## Commands
 
 ```bash
-# Install all dependencies
-uv sync
+uv sync                              # Install all dependencies
 
-# Run KSB1 export (defaults to previous month, output to <repo>/output/)
+# SAP GUI E2E test (macOS: auto-launches; Windows: requires live SAP session)
+uv run --project libs/sap-gui python libs/sap-gui/tests/e2e_ksb1.py
+
+# KSB1 accounting check
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
-
-# Run KSB1 with LLM enhancement
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main --model qwen3:8b
 
-# Run KSB1 GUI (development mode)
+# KSB1 GUI
 python -m ksb1_accounting_check_gui
-
-# Build KSB1 GUI EXE
 cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --noconfirm
 
-# Run tests for KSB1 accounting check
-python -m pytest projects/ksb1-accounting-check/tests/ -v
-
-# Add a dependency to a specific package
-uv add --project libs/sap-gui <package>
-
-# Run daily store operation report (downloads from QBI + generates Excel)
+# Daily store operation report
 uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10
-
-# Run with pre-downloaded files (skip QBI login)
 uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10 --skip-download --data-dir output/qbi
 
-# Install Playwright browser (required once for qbi-crawler)
+# Tests
+python -m pytest projects/ksb1-accounting-check/tests/ -v
+
+# Playwright (one-time setup)
 playwright install chromium
 ```
 
+## Environment Variables
+
+| Variable | Used by | Description |
+|---|---|---|
+| `SAP_USERNAME` / `SAP_PASSWORD` | sap-gui, projects | SAP login credentials |
+| `SAP_LANGUAGE` | sap-gui, projects | SAP language code (default: `ZH`) |
+| `SAP_CONNECTION` | sap-gui (macOS) | Override connection string (`/H/<host>/S/<port>`). Auto-detected from landscape XML if unset |
+| `SAPGUI_APP` | sap-gui (macOS) | Override SAP GUI app path. Auto-detected from `/Applications/SAPGUI *.app` if unset |
+| `SEALSUITE_EXE` | vpn | Override SealSuite executable path |
+
 ## Key Conventions
 
-- SAP GUI 770 must be open before running automations — `sap-gui` uses COM/ActiveX via `pywin32` to connect to the running SAP GUI process (login is handled automatically)
-- QBI crawler uses Playwright (headless Chromium) — no SAP GUI required, but needs network access to `qbi.superhi-tech.com`
-- SAP date format is `YYYY.MM.DD` (not DD.MM.YYYY)
+- On Windows, SAP GUI must be open before running automations; on macOS, `auto_launch=True` starts it automatically
+- SAP date format: `YYYY.MM.DD`
 - Process-specific SAP flows live in `libs/sap-gui/src/sap_gui/processes/<name>/`; projects are thin CLI wrappers
-- Process data files (e.g., cost center lists) live alongside their process module, not in the project
+- Process data files (cost center lists, mappings) live alongside their process module
 - Use `pathlib.Path` for all file path parameters and return types
-- Environment/config loading is the responsibility of the project entry point, not shared libs
+- Environment/config loading is the project entry point's responsibility, not libs'
 - New libs go in `libs/`, new automations go in `projects/`

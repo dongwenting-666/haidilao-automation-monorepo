@@ -1,4 +1,4 @@
-"""SAP GUI automation library — shared primitives for COM/ActiveX scripting."""
+"""SAP GUI automation library — cross-platform (Windows COM + macOS Scripting Console)."""
 
 from sap_gui.errors import (
     SAPConnectionError,

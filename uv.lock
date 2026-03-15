@@ -12,6 +12,7 @@ members = [
     "ollama-client",
     "qbi-crawler",
     "sap-gui",
+    "vpn",
 ]
 
 [[package]]
@@ -51,6 +52,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/af/2d/7bf41579a8986e348fa033a31cdd0e4121114f6bce2457e8876010b092dd/certifi-2026.2.25.tar.gz", hash = "sha256:e887ab5cee78ea814d3472169153c2d12cd43b14bd03329a39a9c6e2e80bfba7", size = 155029, upload-time = "2026-02-25T02:54:17.342Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/3c/c17fb3ca2d9c3acff52e30b309f538586f9f5b9c9cf454f3845fc9af4881/certifi-2026.2.25-py3-none-any.whl", hash = "sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa", size = 153684, upload-time = "2026-02-25T02:54:15.766Z" },
+]
+
+[[package]]
+name = "comtypes"
+version = "1.4.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/2a/65274c13327f637ec13af8d39f2cf579d9ebe7a0e683696b5f05236d2805/comtypes-1.4.16.tar.gz", hash = "sha256:cd66d1add01265cface4df51ba1e31cd1657e04463c281c802e737e79e1ba93c", size = 260252, upload-time = "2026-03-02T23:11:42.413Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/7c/0eb685107290b6221c03c46d39214a4e42a124189691cb83ae3228257f46/comtypes-1.4.16-py3-none-any.whl", hash = "sha256:e18d85179ff12955524c5a8c3bc09cb3c0d890f1da4d7123d14244c7b78f84c8", size = 296230, upload-time = "2026-03-02T23:11:41.049Z" },
 ]
 
 [[package]]
@@ -457,6 +467,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pywinauto"
+version = "0.6.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "comtypes", marker = "sys_platform == 'win32'" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2c/85/cc65e3b64e7473cc86c07f0b5c415d509402c03ef19dadc39c583835eb5f/pywinauto-0.6.9.tar.gz", hash = "sha256:94d710bfa796df245250f952ffa65d97233d9807bcd42e052b71b81af469b6de", size = 434734, upload-time = "2025-01-06T11:30:01.801Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/46/f2283648e0c237af451dc50ebc42121abfd198d12391fd9ad4df1c6b97d2/pywinauto-0.6.9-py2.py3-none-any.whl", hash = "sha256:5924b3072864a1d730c5546bbeb17cf4063ba518b618dbc5e43c18276c7c9356", size = 363041, upload-time = "2025-01-06T11:29:55.586Z" },
+]
+
+[[package]]
 name = "qbi-crawler"
 version = "0.1.0"
 source = { editable = "libs/qbi-crawler" }
@@ -472,11 +496,11 @@ name = "sap-gui"
 version = "0.1.0"
 source = { editable = "libs/sap-gui" }
 dependencies = [
-    { name = "pywin32" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pywin32", specifier = ">=306" }]
+requires-dist = [{ name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=306" }]
 
 [[package]]
 name = "setuptools"
@@ -485,6 +509,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/4f/db/cfac1baf10650ab4d1c111714410d2fbb77ac5a616db26775db562c8fab2/setuptools-82.0.1.tar.gz", hash = "sha256:7d872682c5d01cfde07da7bccc7b65469d3dca203318515ada1de5eda35efbf9", size = 1152316, upload-time = "2026-03-09T12:47:17.221Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl", hash = "sha256:a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb", size = 1006223, upload-time = "2026-03-09T12:47:15.026Z" },
+]
+
+[[package]]
+name = "six"
+version = "1.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
 
 [[package]]
@@ -507,3 +540,14 @@ sdist = { url = "https://files.pythonhosted.org/packages/55/e3/70399cb7dd41c10ac
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl", hash = "sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7", size = 14611, upload-time = "2025-10-01T02:14:40.154Z" },
 ]
+
+[[package]]
+name = "vpn"
+version = "0.1.0"
+source = { editable = "libs/vpn" }
+dependencies = [
+    { name = "pywinauto", marker = "sys_platform == 'win32'" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pywinauto", marker = "sys_platform == 'win32'", specifier = ">=0.6.9" }]
