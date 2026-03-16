@@ -463,8 +463,35 @@ end tell
         """Reset console state so the next execute() re-opens it."""
         self._console_open = False
 
+    def _close_console_window(self) -> None:
+        """Close the Scripting Console window if it is open."""
+        if not self._console_open:
+            return
+        script = """\
+tell application "System Events"
+    tell process "SAPGUI"
+        repeat with w in every window
+            if name of w contains "New Script" then
+                perform action "AXRaise" of w
+                delay 0.2
+                -- Close via menu: File > Close, or just Cmd+W
+                keystroke "w" using command down
+                delay 0.3
+                exit repeat
+            end if
+        end repeat
+    end tell
+end tell
+"""
+        try:
+            _run_applescript(script, timeout=10)
+        except Exception:
+            pass  # Best-effort — don't raise on cleanup
+        self._console_open = False
+
     def close(self) -> None:
-        """Clean up temp directory."""
+        """Close the Scripting Console window and clean up temp directory."""
+        self._close_console_window()
         self._tmp_dir_obj.cleanup()
         self._console_open = False
 

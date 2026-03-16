@@ -119,6 +119,8 @@ def _run_darwin(
             f"{json.dumps(output_path.name)};"
             '  ses.findById("wnd[1]/tbar[0]/btn[0]").press();'
             '  try { ses.findById("wnd[2]").sendVKey(0); } catch(e) {}'
+            # Return to main menu so no result/export windows are left open
+            '  try { ses.startTransaction("SESSION_MANAGER"); } catch(e) {}'
             "  return p;"
             "})()"
         )
@@ -214,6 +216,17 @@ def execute(
     # 6. Export via menu: List → Export → Spreadsheet
     log.info("Exporting to %s", output_path)
     result = exporter.export_list_to_file(output_path, timeout=export_timeout)
+
+    # 7. Return to main menu so no result/export windows are left open
+    log.info("Returning to main menu...")
+    try:
+        nav.run_transaction("SESSION_MANAGER")
+    except Exception:
+        # Best-effort cleanup — don't fail the export if navigation fails
+        try:
+            nav.send_vkey(3)  # F3 / Back
+        except Exception:
+            pass
 
     log.info("Export complete: %s", result)
     return result
