@@ -72,6 +72,14 @@ playwright install chromium
 | `SAPGUI_APP` | sap-gui (macOS) | Override SAP GUI app path. Auto-detected from `/Applications/SAPGUI *.app` if unset |
 | `SEALSUITE_EXE` | vpn | Override SealSuite executable path |
 
+## Software Install Links
+
+| Software | Link |
+|----------|------|
+| SAP GUI (macOS) | [Feishu Wiki — SAP GUI Mac 安装指南](https://haidilao.feishu.cn/wiki/DWcHwOsf0iLjvlkHeZncJpyhn0g) |
+| SAP GUI (Windows) | [Feishu Doc — SAP GUI Windows 安装指南](https://haidilao.feishu.cn/docx/SWOkdCypPob5GOxOoXHcX8mvnO6) |
+| SealSuite (飞连 VPN) | [Volcengine — 飞连下载](https://www.volcengine.com/product/feilian/download) |
+
 ## Key Conventions
 
 - On Windows, SAP GUI must be open before running automations; on macOS, `auto_launch=True` starts it automatically

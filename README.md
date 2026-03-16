@@ -21,6 +21,14 @@ Monorepo for Haidilao paperwork automations, managed with [uv workspaces](https:
 - SAP GUI Scripting must be enabled (in SAP GUI options)
 - Scripting security popups disabled (see registry settings in CLAUDE.md memory)
 
+## Software Install Links
+
+| Software | Link |
+|----------|------|
+| SAP GUI (macOS) | [Feishu Wiki — SAP GUI Mac 安装指南](https://haidilao.feishu.cn/wiki/DWcHwOsf0iLjvlkHeZncJpyhn0g) |
+| SAP GUI (Windows) | [Feishu Doc — SAP GUI Windows 安装指南](https://haidilao.feishu.cn/docx/SWOkdCypPob5GOxOoXHcX8mvnO6) |
+| SealSuite (飞连 VPN) | [Volcengine — 飞连下载](https://www.volcengine.com/product/feilian/download) |
+
 ## Setup
 
 ```bash
