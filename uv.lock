@@ -115,6 +115,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "python-dotenv" },
     { name = "qbi-crawler" },
+    { name = "vpn" },
 ]
 
 [package.metadata]
@@ -123,6 +124,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "qbi-crawler", editable = "libs/qbi-crawler" },
+    { name = "vpn", editable = "libs/vpn" },
 ]
 
 [[package]]
@@ -300,6 +302,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "python-dotenv" },
     { name = "sap-gui" },
+    { name = "vpn" },
 ]
 
 [package.metadata]
@@ -308,6 +311,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sap-gui", editable = "libs/sap-gui" },
+    { name = "vpn", editable = "libs/vpn" },
 ]
 
 [[package]]

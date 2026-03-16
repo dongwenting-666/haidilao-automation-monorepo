@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "qbi-crawler",
     "excel-utils",
+    "vpn",
     "python-dotenv>=1.0.0",
     "openpyxl>=3.1.0",
 ]
@@ -20,3 +21,4 @@ packages = ["src/daily_store_operation_report"]
 [tool.uv.sources]
 qbi-crawler = { workspace = true }
 excel-utils = { workspace = true }
+vpn = { workspace = true }

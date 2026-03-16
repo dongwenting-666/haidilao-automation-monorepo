@@ -17,6 +17,7 @@ from daily_store_operation_report.dates import compute_dates
 from daily_store_operation_report.download import DownloadedFiles, download_all
 from daily_store_operation_report.report import generate_report
 from daily_store_operation_report.transform import compute_metrics
+from vpn.connect import ensure_vpn
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,9 @@ def main() -> None:
         if not username or not password:
             logger.error("QBI_USERNAME and QBI_PASSWORD environment variables required")
             sys.exit(1)
+        logger.info("Ensuring VPN is connected...")
+        ensure_vpn()
+
         data_dir = args.data_dir or _find_repo_root() / "output" / "qbi"
         files = download_all(
             dates,

@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "sap-gui",
     "ollama-client",
+    "vpn",
     "python-dotenv>=1.0.0",
     "openpyxl>=3.1.0",
 ]
@@ -20,3 +21,4 @@ packages = ["src/ksb1_accounting_check"]
 [tool.uv.sources]
 sap-gui = { workspace = true }
 ollama-client = { workspace = true }
+vpn = { workspace = true }

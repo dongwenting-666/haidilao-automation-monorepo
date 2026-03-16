@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sap_gui.processes.ksb1 import DEFAULT_COST_CENTERS_FILE, run as ksb1_export
+from vpn.connect import ensure_vpn
 
 from ksb1_accounting_check.analyze import generate_report
 
@@ -120,6 +121,9 @@ def main() -> None:
                 "SAP credentials required. Use --username/--password "
                 "or set SAP_USERNAME/SAP_PASSWORD in .env"
             )
+
+        logging.info("Ensuring VPN is connected...")
+        ensure_vpn()
 
         logging.info("Downloading KSB1 for %s (%s to %s)...", year_month, date_from, date_to)
         ksb1_export(
