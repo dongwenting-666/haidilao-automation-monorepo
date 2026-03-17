@@ -40,6 +40,7 @@ class TestRun:
         assert isinstance(r.started_at, datetime)
         assert r.finished_at is None
         assert r.logs == ""
+        assert r.queue_position is None
 
     def test_to_dict_without_logs(self):
         r = Run("ksb1", {})
@@ -49,6 +50,7 @@ class TestRun:
         assert d["command"] == "ksb1"
         assert d["status"] == "pending"
         assert d["finished_at"] is None
+        assert "queue_position" in d
 
     def test_to_dict_with_logs(self):
         r = Run("ksb1", {})
@@ -111,6 +113,7 @@ async def test_execute_run_success():
     assert r.status == RunStatus.SUCCESS
     assert r.logs == "done\n"
     assert r.finished_at is not None
+    assert r.queue_position is None
 
 
 @pytest.mark.asyncio
@@ -153,10 +156,11 @@ def test_create_and_get_run(client, mock_subprocess):
     runs = client.get("/api/runs").json()
     assert any(r["id"] == run_id for r in runs)
 
-    # Get by ID should include logs
+    # Get by ID should include logs and queue_position field
     detail = client.get(f"/api/runs/{run_id}").json()
     assert detail["id"] == run_id
     assert "logs" in detail
+    assert "queue_position" in detail
 
 
 def test_get_run_not_found(client):

@@ -286,8 +286,32 @@ tell application "System Events"
         delay 0.3
 
         tell consoleWin
-            -- Focus input area: splitter group 1 > scroll area 1 > text area 1
-            set inputArea to text area 1 of scroll area 1 of splitter group 1
+            -- Focus input area.  Try multiple element-type variants across
+            -- SAP GUI for Java versions and macOS accessibility API changes:
+            --   splitter group / split group (AXSplitGroup)
+            --   text area / text field (AXTextArea vs AXTextField)
+            set inputArea to missing value
+            try
+                set inputArea to text area 1 of scroll area 1 of splitter group 1
+            end try
+            if inputArea is missing value then
+                try
+                    set inputArea to text field 1 of scroll area 1 of splitter group 1
+                end try
+            end if
+            if inputArea is missing value then
+                try
+                    set inputArea to text area 1 of scroll area 1 of UI element 1
+                end try
+            end if
+            if inputArea is missing value then
+                try
+                    set inputArea to text field 1 of scroll area 1 of UI element 1
+                end try
+            end if
+            if inputArea is missing value then
+                return "NO_INPUT_AREA"
+            end if
             click inputArea
             delay 0.15
             -- Select all and paste
@@ -681,7 +705,11 @@ class SAPSession:
         raise SAPConnectionError("Could not stop existing SAP GUI process.")
 
     def _poll_for_session(self, *, timeout: float, interval: float) -> bool:
-        """Poll the bridge until ``ses.info.systemName`` succeeds.
+        """Poll the bridge until the SAP session object is accessible.
+
+        Uses ``ses.id`` as the probe — this works on both the login screen
+        and a logged-in session, unlike ``ses.info.systemName`` which only
+        succeeds after authentication.
 
         Each probe uses a short bridge timeout so that the outer loop
         can decide when to give up and try a different strategy (e.g.
@@ -696,10 +724,10 @@ class SAPSession:
         deadline = time.monotonic() + timeout
         while True:
             try:
-                system_name = self._bridge.execute(
-                    "ses.info.systemName", timeout=probe_timeout
+                ses_id = self._bridge.execute(
+                    "ses.id", timeout=probe_timeout
                 )
-                log.info("Connected to SAP system: %s", system_name)
+                log.info("SAP session ready (id=%s)", ses_id)
                 return True
             except SAPConnectionError:
                 if time.monotonic() >= deadline:
@@ -756,16 +784,37 @@ class SAPSession:
         if launched:
             time.sleep(5)  # let the app initialise before first probe
 
+        # Open the Scripting Console before polling — required for the JS
+        # bridge to work on both login screen and logged-in sessions.
+        try:
+            self._bridge._open_console()
+        except SAPConnectionError:
+            pass  # Will be caught by the poll below
+
         # First poll — moderate timeout if we didn't launch (enough for
         # 1-2 bridge probes), longer if we just started it.
-        timeout = 90.0 if launched else 20.0
+        timeout = 90.0 if launched else 30.0
         interval = 3.0 if launched else 2.0
 
         if self._poll_for_session(timeout=timeout, interval=interval):
             self._info = _SAPInfo(self._bridge)
             return
 
-        # Session unreachable.  Without auto_launch we give up.
+        # Session unreachable — try opening the Scripting Console explicitly
+        # via the Scripts menu before giving up.  This handles the common case
+        # where SAP is running and logged in but the console was never opened.
+        log.info("Session not reachable, attempting to open Scripting Console...")
+        try:
+            self._bridge._open_console()
+            self._bridge.reset()
+        except SAPConnectionError:
+            pass
+
+        if self._poll_for_session(timeout=60.0, interval=3.0):
+            self._info = _SAPInfo(self._bridge)
+            return
+
+        # Without auto_launch we give up.
         if not auto_launch:
             self._bridge.close()
             self._bridge = None
@@ -775,6 +824,37 @@ class SAPSession:
                 "a SAP system."
             )
 
+        # auto_launch: SAP GUI is running but the session is still not reachable
+        # after opening the Scripting Console. This likely means we are at a
+        # login screen (after a restart or session expiry). Only kill + relaunch
+        # if SAP is NOT showing a logged-in session — i.e. if the scripting
+        # bridge really cannot reach ses.info.systemName at all.
+        # Check if there's any open SAP session window before killing.
+        try:
+            win_count_result = _run_applescript("""\
+tell application "System Events"
+    tell process "SAPGUI"
+        return count of windows
+    end tell
+end tell
+""", timeout=5)
+            win_count = int(win_count_result.strip()) if win_count_result.strip().isdigit() else 0
+        except Exception:
+            win_count = 0
+
+        if win_count > 1:
+            # Multiple windows suggest an active logged-in session —
+            # don't kill it, just raise so the caller can retry.
+            self._bridge.close()
+            self._bridge = None
+            raise SAPConnectionError(
+                "SAP GUI is running with an active session but the "
+                "Scripting Console bridge could not be established. "
+                "Please ensure the Scripting Console is open and "
+                "the SAP session is responsive."
+            )
+
+        # Only one window (connection picker) — safe to kill and relaunch.
         # auto_launch: SAP GUI is running but has no usable session
         # (e.g. stale process, window closed).  Kill and restart.
         self._bridge.close()

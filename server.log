@@ -1,0 +1,17 @@
+INFO:     Started server process [11230]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63184 - "GET / HTTP/1.1" 404 Not Found
+INFO:     174.7.5.145:0 - "GET / HTTP/1.1" 404 Not Found
+INFO:     84.20.16.104:0 - "GET / HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11230]
+INFO:     Started server process [11478]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63215 - "GET /api/runs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63217 - "GET /api/commands HTTP/1.1" 200 OK

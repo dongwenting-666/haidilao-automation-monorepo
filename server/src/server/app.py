@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from server.routes import api_router
+from server.routes.runs import start_queue_worker
 from server.scheduler import scheduler, setup_default_jobs
 
 
@@ -10,6 +11,7 @@ from server.scheduler import scheduler, setup_default_jobs
 async def lifespan(app: FastAPI):
     setup_default_jobs()
     scheduler.start()
+    start_queue_worker()
     yield
     scheduler.shutdown(wait=False)
 
