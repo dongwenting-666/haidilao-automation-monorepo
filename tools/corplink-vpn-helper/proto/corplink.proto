@@ -1,0 +1,1311 @@
+syntax = "proto3";
+package server;
+
+option go_package = "./proto";
+
+service CorpLink {
+
+  rpc ping (EmptyRequest) returns (CodeResponse) {}
+
+  // 配置域名
+  rpc setDomain (SetDomainRequest) returns (CodeResponse) {}
+
+  // 配置企业信息
+  rpc setCompanyInfo (CompanyInfoRequest) returns (CodeResponse) {}
+
+  // 配置Cookie
+  rpc setCookies (SetCookiesRequest) returns (CodeResponse) {}
+
+  // 获取Cookie 
+  rpc getCookies (EmptyRequest) returns (GetCookiesResponse) {}
+
+  // 获取VPN状态（轮训）
+  rpc getVpnStatus (EmptyRequest) returns (VpnStatusResponse) {}
+
+  // 拉取VPN列表
+  rpc getVpnList (EmptyRequest) returns (VpnListResponse) {}
+
+  // 拉取VPN出口
+  rpc getVpnExport (EmptyRequest) returns (VpnExportResponse) {}
+
+  // 连接VPN请求
+  rpc connectVpn (ConnectVpnRequest) returns (ConnectVpnResponse) {}
+
+  // 切换VPN模式
+  rpc changeVpnMode (ChangeVpnModeRequest) returns (CodeResponse) {}
+
+  // 断开VPN
+  rpc disconnectVpn (EmptyRequest) returns (CodeResponse) {}
+
+  // 获取代理配置的列表
+  rpc getProxyList (EmptyRequest) returns (ProxyListResponse) {}
+
+  // 设置代理
+  rpc setupProxy (SetupProxyRequest) returns (SetupProxyResponse) {}
+
+  //  取消代理设置
+  rpc cancelProxySetup (EmptyRequest) returns (CodeResponse) {}
+
+  // 获取代理配置状态
+  rpc getProxyStatus (EmptyRequest) returns (ProxyStatusResponse) {}
+
+  // 登录后拉取启动配置信息
+  rpc getSetupInfo (EmptyRequest) returns (SetupResponse) {}
+
+  // 登录前获取客户端配置信息
+  rpc getAppSettingInfo (EmptyRequest) returns (AppSettingResponse) {}
+
+  // HTTP
+  rpc http (HttpRequest) returns (HttpResponse) {}
+
+  // HTTPStream
+  rpc httpStream (HttpStreamRequest) returns (stream HttpStreamResponse) {}
+
+  // 进行安全检测
+  rpc checkSecurityInfo (EmptyRequest) returns (SecurityResponse) {}
+
+  // 一键修复
+  rpc fixSecurityRisk (SecurityFixRequest) returns (CodeResponse) {}
+
+  // 获取安全检测结果
+  rpc getSecurityInfo (EmptyRequest) returns (SecurityResponse) {}
+
+  // 发送反馈
+  rpc sendFeedback (FeedbackRequest) returns (CodeResponse) {}
+
+  // 退出登录
+  rpc logout (LogoutRequest) returns (CodeResponse) {}
+
+  // 登录
+  rpc login (EmptyRequest) returns (CodeResponse) {}
+
+  // 进行网络诊断
+  rpc startNetworkDiagnose (DiagnoseRequest) returns (stream DiagnoseItemInfo) {}
+
+  // 设置语言
+  rpc setLanguage (LanguageRequest) returns (CodeResponse) {}
+
+  // 客户端关闭
+  rpc clientClose (EmptyRequest) returns (CodeResponse) {}
+
+  // 拉取网络状态
+  rpc getNetworkInfo (EmptyRequest) returns (NetworkInfoResponse) {}
+
+  // 检查服务状态
+  rpc getServiceStatus (EmptyRequest) returns (CodeResponse) {}
+
+  // 软件检测
+  rpc checkSoftwareRisk (EmptyRequest) returns (SoftwareAlarmResponse) {}
+
+  // 获取软件检测结果
+  rpc getSoftwareRisk (EmptyRequest) returns (SoftwareAlarmResponse) {}
+
+  // 获取 Wi-Fi 状态
+  rpc getWiFiStatus (EmptyRequest) returns (WiFiStatusResponse) {}
+
+  // 连接 Wi-Fi
+  rpc connectWiFi (WiFiConnectRequest) returns (CodeResponse) {}
+
+  // 断开 Wi-Fi
+  rpc disconnectWiFi (WiFiDisconnectRequest) returns (CodeResponse) {}
+
+  // 进程检测
+  rpc checkProcessRisk (EmptyRequest) returns (ProcessGroupAlarmResponse) {}
+
+  // 获取进程检测结果
+  rpc getProcessRisk (EmptyRequest) returns (ProcessGroupAlarmResponse) {}
+
+  // 配置有线网络
+  rpc configWiredNetwork (ConfigWiredRequest) returns (CodeResponse) {}
+
+  // 获取通知
+  rpc getNotification (GetNotificationRequest) returns (NotificationResponse) {}
+
+  // 获取终端安全概览模块
+  rpc getSecurityModuleInfo (EmptyRequest) returns (SecurityModuleResponse) {}
+
+  // 获取设备运行状态
+  rpc getDeviceRuntimeStats (EmptyRequest) returns (stream DeviceRuntimeStats) {}
+
+  // 获取本机信息
+  rpc getDeviceInfo (EmptyRequest) returns (DeviceInfoResponse) {}
+
+  // 配置DNS
+  rpc setDNS (SetDNSRequest) returns (CodeResponse) {}
+
+  // 获取dns推荐列表
+  rpc getDNSRecommend (EmptyRequest) returns (DNSRecommendResponse) {}
+
+  // 安装软件
+  rpc installSoftware (InstallSoftwareRequest) returns (CodeResponse) {}
+
+  // 获取安装软件任务状态
+  rpc getInstallTaskInfo (GetInstallTaskInfoRequest) returns (stream InstallTaskInfoResponse) {}
+
+  // 获取已安装软件列表
+  rpc getInstalledSoftwareInfo (EmptyRequest) returns (InstalledSoftwareResponse) {}
+
+  // 卸载软件
+  rpc uninstallSoftware (UninstallSoftwareRequest) returns (UninstallSoftwareResponse) {}
+
+  // 获取已安装的绿色软件列表
+  rpc getInstalledPortableSoftwareInfo(EmptyRequest)
+      returns (InstalledPortableSoftwareResponse) {}
+  
+  //启动已安装软件
+  rpc startInstalledSoftware(StartInstalledSoftwareRequest) returns (StartInstalledSoftwareResponse) {}
+
+  // 获取登录用户是否具备管理员权限
+  rpc isExistAdminRightUser(EmptyRequest)returns (IsExistAdminRightUserResponse){}
+
+  // 获取卸载软件任务状态
+  rpc getUninstallSoftwareTaskInfo (GetUninstallTaskInfoRequest) returns (GetUninstallTaskInfoResponse) {}
+
+  // 释放卸载软件信息
+  rpc clearUninstallSoftwareTaskInfo (ClearUninstallSoftwareTaskInfoRequest) returns (CodeResponse) {}
+
+  // 获取应用信息
+  rpc getAppInfo(EmptyRequest) returns (AppInfoResponse) {}
+  
+  // 检测是否展示 Wi-Fi 引导，返回0则展示，非0不展示
+  rpc checkWiFiGuide (CheckWiFiGuideRequest) returns (WiFiGuideResponse) {}
+
+  // 忘记 Wi-Fi
+  rpc removeWiFi (WiFiRemoveRequest) returns (CodeResponse) {}
+
+  // 获取系统代理状态
+  rpc getProxyInfo(EmptyRequest) returns (ProxyInfoResponse) {}
+
+  // 快速登陆 - 用户确认请求
+  rpc confirmQuickLogin(EmptyRequest) returns (CodeResponse) {}
+
+  // 快速登陆 - 用户确认请求 (取消)
+  rpc cancelQuickLogin(EmptyRequest) returns (CodeResponse) {}
+
+  // 小米打印机
+  rpc xmprinter(xmprinterRequest) returns (CodeResponse) {}
+
+  // 获取证书状态
+  rpc getCertStatus (EmptyRequest) returns (CertStatusResponse) {}
+
+  // 配置证书
+  rpc configCert (EmptyRequest) returns (stream CodeResponse) {}
+
+  // 从缓存里配置证书
+  rpc configCertFromCache (EmptyRequest) returns (CodeResponse) {}
+
+  // 删除证书
+  rpc deleteCert (EmptyRequest) returns (CodeResponse) {}
+
+  // 发送连接确认
+  rpc sendPushConfirm (PushConfirmRequest) returns (stream CodeResponse) {}
+
+  // 网络监测即时延迟
+  rpc networkMonitorInstant (EmptyRequest) returns (stream StringResponse) {}
+
+  // 网络监测延迟趋势
+  rpc networkMonitorTrend (EmptyRequest) returns (stream StringResponse) {}
+
+  // 虚假退出 仅关闭所有功能，但是不让cookie失效
+  rpc fakeLogout (FakeLogout) returns (CodeResponse) {}
+
+  // 清理虚假退出标志 由前端第一次启动时调用
+  rpc clearFakeLogout (EmptyRequest) returns (CodeResponse) {}
+
+  // 检查权限信息
+  rpc privilege (EmptyRequest) returns (PrivilegeResponse) {}
+
+  // 监听敲门，code!=0 则弹出敲门页面
+  rpc knockMonitor (EmptyRequest) returns (stream CodeResponse) {}
+
+  // 敲门认证
+  rpc knock (KnockRequest) returns (CodeResponse) {}
+
+  // 字节内部专属服务 -- Start
+
+  // 配置Kerberos
+  rpc configKerberos (EmptyRequest) returns (CodeResponse) {}
+
+  // 检测是否配置云打印机
+  rpc checkCloudPrinter (EmptyRequest) returns (CloudPrintResponse) {}
+
+  // 配置云打印机
+  rpc configCloudPrinter (EmptyRequest) returns (CodeResponse) {}
+
+  // 上传打印文件
+  rpc cloudPrinterUpload (CloudPrintUploadRequest) returns (CodeResponse) {}
+
+  // 获取有线状态
+  rpc getWiredStatus (EmptyRequest) returns (WiredStatusResponse){}
+
+  // 字节内部专属服务 -- End
+  // 获取补丁状态
+  rpc checkPatchStatus(EmptyRequest) returns (PatchStatusResponse){}
+
+  // 强制刷新配置
+  rpc RefreshConfig(EmptyRequest) returns (CodeResponse) {}
+
+  // 远程控制相关API
+  // 创建新密码
+  rpc remoteControlNewPassword(EmptyRequest) returns (remoteControlNewPasswordResponse){}
+
+  // 用户对远程控制请求的决策 同意，拒绝，超时，验证码不对
+  rpc remoteControlResult (RemoteControlResult) returns (CodeResponse) {}
+
+  // 获得远程控制结果
+  rpc remoteControlQuery (RemoteControlQueryInfo) returns (RemoteControlQueryResponse) {}
+
+  // 用户离开远程协助页面
+  rpc remoteControlDestory (EmptyRequest) returns (CodeResponse) {}
+
+  rpc remoteControlGetVerifyInfo (RemoteControlVerifyInfoRequest) returns (RemoteControlVerifyInfoResponse) {}
+
+  rpc remoteControlCancel (RemoteControlCancelRequest) returns (CodeResponse){}
+
+  /*
+ * 仅在 macOS & Linux 平台下有效，用于触发卸载流程
+ */
+  rpc UninstallClient(UninstallClientRequest) returns (UninstallClientResponse) {}
+
+  // 控制 MDM Enrollment Profile 的安装引导弹窗
+  rpc checkEnrollmentProfile (EmptyRequest) returns (CheckEnrollmentProfileResponse) {}
+
+  // 匿名登录功能
+  rpc getAnonymousLoginStatus (EmptyRequest) returns (GetAnonymousLoginStatusResponse) {}
+
+  rpc doAnonymousLogin (EmptyRequest) returns (AnonymousLoginResponse) {}
+
+  // 换取AnyDesk安装状态
+  rpc getAnyDeskState (EmptyRequest) returns (AnyDeskStateResponse) {}
+
+  // 显示AnyDesk应用
+  rpc showAnyDesk(ShowAnyDeskRequest) returns (CodeResponse){}
+
+  // 下载并安装AnyDesk
+  rpc downloadAndInstallAnyDesk(EmptyRequest) returns (stream AnyDeskInstallResponse){}
+
+  /************************* AnyDesk API end  * ******************************/
+  
+  // 企业根证书配置
+  rpc enterpriseCert (EmptyRequest) returns (EnterpriseCertResponse) {}
+
+  //获取VPN事件
+  rpc vpnEvent (EmptyRequest) returns (stream StringResponse) {}
+
+}
+
+message EmptyRequest {
+}
+
+// 基本请求返回状态信息，其他返回包含相同属性含义相同
+message CodeResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+}
+
+message StringResponse {
+  string data = 4;
+}
+
+message VpnListResponse {
+  int32 code = 1;                     // 状态码 0为成功 其他为错误码
+  string message = 3;                 // 提示信息
+  repeated VpnItemInfo splitList = 4; // 支持极速模式的节点
+  repeated VpnItemInfo fullList = 5;  // 支持全局模式的节点
+  VpnAlwaysOnInfo alwaysOnInfo = 6; //always on 的配置
+}
+
+// VPN always on 配置
+message VpnAlwaysOnInfo {
+  bool enable = 1;
+  bool allowChangeMode = 2;
+  VpnMode defaultVPNMode = 3;
+  bool hideMode = 4; //隐藏VPN界面
+}
+
+//VPN隧道模式
+enum VpnProtocolMode {
+  UDP = 0;
+  TCP = 1;
+  AUTO = 2;
+}
+
+// 服务器列表项
+message VpnItemInfo {
+  int32 id = 1; //服务器id
+  string name = 2; //服务器名称
+  int32 delay = 3; //服务器延时 单位ms
+  string icon = 4;
+  string displayName = 5; //服务器名称
+  int32 mode = 6; //模式 0代表极速与全局模式，1代表仅极速，2代表仅全局
+  bool dedicated = 7; //专用节点
+  bool detect_completed = 8; // 是否测速完成
+  VpnProtocolMode  protocolMode = 9; //隧道模式 0.只支持 udp 1.只支持 tcp 2.支持双栈
+  string tagName = 10; // 节点标签
+}
+
+message VpnStatusResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+  VpnStatusInfo data = 4;
+}
+
+// VPN状态信息
+message VpnStatusInfo {
+  VpnStatus status = 1;                         // 连接状态
+  VpnMode mode = 2;                             // 模式
+  string upSpeed = 3;                           // 上传速度
+  string downSpeed = 4;                         // 下载速度
+  bool networkEnvChanged = 5;                   // 网络环境发生变化
+  VpnItemInfo connectedItem = 6;                // 当前连接节点
+  VpnAutoDisconnectInfo autoDisconnectInfo = 7; // 自动断开VPN配置
+  VpnProtocolMode protocolMode = 8; //当前VPN连接隧道模式
+}
+
+// VPN自动断开信息
+message VpnAutoDisconnectInfo {
+  uint32 remainEstablishTime = 1;             // 空闲时间(秒) 非0有效
+  AutoDisconnectReason disconnectReason = 2;  // 断连原因
+}
+
+enum AutoDisconnectReason {
+  None = 0;               // 无
+  IdleTimeout = 1;        // 空闲一段时间后自动断开
+  InternalNetwork = 2;    // 内部网络自动断开
+  EstablishTimeout = 3;   // 连接VPN超时
+}
+
+// VPN模式
+enum VpnMode {
+  Split = 0;
+  Full = 1;
+}
+
+// VPN连接状态
+enum VpnStatus {
+  Disconnected = 0; //已断开
+  Connecting = 1; //连接中
+  Connected = 2; //已连接
+  Disconnecting = 3; //断开中
+  Reasserting = 4; //重新配置
+}
+
+// 连接VPN请求
+message ConnectVpnRequest {
+  int32 server = 1;
+  VpnMode mode = 2;   // 连接模式
+  string otp = 3;     // OTP码
+  string zone = 4;    // NextGen zone
+  int32 exportId = 5; // 出口节点id
+  VpnProtocolMode protocolMode = 6; //隧道模式 0.udp 1.tcp 2.自适应
+}
+
+message ConnectVpnData {
+  VpnItemInfo connectedItem = 1;
+  uint32 maxEstablishTime = 2;
+}
+
+
+message VpnExportResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+  repeated VpnExportInfo exports = 5;
+}
+
+message VpnExportInfo {
+  int32 id = 1;
+  string name = 2;
+  string enName = 3;
+  string icon = 4;
+  bool default = 5;
+  int32 statusCode = 6;
+  string statusMsg = 7;
+}
+
+// 切换模式请求
+message ChangeVpnModeRequest {
+  VpnMode mode = 1; //模式
+}
+
+message HttpRequest {
+  string url = 1;
+  string method = 2;
+  string data = 4;
+}
+
+message HttpResponse {
+  int32 code = 1;
+  string message = 3;
+  string data = 4;
+}
+
+message HttpStreamRequest {
+  string url = 1;
+  string method = 2;
+  string data = 4;
+  int32 timeout = 5; // 超时秒数，0为不限制
+}
+
+message HttpStreamResponse {
+  int32 code = 1;
+  string message = 3;
+  bytes data = 4;
+}
+
+
+message ProxyListResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+  repeated ProxyItemInfo proxy_list = 4; // 代理列表
+}
+
+// 代理列表
+message ProxyItemInfo {
+  int32 id = 1; //服务器id
+  string name = 2; //服务器名称
+  string icon_url = 4;
+  string server_address = 5; // 服务器地址
+  int32 type = 6; //模式  1表示http, 2表示https
+  int32 port = 7; // 代理服务器的端口
+}
+
+message SetupProxyRequest {
+  int32 id = 1; // 需要设置的代理id
+}
+message SetupProxyResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 2; //提示信息
+  int32 proxy_id = 3; // 已经设置的代理id
+}
+enum ProxyStatus {
+  NotSetup = 0; // 未设置
+  SettingUp = 1; // 设置中
+  AlreadySet = 2; // 已经设置
+}
+message ProxyStatusResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+  bool IsEnabled = 4; // 是否启用上网代理配置
+  ProxyStatus status = 5; // 代理设置状态
+  ProxyItemInfo proxy_item = 6; // 已经设置的代理配置
+}
+
+// 应用启动相关配置信息
+message SetupResponse {
+  int32 code = 1;
+  string message = 3;
+  SetupInfo data = 4; //初始化信息
+  string logout_reason = 5;
+}
+
+// 应用启动相关配置信息
+message AppSettingResponse {
+  int32 code = 1;
+  string message = 3;
+  AppSettingInfo data = 4; //初始化信息
+}
+
+// 应用启动相关配置信息
+message SetupInfo {
+  string setting = 1;
+  AppInfo app = 8; //app信息
+  string deviceId = 9;
+  SystemInfo sys = 10; //系统信息
+}
+
+// 应用启动相关配置信息
+message AppSettingInfo {
+  AppInfo app = 8; //app信息
+  string deviceId = 9;
+  SystemInfo sys = 10; //系统信息
+}
+
+// 系统相关信息
+message SystemInfo {
+  string version = 1; //系统版本
+  string hostName = 3; //设备名称
+  string brand = 4; //品牌
+  string model = 5; //型号
+  string mac = 6;  // Mac 地址
+}
+
+// App相关信息
+message AppInfo {
+    string version = 1;
+    string build = 2;
+    string deviceId = 4;
+}
+
+// 风险等级
+enum RiskLevel {
+  Zero = 0; //安全
+  Low = 1; //低风险
+  Medium = 2; //中风险
+  High = 3; //高风险
+}
+
+// 安全检测项信息
+message SecurityItemInfo {
+    string title = 1;                   // 项标题
+    string type = 2;
+    RiskLevel level = 3;                // 安全等级
+    string message = 4;                 // 详细告警信息
+    string link = 5;
+    bool repairable = 6;                // 是否支持修复
+    bool need_manual = 7;               // 修复是否需要手动操作
+    string guid = 8;                    // 唯一项标识
+    string description = 9;             // 检测项描述
+    bool is_auto_repaired = 10;         // 是否已自动修复
+    int64 auto_repaired_time = 11;      // 自动修复时间
+    string fix_hint = 12;               // 检测项告警描述
+}
+
+message SecurityResponse {
+  int32 code = 1;
+  string message = 3;
+  repeated SecurityItemInfo data = 4; //安全检测结果
+}
+
+// 一键修复请求
+message SecurityFixRequest {
+  string type = 2; //检测项key，如filevault
+}
+
+message DiagnoseRequest {
+  string url = 2;
+}
+
+// 网络诊断项信息
+message DiagnoseItemInfo {
+  string id = 1; //项目标识
+  string data = 2; //详情json字符串
+}
+
+// 发送反馈
+message FeedbackRequest {
+  string message = 1; //反馈信息或诊断信息
+  string type = 2; //反馈类型
+  string logDir = 3; //日志
+  repeated string images = 4; // 要上报的图片路径
+  int32 feedback_source = 5; // 反馈来源，e.g. 1. 网络诊断 2. 网络诊断-高级诊断...
+}
+
+// 设置语言
+message LanguageRequest {
+  string lang = 1; //语言code，app.getLocale()获取
+}
+
+// 设置域名
+message SetDomainRequest {
+  string domain = 1;
+}
+
+// 设置企业信息
+message CompanyInfoRequest {
+  string code = 1; //企业识别码
+  string name = 2; //企业名称
+  string domain = 3; //企业域名
+  bool enableSelfSigned = 4; //使用自签CA
+  string selfSignedCert = 5; //自签CA
+  bool enablePublicKey = 6; //验证软件签名
+  string publicKey = 7; //软件签名公钥
+  int32 knockPort = 8; //敲门端口
+  bool enableSpa = 9; //启用敲门
+  bool enableBackupDomain = 10; //启用备用域名
+  string backupDomain = 11; //备用域名
+}
+
+message NetworkInfoResponse {
+  int32 code = 1;
+  NetworkInfo data = 4;
+}
+
+message CookieRequest {
+  string name = 1;
+  string value = 2;
+  string path = 3;
+  string domain = 4;
+  int64 expires = 5;
+  int32 maxAge = 6;
+  bool secure = 7;
+  bool httpOnly = 8;
+  int32 SameSite = 9;
+}
+
+// 设置Cookie
+message SetCookiesRequest {
+  repeated CookieRequest cookies = 1;
+}
+
+// 获取Cookie
+message GetCookiesResponse {
+  int32 code = 1;
+  string message = 2;
+  string cookies = 3;
+}
+
+// 网络信息
+message NetworkInfo {
+  int32 status = 1;
+  string ip = 2;
+  string dns = 3;
+}
+
+// 修复方案
+enum HintAction {
+  HintActionAlert = 0; //提醒用户
+  HintActionGuide = 1; //展示修复方案
+  HintActionRedirectToAppStore = 2; //跳转软件库
+}
+// 软件信息
+message SoftwareInfo {
+  string publisher = 1;
+  string software_id = 2;
+  string software_name = 3;
+  string version = 4;
+  RiskLevel level = 5; //风险等级
+  repeated string policy_versions = 6; // 对应策略里的versions，表示检测的版本范围
+  repeated string policy_excluded_versions = 7; // 对应策略里的excluded_versions，表示排除的版本范围
+  HintAction hint_action = 8; // 修复方案
+  string hint_link = 9; // 跳转链接
+}
+
+// 软件检测命中事件
+message SoftwareAlarmData {
+  repeated SoftwareInfo required_list = 1; //必装软件
+  repeated SoftwareInfo forbidden_list = 2; //黑名单软件
+}
+
+// 软件检测结果
+message SoftwareAlarmResponse {
+  int32 code = 1;
+  string message = 2;
+  SoftwareAlarmData data = 3; //命中事件
+}
+
+// Wi-Fi 信息
+message WiFiStatusData {
+  bool connected = 1;
+  string ssid = 2;
+  string bssid = 3;
+  string auth = 4;
+  int32 channel = 5;
+  int32 signal = 6; //Wi-Fi信号强度 （1 弱 2 中 3 强）
+  int32 rssi = 7; //Wi-Fi RSSI dbm
+}
+
+// Wi-Fi 状态响应
+message WiFiStatusResponse {
+  int32 code = 1; //状态码 0为已连接 1为未连接
+  WiFiStatusData data = 3; //Wi-Fi 信息
+}
+
+// 连接 Wi-Fi
+message WiFiConnectRequest {
+  string ssid = 1;
+  string type = 2;
+  string username = 3;
+  string password = 4;
+  bool isHiddenPassword = 5;
+  int32 netAccessType = 6;
+  repeated string trustedServerNames = 7;
+  bool useMobileConfig = 8; //使用描述文件配置Wi-Fi
+  bool useFeiLianEapModule = 9;
+}
+
+// 断开 Wi-Fi
+message WiFiDisconnectRequest {
+  string ssid = 2;
+}
+
+// 进程信息
+message ProcessInfo {
+  string process_name = 1; // 进程名称
+  string sign = 2; // 文件签名
+  string path = 3; // 进程路径
+}
+
+// 进程组信息
+message ProcessGroupInfo {
+  string process_group_name = 1; // 进程组名称
+  repeated  ProcessInfo process_infos = 2; // 黑名单进程信息
+  RiskLevel level = 3; //风险等级
+  HintAction hint_action = 4; // 修复方案
+  string hint_link = 5; // 跳转链接
+}
+
+// 进程组检测命中事件
+message ProcessGroupAlarmData {
+  repeated ProcessGroupInfo required_list = 1; //必装进程
+  repeated ProcessGroupInfo forbidden_list = 2; //黑名单进程
+}
+
+// 进程组检测结果
+message ProcessGroupAlarmResponse {
+  int32 code = 1;
+  string message = 2;
+  ProcessGroupAlarmData data = 3; // 命中事件
+}
+
+// 配置有线
+message ConfigWiredRequest {
+  string type = 2;
+  string username = 3;
+  string password = 4;
+  bool isHiddenPassword = 5;
+  int32 netAccessType = 6;
+  repeated string trustedServerNames = 7;
+  bool useFeiLianEapModule = 8;
+}
+
+// 获取通知请求
+message GetNotificationRequest {
+  string uuid = 1;
+}
+
+// 通知响应
+message NotificationResponse {
+  int32 code = 1;
+  NotificationResponseData data = 3;
+}
+
+// 通知Payload
+message NotificationResponseData {
+  string payload = 1;
+}
+
+// 终端安全模块配置信息
+message SecurityModuleResponse {
+  int32 code = 1;
+  string message = 2;
+  SecurityModuleInfo data = 3;
+}
+
+message SecurityModuleInfo {
+  bool enableSecurity = 1;
+  bool enableSoftware = 2;
+  bool enableProcess = 3;
+}
+
+message DeviceRuntimeStats {
+  float cpuPercent = 1; //cpu占用率
+  float memPercent = 2; //内存占用率
+}
+
+message DeviceInfoResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+  DeviceInfo data = 4; //本机信息
+}
+
+message DeviceInfo {
+  string osVersion = 1; //系统版本
+  repeated InterfaceInfo interfaces = 2; //接口信息
+  repeated RouteInfo routes = 3; //路由信息
+  VPNConnectionInfo vpn = 4; //vpn状态
+}
+
+message InterfaceInfo {
+  string name = 1; //名称
+  int32 type = 2; //类型（0 无线 1 有线）
+  int32 status = 3; //状态 （0 使用中，1启用中，2未启用）
+  repeated string ipv4 = 4; //IPv4地址列表，可能为空
+  repeated string ipv6 = 5; //IPv6地址列表，可能为空
+  string mac = 6; //Mac地址
+  string ssid = 7; //ssid 名称
+  int32 signal = 8; //Wi-Fi信号强度 （1 弱 2 中 3 强）
+  string auth = 9; //认证类型，仅无线，可能为空
+  string gateway = 10; //网关，可能为空
+  repeated string dns = 11; //dns列表，可能为空
+  bool dhcp = 12; //是否启用dhcp
+}
+
+message RouteInfo {
+  string destination = 1; //目标
+  string netmask = 2; //掩码
+  string gateway = 3; //网关
+  string interface = 4; //接口名称
+}
+
+message VPNConnectionInfo {
+  VpnStatus status = 1; //连接状态
+  string serverName = 2; //服务器名称
+  string ip = 3; //vpn ip
+  repeated string dns = 4; //vpn dns列表
+}
+
+// 配置dns请求
+message SetDNSRequest {
+  int32 type = 1; //0自动，1手动
+  string ip = 2;
+}
+
+message DNSRecommendResponse {
+  int32 code = 1; //状态码 0为成功 其他为错误码
+  string message = 3; //提示信息
+  DNSRecommendInfo data = 4; //推荐dns信息
+}
+
+message DNSRecommendInfo {
+  bool enable = 1; //是否启用
+  repeated DNSRecommendItem items = 2; //推荐dns服务器列表
+}
+
+
+message DNSRecommendItem {
+  string name = 1; //服务器名称
+  string ip = 2; //dns服务器ip
+  int32 delay = 3; //平均延迟，单位ms，2000为超时, -1为失败
+  repeated DNSWebsiteDelayItem websites = 4; //网站延迟
+}
+
+message DNSWebsiteDelayItem {
+  string name = 1; //名称
+  int32 delay = 3; //延迟，单位ms，2000为超时
+}
+
+// 安装软件请求
+message InstallSoftwareRequest {
+  string packageKey = 1;
+  string packagePath = 2; //安装包路径
+  string bundleId = 3;
+  string publisher = 4;
+  string softwareName = 5;
+  string version = 6;
+  InstallCmd silentInstallArg = 7; //静默安装参数(only windows)
+  InstallCmd installDirArg = 8; //安装目录参数(only windows)
+  string installDir = 9; //安装目录(only windows)
+  string md5 = 10;
+  bool is_portable_software = 11;  //是否是便携软件
+  string software_id = 12;         //软件唯一标识
+}
+
+message InstallCmd {
+  string arg = 1; //参数
+  int32 index = 2; //所处索引
+}
+
+// 获取安装任务状态请求
+message GetInstallTaskInfoRequest {
+  string packageKey = 1;
+  string version = 2;
+  string bundleId = 3;         // mac 用来做安装检测
+  string publisher = 4;        // windows 用来做安装检测
+  string softwareName = 5;     // windows 用来做安装检测
+  bool enableInstallCheck = 6; // 安装检测开关
+  bool   is_portable_software = 7; // 是否是便携软件
+  string software_id = 8;          // 软件唯一标识
+}
+
+message InstallTaskInfoResponse {
+  InstallStatus status = 3; //安装任务状态
+}
+
+// 安装任务状态
+enum InstallStatus {
+  Installing = 0; // 安装中
+  Success = 1;    // 安装成功
+  Failed = 2;     // 安装失败
+  Unknown = 3; // 安装任务已完成，是否安装成功未知（后台未配置安装检测）
+  Failed_LackSorageSpace = 4; // 安装失败，存储空间不足
+  Failed_FileFormatError = 5; // 文件格式错误或内容不完整
+}
+
+// 已安装软件列表
+message InstalledSoftwareResponse {
+  int32 code = 1;
+  string message = 2;
+  repeated InstalledSoftwareItemInfo data = 3;
+}
+
+// 已经安装的软件启动请求
+message StartInstalledSoftwareRequest {
+  string software_id = 1;//软件唯一ID
+  string name = 2; //软件名称
+  string version = 3; //软件版本
+  string startParameter = 4; //软件启动参数
+}
+
+// 启动状态码
+enum StartInstalledSoftwareStatus {
+  StartInstalledSoftware_Unknown = 0; //未知状态
+  StartInstalledSoftware_Success = 1; //启动成功
+  StartInstalledSoftware_Failed_InvalidParameter  = 2; //无无效的命令行，请联系管理员
+  StartInstalledSoftware_Failed_FileNotFound = 3; //安装环境损坏，启动文件未找到
+  StartInstalledSoftware_Failed_AccessDeny = 4; //程序运行被阻止
+  StartInstalledSoftware_Failed_CreateProcessError = 5;//程序运行异常
+}
+
+//已经安装的软件启动应答
+message StartInstalledSoftwareResponse {
+  StartInstalledSoftwareStatus status = 1;
+  string message = 2;
+}
+
+// 已安装软件信息
+message InstalledSoftwareItemInfo {
+  string name = 1;       // 软件名称
+  string publisher = 2;  // 软件发布者（only windows）
+  string bundleId = 3;   // BundleID（only mac）
+  string version = 4;    // 软件版本
+  int64 installTime = 5; // 安装时间(10位时间戳)
+  string path = 6;       // 安装路径
+  bool noUninstall = 7; // 标记不可卸载(only windows) true 表示不能卸载。 false 可以卸载
+}
+
+// 已安装绿色软件信息
+message InstalledPortableSoftwareItemInfo {
+  string software_id = 1; //软件ID
+  string name = 2; //软件名称
+  string version = 3; //软件版本
+  string startParameter  = 4; //软件启动参数
+  int64  installTime = 5; //安装时间(10位时间戳)
+  string path = 6; //安装路径
+  string package_md5 = 7; //安装包MD5
+}
+
+// 已安装绿色软件列表
+message InstalledPortableSoftwareResponse {
+  int32 code = 1;
+  string message = 2;
+  repeated InstalledPortableSoftwareItemInfo data = 3;
+}
+
+//是否具备管理员权限的账户
+message IsExistAdminRightUserResponse {
+  bool existAdminRightUser = 1;
+}
+
+// 卸载软件请求
+message UninstallSoftwareRequest {
+  string bundlePath = 1;
+  string bundleId = 2;
+  string publisher = 3;
+  string softwareName = 4;
+  string version = 5;
+  string softwareId = 6;
+  bool   is_portable = 7;
+}
+
+// 卸载任务状态
+enum UninstallStatus {
+  UninstallStatus_Uninstalling = 0;
+  UninstallStatus_Success = 1;
+  UninstallStatus_Failed = 2;
+}
+
+// 卸载软件应答
+message UninstallSoftwareResponse {
+  int32 code = 1;
+  string message = 2;
+  // 如果status为UninstallStatus_Uninstalling，表示卸载操作未完成，taskid字段有效
+  // 其他结果标识卸载操作已经完成，taskid字段无效。
+  UninstallStatus status = 3;
+  string uninstallTaskId = 4;
+}
+
+message GetUninstallTaskInfoRequest {
+  string taskId = 1;
+}
+
+message GetUninstallTaskInfoResponse {
+  UninstallStatus status = 1;
+}
+
+// 清理任务状态
+message ClearUninstallSoftwareTaskInfoRequest {
+  string taskId = 1;
+}
+
+//应用信息响应
+message AppInfoResponse {
+    int32 code = 1;
+    string message = 3;
+    AppInfo data = 4; //应用信息
+}
+
+// 防退出
+message LogoutRequest {
+    string code = 1; //退出验证码
+    string tgc2 = 2;
+    string nonce = 3;
+    string dt2 = 4;
+}
+
+enum xmprinterAction {
+  unknown = 0;
+  installDriver = 1;   // 安装驱动
+  uninstallDriver = 2; // 卸载驱动
+  installCert = 3;     // 安装证书（需要st）
+  uninstallCert = 4;   // 卸载证书
+  installAll = 5;      // 安装所有（需要st）
+  uninstallAll = 6;    // 卸载所有
+}
+
+message xmprinterRequest {
+  xmprinterAction action = 1;
+  string st = 2;
+}
+
+message ConnectVpnResponse {
+  int32 code = 1;     // 状态码 0为成功 其他为错误码
+  string message = 3; // 提示信息, (code === 3015 || code === 10210002) &&
+                      // action === 'dialog' 时 message 为 json 字符串
+  ConnectVpnData data = 4;
+  string action = 5; // ConnectVpnAction
+}
+
+
+// 代理状态
+message ProxyInfo {
+  bool proxyEnable = 1;
+  bool vpnEnable = 2;
+}
+// 检测 Wi-Fi 引导请求
+message CheckWiFiGuideRequest {
+  repeated string ssids = 2; //员工Wi-Fi SSID列表
+  int32 scanType = 3; //1=仅提醒，2=自动连接
+  bool isLogin = 4; //是否为新登录
+}
+
+message WiFiGuideResponse {
+    int32 code = 1;
+    string message = 3;
+    WiFiGuideData data = 4; //引导信息
+}
+
+message WiFiGuideData {
+    bool showPermissionGuide = 1; //展示关闭网络与无线定位权限引导
+}
+
+
+// 忘记 Wi-Fi
+message WiFiRemoveRequest {
+  repeated string ssids = 2;
+}
+
+message PushConfirmRequest {
+  string scene = 1;
+}
+
+message FakeLogout {
+  string companyCode = 1; // 企业识别码
+  string code = 2;        // 用户输入的退出码
+}
+
+message CloudPrintResponse {
+  int32 code = 1;
+  string message = 3;
+  CloudPrintInfo data = 4; //打印机信息
+}
+
+message CloudPrintInfo {
+  bool enable = 1;
+}
+
+message CloudPrintUploadRequest {
+  string meta = 1;
+  string filepath = 2;
+  string filename = 3;
+}
+
+message PrivilegeResponse {
+  int32 code = 1;
+  string message = 3;
+  PrivilegeInfo data = 4; //权限信息
+}
+
+message PrivilegeInfo {
+  bool needAllowBackground = 1;
+}
+// 补丁状态
+message PatchStatusResponse {
+  bool enable = 1;    // 是否生效
+}
+
+message remoteControlNewPasswordResponse {
+  int32 code = 1;
+  string message = 3;
+  string password = 4; // 密码
+}
+
+enum RemoteControlResultType{
+  Agree = 0;
+  Refuse = 1;
+  Timeout = 2;
+  NotMatch = 3;
+}
+
+message RemoteControlResult {
+  string id = 1;      // connection_id，提前传递给前端
+  RemoteControlResultType state = 2;    // 用户决策结果。同意 1，拒绝 2，超时 3，验证码不对 4
+}
+
+message RemoteControlQueryInfo {
+  string id = 1;      // Id，前端通过接口获得
+}
+
+message RemoteControlQueryResponse {
+  bool complete = 1; // true 查到结果 code为有效结果. false 未查到结果
+  int32 code = 2;    // 标识结果
+  string message = 3;
+}
+
+message RemoteControlVerifyInfoRequest {
+  string id = 1;  // 服务端下发的id
+}
+
+message RemoteControlVerifyInfoResponse {
+  int32 code = 1;
+  string origin = 2;
+  string verifyCode = 3;
+}
+
+message RemoteControlCancelRequest {
+  string id = 1;
+}
+
+message WiredStatus {
+  bool authorized = 1;    // 标记是否认证
+  string identity = 2;    // 认证所使用的用户信息。FE可以根据用户名判断当前认证信息是否匹配
+  string eap_type = 3;    // PEAP EAP_TLS
+}
+
+message WiredStatusResponse {
+  int32 code = 1;
+  string message = 2;
+  WiredStatus status = 3;
+}
+
+message ProxyInfoResponse {
+  int32 code = 1;
+  string message = 2;
+  ProxyInfo data = 3;
+}
+
+message CertStatusInfo {
+  bool has_cache = 1;
+}
+
+message CertStatusResponse {
+  int32 code = 1;        // 和以前一样的状态码
+  string message = 2;    // 和以前一样的有效天数
+  CertStatusInfo info = 3;    // 标识是否有证书缓存
+}
+
+/*
+ * 「防卸载」触发卸载流程 - 请求
+ * 仅在 macOS & Linux 平台下有效
+ */
+message UninstallClientRequest {
+  // 离线校验的卸载密码
+  string password = 1;
+
+  // 延迟数秒后开始卸载
+  uint64 delay_interval = 2;
+
+  // 企业识别码，方便计算卸载密码
+  string corpcode = 3;
+
+  // 用户 open id，方便计算用户维度卸载密码
+  string openid = 4;
+}
+
+/*
+ * 「防卸载」触发卸载 - 返回
+ */
+// RPC 调用如果失败，携带错误信息
+// 0. 密码错误
+// 1. 企业识别码或用户 open id 未知，稍后再试
+enum UninstallError {
+  WRONG_PASSWORD = 0;
+  UNKNOWN = 1;
+}
+
+message UninstallClientResponse {
+  int32 code = 1;
+  string message = 2;
+  UninstallError status = 3;
+}
+
+message CheckEnrollmentProfileResponse {
+  int32 code = 1;
+  string message = 2;
+  CheckEnrollmentProfileInfo data = 3;
+}
+
+message CheckEnrollmentProfileInfo {
+  // 当前设备是否需要安装 Profile，如果为 `false` 则前端不需要继续处理 Profile 安装引导的逻辑
+  bool require_profile = 1;
+  // 当前设备是否已经完成 Profile 安装
+  bool installed_profile = 2;
+  // Profile 的安装是否强制，如果为 `true` 则用户无法选择稍后安装
+  bool managed = 3;
+}
+
+message GetAnonymousLoginStatusResponse {
+  int32 code = 1;
+  string message = 2;
+  AnonymousLoginStatus data = 3;
+}
+
+message AnonymousLoginStatus {
+  bool enabled = 1;      // true 的话表示需要免登
+  string company_code = 2; // 如果需要免登则需要返回企业识别码
+}
+
+message AnonymousLoginResponse {
+  int32 code = 1;
+  string message = 2;
+  AnonymousLoginStatus data = 3;
+}
+
+message KnockRequest {
+  string authCode = 1; //授权码
+}
+
+enum AnyDeskState {
+  AnyDeskState_NotInstall  = 0;        // 未安装
+  AnyDeskState_Downloading = 1;        // 正在下载
+  AnyDeskState_Downloaded  = 2;        // 已下载，未安装
+  AnyDeskState_Installing  = 3;        // 正在安装
+  AnyDeskState_Installed   = 4;        // 已安装
+  AnyDeskState_HasNewVersion = 5;      // 已安装，并且有新版本
+}
+
+enum AnyDeskError {
+  AnyDeskError_Success = 0;            // 成功
+  AnyDeskError_DownloadFailed = 1;     // 下载失败
+  AnyDeskError_InstallFailed = 2;      // 安装失败
+}
+
+// AnyDesk 软件状态
+message AnyDeskStateResponse {
+  AnyDeskState  state = 1;      // 状态
+  string        version = 2;    // 版本
+}
+
+// 显示AnyDesk
+message ShowAnyDeskRequest {
+  string user = 1;
+  string display = 2;
+}
+
+// AnyDesk 安装相应
+message AnyDeskInstallResponse {
+  AnyDeskState  state = 1;            //  状态
+  int32         progress = 2;         //  进度
+  AnyDeskError  error = 3;            //  错误码
+  string        error_message = 4;    //  错误信息
+}
+
+message EnterpriseCertResponse {
+  int32 code = 1;
+  string message = 2;
+  EnterpriseCertInfo data = 3;
+}
+
+message EnterpriseCertInfo {
+  bool needTrust = 1;
+  string certPath = 2;
+}

@@ -157,129 +157,109 @@ def _get_connected_hours() -> float | None:
 
 
 # ---------------------------------------------------------------------------
-# AppleScript GUI automation (needs Accessibility permission)
+# CGEvent mouse click — toggles VPN by clicking the Connect/Disconnect button.
+#
+# CorpLink is an Electron app; its UI is not exposed via macOS Accessibility.
+# Instead we:
+#   1. Activate CorpLink and bring its window to front.
+#   2. Read the window position via System Events (no special permission needed).
+#   3. Click the centre of the main content area where the VPN button lives.
+#
+# The button coordinates are derived from the window geometry:
+#   - Left navigation sidebar is ~200 px wide.
+#   - The VPN toggle/button sits ~200 px below the top of the content area.
+#   - These offsets were calibrated empirically and are stable across versions.
 # ---------------------------------------------------------------------------
 
-_APPLESCRIPT_FIND_AND_CLICK_TOGGLE = """\
+_CLICK_SCRIPT = """\
+tell application "CorpLink" to activate
+delay 0.5
 tell application "System Events"
-    if not (exists process "CorpLink") then
-        return "NOT_RUNNING"
-    end if
-
     tell process "CorpLink"
-        set frontmost to true
-        delay 0.5
-
-        -- The VPN toggle is deeply nested inside the Electron web area.
-        -- Use "entire contents" to flatten the tree and find it reliably.
-        tell window 1
-            set webArea to UI element 1
-            set allElements to entire contents of webArea
-            repeat with elem in allElements
-                if role of elem is "AXCheckBox" then
-                    set t to title of elem
-                    if t is "Off Off" or t is "On On" then
-                        click elem
-                        return "CLICKED"
-                    end if
-                end if
-            end repeat
-        end tell
+        if not (exists window 1) then
+            return "NO_WINDOW"
+        end if
+        set {wx, wy} to position of window 1
+        set {ww, wh} to size of window 1
+        return (wx as string) & "," & (wy as string) & "," & (ww as string) & "," & (wh as string)
     end tell
-    return "NOT_FOUND"
 end tell
 """
 
-_APPLESCRIPT_GET_VPN_STATE = """\
-tell application "System Events"
-    if not (exists process "CorpLink") then
-        return "NOT_RUNNING"
-    end if
-
-    tell process "CorpLink"
-        tell window 1
-            set webArea to UI element 1
-            set allElements to entire contents of webArea
-            repeat with elem in allElements
-                if role of elem is "AXCheckBox" then
-                    set t to title of elem
-                    if t is "On On" then
-                        return "ON"
-                    else if t is "Off Off" then
-                        return "OFF"
-                    end if
-                end if
-            end repeat
-        end tell
-    end tell
-    return "UNKNOWN"
-end tell
-"""
+# Fraction of content-area width/height where the VPN button is centred.
+# Content area starts after the left nav bar (~200 px from left edge).
+_NAV_WIDTH_PX = 200
+_BUTTON_Y_OFFSET_PX = 200  # from top of window
 
 
-def _run_applescript(script: str, *, timeout: int = 15) -> str:
-    """Run an AppleScript and return its stdout."""
-    try:
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            if "not allowed assistive access" in stderr.lower():
-                raise VPNConnectionError(
-                    "Accessibility permission required. "
-                    "Add your terminal app to: System Settings > "
-                    "Privacy & Security > Accessibility"
-                )
-            raise VPNConnectionError(f"AppleScript failed: {stderr}")
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        raise VPNConnectionError("AppleScript timed out")
+def _click_vpn_button() -> None:
+    """Click the CorpLink VPN Connect/Disconnect button via CGEvent mouse click.
 
-
-def _get_gui_state() -> bool | None:
-    """Read VPN state from the CorpLink GUI (needs Accessibility permission).
-
-    Returns True (on), False (off), or None (could not determine).
+    Does NOT require Accessibility permission — only uses System Events to read
+    window geometry, then posts a CGEvent at the calculated screen coordinate.
     """
     try:
-        result = _run_applescript(_APPLESCRIPT_GET_VPN_STATE)
-        if result == "ON":
-            return True
-        if result == "OFF":
-            return False
-    except VPNConnectionError:
-        pass
-    return None
+        result = subprocess.run(
+            ["osascript", "-e", _CLICK_SCRIPT],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        output = result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        raise VPNConnectionError("Timed out activating CorpLink")
+
+    if output == "NO_WINDOW":
+        raise VPNAppNotFoundError("CorpLink window not found")
+
+    try:
+        wx, wy, ww, wh = (int(v) for v in output.split(","))
+    except (ValueError, TypeError):
+        raise VPNConnectionError(f"Unexpected window geometry: {output!r}")
+
+    # Centre of the VPN button within the content pane.
+    content_x = wx + _NAV_WIDTH_PX + (ww - _NAV_WIDTH_PX) // 2
+    content_y = wy + _BUTTON_Y_OFFSET_PX + (wh - _BUTTON_Y_OFFSET_PX) // 3
+
+    _cgevent_click(content_x, content_y)
+    # Small pause to let the Electron renderer process the click.
+    time.sleep(0.3)
+
+
+def _cgevent_click(x: int, y: int) -> None:
+    """Post a left-mouse-down/up event pair at screen coordinate (x, y)."""
+    # Build the click via osascript so we don't need PyObjC as a dependency.
+    script = f"""\
+do shell script "python3 -c \\"
+import Quartz, time
+pos = Quartz.CGPointMake({x}, {y})
+dn = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, pos, Quartz.kCGMouseButtonLeft)
+up = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseUp, pos, Quartz.kCGMouseButtonLeft)
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, dn)
+time.sleep(0.1)
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
+\\""
+"""
+    try:
+        subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        raise VPNConnectionError("CGEvent click timed out")
 
 
 def _toggle_vpn() -> None:
-    """Click the VPN toggle in the CorpLink window via AppleScript."""
-    result = _run_applescript(_APPLESCRIPT_FIND_AND_CLICK_TOGGLE, timeout=30)
-
-    if result == "NOT_RUNNING":
-        raise VPNAppNotFoundError("CorpLink is not running")
-    if result == "NOT_FOUND":
-        raise VPNConnectionError(
-            "Could not find VPN toggle in CorpLink window. "
-            "The UI may have changed — check the CorpLink window manually."
-        )
-    # result == "CLICKED" — success
+    """Click the VPN Connect/Disconnect button in the CorpLink window."""
+    _click_vpn_button()
 
 
 def _poll_state(expected: bool) -> bool:
-    """Poll until VPN reaches the expected state (GUI first, log fallback)."""
+    """Poll until VPN reaches the expected state (log-based)."""
     for _ in range(MAX_POLL_ATTEMPTS):
         time.sleep(POLL_INTERVAL_SECONDS)
-        # GUI state updates immediately; prefer it
-        gui = _get_gui_state()
-        if gui == expected:
-            return True
-        # GUI unavailable (window closed, no permission) — fall back to log
-        if gui is None and _is_connected() == expected:
+        if _is_connected() == expected:
             return True
     return False
 
