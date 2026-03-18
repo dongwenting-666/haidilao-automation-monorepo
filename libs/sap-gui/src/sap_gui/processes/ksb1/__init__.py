@@ -81,7 +81,7 @@ def _run_darwin(
 
     cc_nl = "\\n".join(cost_centers)
 
-    with SAPSession(auto_launch=True) as sap:
+    with SAPSession(auto_launch=True, quit_after=True) as sap:
         nav = SAPNavigator(sap.session)
 
         # Login (separate, same as Windows)

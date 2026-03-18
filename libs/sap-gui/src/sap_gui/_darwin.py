@@ -641,13 +641,22 @@ class SAPSession:
         *,
         auto_launch: bool = False,
         connection_string: str | None = None,
+        quit_after: bool = False,
     ):
+        """
+        Args:
+            quit_after: If True, kill SAP GUI when the session is closed
+                (i.e. at the end of the ``with`` block).  Keeps the state
+                clean — the next run always starts fresh.  Set to True when
+                running automated batch jobs.
+        """
         if connection_index is not None or session_index != 0:
             log.warning(
                 "connection_index/session_index are ignored on macOS — "
                 "the bridge always connects to the first active session"
             )
         self._auto_launch = auto_launch
+        self._quit_after = quit_after
         self._connection_string = connection_string
         self._bridge: _ScriptingBridge | None = None
         self._info: _SAPInfo | None = None
@@ -776,6 +785,13 @@ class SAPSession:
                     "SAP GUI is not running. Please open SAP GUI for Java "
                     "and connect to a system first."
                 )
+            self._launch_sapgui(conn_str)
+            launched = True
+        elif auto_launch and self._quit_after:
+            # quit_after mode: always start fresh — kill any existing SAP
+            # instance so each run begins from a clean state.
+            log.info("quit_after mode: restarting SAP GUI for a clean run...")
+            self._kill_sapgui()
             self._launch_sapgui(conn_str)
             launched = True
 
@@ -913,11 +929,18 @@ end tell
         )
 
     def disconnect(self) -> None:
-        """Close the bridge (does NOT close SAP GUI)."""
+        """Close the bridge and optionally quit SAP GUI.
+
+        If *quit_after* was set on this session, SAP GUI is killed after
+        the bridge is closed.  This ensures a clean state for the next run.
+        """
         if self._bridge is not None:
             self._bridge.close()
             self._bridge = None
         self._info = None
+        if self._quit_after:
+            log.info("Closing SAP GUI...")
+            self._kill_sapgui()
 
     @property
     def session(self):
