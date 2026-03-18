@@ -227,6 +227,7 @@ class StoreMetrics:
     prev_mtd_raw_tables: float = 0
     prev_mtd_revenue_wan: float = 0
     prev_mtd_per_table: float = 0
+    prev_mtd_turnover_rate: float = 0   # full prev-month avg turnover (for competitor sheet)
 
     # MTD previous year (same period)
     yoy_mtd_tables: float = 0
@@ -282,6 +283,7 @@ class RawData:
     prev_tables: dict[str, float]
     prev_raw_tables: dict[str, float]
     prev_revenue: dict[str, float]
+    prev_avg_turnover: dict[str, float]   # full prev-month average turnover rate
     # YoY
     yoy_tables: dict[str, float]
     yoy_raw_tables: dict[str, float]
@@ -332,6 +334,7 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         prev_tables=_sum_by_store(prev_rows, COL_TABLES_ASSESSED),
         prev_raw_tables=_sum_by_store(prev_rows, COL_TABLES_RAW),
         prev_revenue=_sum_by_store(prev_rows, COL_REVENUE),
+        prev_avg_turnover=_avg_turnover_by_store(prev_rows),
         # YoY
         yoy_tables=_sum_by_store(yoy_rows, COL_TABLES_ASSESSED),
         yoy_raw_tables=_sum_by_store(yoy_rows, COL_TABLES_RAW),
@@ -384,6 +387,7 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.prev_mtd_raw_tables = raw.prev_raw_tables.get(store, 0)
     m.prev_mtd_revenue_wan = prev_r / WAN_DIVISOR
     m.prev_mtd_per_table = div_or_zero(prev_r, m.prev_mtd_raw_tables)
+    m.prev_mtd_turnover_rate = raw.prev_avg_turnover.get(store, 0)
 
     # YoY
     yoy_r = raw.yoy_revenue.get(store, 0)
