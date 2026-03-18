@@ -27,11 +27,10 @@ class Settings(BaseSettings):
     daily_report_cron: str = "0 6 * * *"
     output_dir: Path = REPO_ROOT / "output"
 
-    # Lark (Feishu) bot — set in .env to enable notifications
+    # Lark (Feishu) bot credentials — set in .env to enable notifications.
+    # Notification targets are configured per-command in server/notify.toml.
     lark_app_id: str = ""
     lark_app_secret: str = ""
-    lark_notify_chat_id: str = ""   # group chat open_chat_id
-    lark_notify_user_id: str = ""   # user open_id (fallback if no chat_id)
 
     model_config = {"env_prefix": "", "extra": "ignore"}
 
@@ -39,15 +38,6 @@ class Settings(BaseSettings):
     def lark_enabled(self) -> bool:
         """True if Lark credentials are configured."""
         return bool(self.lark_app_id and self.lark_app_secret)
-
-    @property
-    def lark_notify_target(self) -> tuple[str | None, str | None]:
-        """Return (chat_id, user_id) for notifications. One will be None."""
-        if self.lark_notify_chat_id:
-            return self.lark_notify_chat_id, None
-        if self.lark_notify_user_id:
-            return None, self.lark_notify_user_id
-        return None, None
 
 
 settings = Settings(_env_file=REPO_ROOT / ".env", _env_file_encoding="utf-8")

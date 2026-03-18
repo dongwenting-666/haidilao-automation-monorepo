@@ -1,0 +1,18 @@
+# Lark notification targets per command.
+#
+# Each key is a command name (matches BaseCommand.name).
+# Provide either chat_id (group open_chat_id) or user_id (open_id), not both.
+#
+# chat_id  — send to a group chat
+# user_id  — send as a direct message to a user
+#
+# If a command is not listed here, notifications are silently skipped.
+# Set LARK_APP_ID and LARK_APP_SECRET in .env to enable Lark integration.
+
+[daily-report]
+# chat_id = "oc_xxxxxxxxxxxxxxxxxxxxxxxx"
+# user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
+
+[ksb1]
+# chat_id = "oc_xxxxxxxxxxxxxxxxxxxxxxxx"
+# user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
