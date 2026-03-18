@@ -255,12 +255,17 @@ def _toggle_vpn() -> None:
     _click_vpn_button()
 
 
-def _poll_state(expected: bool) -> bool:
-    """Poll until VPN reaches the expected state (log-based)."""
+def _poll_state(expected: bool, initial_delay: float = 5.0) -> bool:
+    """Poll until VPN reaches the expected state (log-based).
+
+    *initial_delay* gives the UI/daemon time to begin processing the click
+    before the first log check.
+    """
+    time.sleep(initial_delay)
     for _ in range(MAX_POLL_ATTEMPTS):
-        time.sleep(POLL_INTERVAL_SECONDS)
         if _is_connected() == expected:
             return True
+        time.sleep(POLL_INTERVAL_SECONDS)
     return False
 
 
