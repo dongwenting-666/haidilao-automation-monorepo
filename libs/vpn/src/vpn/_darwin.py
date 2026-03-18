@@ -3,10 +3,16 @@
 Status detection uses the world-readable CorpLink log file at
 ``/usr/local/corplink/logs/corplink.log`` (no permissions needed).
 
-VPN toggling uses AppleScript (``osascript``) via System Events to click
-the toggle button in the CorpLink Electron window.  This requires
-Accessibility permission — the calling app (Terminal / iTerm2 / Cursor)
-must be added to System Settings > Privacy & Security > Accessibility.
+VPN toggling uses cliclick to send hardware-level mouse clicks to the
+CorpLink Electron app's Connect/Disconnect button.
+
+Why cliclick:
+- CGEvent posted via kCGHIDEventTap without a proper CGEventSource is ignored
+  by Electron's renderer process.
+- AppleScript `click` on AXGroup/AXButton elements is unreliable in Electron.
+- cliclick uses the correct CGEventSource internally, which Electron accepts.
+
+Install: brew install cliclick
 """
 
 import logging
@@ -56,17 +62,24 @@ def _find_app() -> Path:
     )
 
 
-def _is_running() -> bool:
-    """Check if CorpLink process is running."""
+def _get_corplink_pid() -> int | None:
+    """Return the PID of the main CorpLink process, or None if not running."""
     try:
         result = subprocess.run(
             ["pgrep", "-x", "CorpLink"],
             capture_output=True,
             text=True,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return int(result.stdout.strip().splitlines()[0])
     except Exception:
-        return False
+        pass
+    return None
+
+
+def _is_running() -> bool:
+    """Check if CorpLink process is running."""
+    return _get_corplink_pid() is not None
 
 
 def _launch_app(app_path: Path) -> None:
@@ -83,22 +96,13 @@ def _launch_app(app_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _parse_log_status() -> tuple[bool, datetime | None]:
-    """Parse CorpLink log for the latest VPN event.
-
-    Returns
-    -------
-    (is_connected, connected_since)
-        *is_connected* is True if the last event was a connection.
-        *connected_since* is the timestamp of the last connection event,
-        or None if disconnected or unknown.
-    """
+    """Parse CorpLink log for the latest VPN event."""
     if not CORPLINK_LOG.exists():
         log.debug("CorpLink log not found at %s", CORPLINK_LOG)
         return False, None
 
     try:
         with open(CORPLINK_LOG, "rb") as f:
-            # Read from end in chunks to find the last relevant event
             f.seek(0, 2)
             chunk_size = 8192
             remaining = f.tell()
@@ -111,15 +115,12 @@ def _parse_log_status() -> tuple[bool, datetime | None]:
                 raw = f.read(read_size) + carry
                 lines = raw.decode("utf-8", errors="replace").splitlines()
 
-                # First line may be partial (split by chunk boundary);
-                # save it for the next iteration unless we're at file start
                 if remaining > 0:
                     carry = lines[0].encode("utf-8", errors="replace")
                     scan_lines = lines[1:]
                 else:
                     scan_lines = lines
 
-                # Scan lines in reverse
                 for line in reversed(scan_lines):
                     if _RE_DISCONNECTED.search(line):
                         return False, None
@@ -128,7 +129,6 @@ def _parse_log_status() -> tuple[bool, datetime | None]:
                     if m:
                         ts_str = m.group(1)
                         try:
-                            # Log timestamps are local time (no tz info)
                             ts = datetime.strptime(ts_str, "%Y/%m/%d %H:%M:%S")
                         except ValueError:
                             ts = None
@@ -151,34 +151,64 @@ def _get_connected_hours() -> float | None:
     if not connected or connected_since is None:
         return None
 
-    # Both are naive local datetimes — safe to subtract
     elapsed = datetime.now() - connected_since
     return elapsed.total_seconds() / 3600
 
 
 # ---------------------------------------------------------------------------
-# CGEvent mouse click — toggles VPN by clicking the Connect/Disconnect button.
+# VPN toggle — robust against minimized/off-screen/resized windows.
 #
-# CorpLink is an Electron app; its UI is not exposed via macOS Accessibility.
-# Instead we:
-#   1. Activate CorpLink and bring its window to front.
-#   2. Read the window position via System Events (no special permission needed).
-#   3. Click the centre of the main content area where the VPN button lives.
+# Strategy:
+#   1. Ensure CorpLink is running; launch if not.
+#   2. AppleScript: hide all other apps, activate CorpLink, unminimize,
+#      normalize window to a known position and size.
+#   3. cliclick: click the Connect/Disconnect button at calibrated coords.
 #
-# The button coordinates are derived from the window geometry:
-#   - Left navigation sidebar is ~200 px wide.
-#   - The VPN toggle/button sits ~200 px below the top of the content area.
-#   - These offsets were calibrated empirically and are stable across versions.
+# Button coordinates (calibrated, CorpLink v3.1.21, window at AppleScript
+# position 200,200 with size 888×560):
+#   The Connect button is at screen (680, 340), i.e. offset (480, 140) from
+#   the AppleScript-reported window origin. The 52px title bar gap between
+#   AppleScript position and actual render position is accounted for here.
+#
+# Why cliclick works:
+#   cliclick uses CGEventCreateMouseEvent with a CGEventSource (HIDSystemState),
+#   which Electron's input event handling accepts. Plain CGEvent without a
+#   proper source, or AppleScript synthetic clicks, are ignored by Electron.
 # ---------------------------------------------------------------------------
 
-_CLICK_SCRIPT = """\
+# Fixed window placement — move here before clicking so coords are stable.
+_NORM_POS = (200, 200)
+_NORM_SIZE = (900, 600)  # macOS will constrain slightly; use returned geometry
+
+# Connect button offset from AppleScript-reported window position (200, 200).
+# Empirically calibrated by scanning a 20-point grid — (680, 340) triggered
+# jsonRequest-connectVpn in the Electron debug log.
+_BTN_WIN_X = 480   # screen_x - as_window_x
+_BTN_WIN_Y = 140   # screen_y - as_window_y
+
+_PREPARE_SCRIPT = """\
+tell application "System Events"
+    set visApps to every application process whose visible is true and name is not "CorpLink" and name is not "Finder"
+    repeat with a in visApps
+        try
+            set visible of a to false
+        end try
+    end repeat
+end tell
 tell application "CorpLink" to activate
-delay 0.5
+delay 0.3
 tell application "System Events"
     tell process "CorpLink"
+        try
+            if miniaturized of window 1 then set miniaturized of window 1 to false
+            delay 0.1
+        end try
         if not (exists window 1) then
             return "NO_WINDOW"
         end if
+        set position of window 1 to {200, 200}
+        set size of window 1 to {900, 600}
+        delay 0.4
         set {wx, wy} to position of window 1
         set {ww, wh} to size of window 1
         return (wx as string) & "," & (wy as string) & "," & (ww as string) & "," & (wh as string)
@@ -186,81 +216,82 @@ tell application "System Events"
 end tell
 """
 
-# Fraction of content-area width/height where the VPN button is centred.
-# Content area starts after the left nav bar (~200 px from left edge).
-_NAV_WIDTH_PX = 200
-_BUTTON_Y_OFFSET_PX = 200  # from top of window
+_CLICLICK = "cliclick"
+
+
+def _cliclick_available() -> bool:
+    try:
+        return subprocess.run(
+            ["which", _CLICLICK], capture_output=True, timeout=3
+        ).returncode == 0
+    except Exception:
+        return False
 
 
 def _click_vpn_button() -> None:
-    """Click the CorpLink VPN Connect/Disconnect button via CGEvent mouse click.
+    """Hide other windows, normalize CorpLink window, then click VPN button via cliclick."""
+    if not _cliclick_available():
+        raise VPNConnectionError(
+            "cliclick not found. Install with: brew install cliclick"
+        )
 
-    Does NOT require Accessibility permission — only uses System Events to read
-    window geometry, then posts a CGEvent at the calculated screen coordinate.
-    """
+    # Step 1: Normalize window position via AppleScript
     try:
         result = subprocess.run(
-            ["osascript", "-e", _CLICK_SCRIPT],
-            capture_output=True,
-            text=True,
-            timeout=10,
+            ["osascript", "-e", _PREPARE_SCRIPT],
+            capture_output=True, text=True, timeout=15,
         )
-        output = result.stdout.strip()
     except subprocess.TimeoutExpired:
-        raise VPNConnectionError("Timed out activating CorpLink")
+        raise VPNConnectionError("Timed out activating CorpLink window")
 
-    if output == "NO_WINDOW":
-        raise VPNAppNotFoundError("CorpLink window not found")
+    output = result.stdout.strip()
+    if result.returncode != 0 or output == "NO_WINDOW":
+        raise VPNAppNotFoundError(
+            f"CorpLink window not found or AppleScript failed: {result.stderr.strip()}"
+        )
 
     try:
         wx, wy, ww, wh = (int(v) for v in output.split(","))
     except (ValueError, TypeError):
-        raise VPNConnectionError(f"Unexpected window geometry: {output!r}")
+        raise VPNConnectionError(f"Unexpected window geometry response: {output!r}")
 
-    # Centre of the VPN button within the content pane.
-    content_x = wx + _NAV_WIDTH_PX + (ww - _NAV_WIDTH_PX) // 2
-    content_y = wy + _BUTTON_Y_OFFSET_PX + (wh - _BUTTON_Y_OFFSET_PX) // 3
+    # Step 2: Compute button screen coordinates
+    btn_x = wx + _BTN_WIN_X
+    btn_y = wy + _BTN_WIN_Y
 
-    _cgevent_click(content_x, content_y)
-    # Small pause to let the Electron renderer process the click.
+    log.debug("Clicking VPN button at screen (%d, %d) [window at (%d,%d) size %dx%d]",
+              btn_x, btn_y, wx, wy, ww, wh)
+
+    # Step 3: Re-activate right before clicking
+    subprocess.run(
+        ["osascript", "-e", 'tell application "CorpLink" to activate'],
+        capture_output=True, timeout=5,
+    )
+    time.sleep(0.5)
+
+    # Step 4: Hardware click via cliclick
+    try:
+        subprocess.run(
+            [_CLICLICK, f"c:{btn_x},{btn_y}"],
+            capture_output=True, timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        raise VPNConnectionError("cliclick timed out")
+
     time.sleep(0.3)
 
 
-def _cgevent_click(x: int, y: int) -> None:
-    """Post a left-mouse-down/up event pair at screen coordinate (x, y)."""
-    # Build the click via osascript so we don't need PyObjC as a dependency.
-    script = f"""\
-do shell script "python3 -c \\"
-import Quartz, time
-pos = Quartz.CGPointMake({x}, {y})
-dn = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, pos, Quartz.kCGMouseButtonLeft)
-up = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseUp, pos, Quartz.kCGMouseButtonLeft)
-Quartz.CGEventPost(Quartz.kCGHIDEventTap, dn)
-time.sleep(0.1)
-Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
-\\""
-"""
-    try:
-        subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            timeout=10,
-        )
-    except subprocess.TimeoutExpired:
-        raise VPNConnectionError("CGEvent click timed out")
-
+# ---------------------------------------------------------------------------
+# Toggle helpers
+# ---------------------------------------------------------------------------
 
 def _toggle_vpn() -> None:
-    """Click the VPN Connect/Disconnect button in the CorpLink window."""
+    """Click the CorpLink VPN Connect/Disconnect button."""
     _click_vpn_button()
 
 
 def _poll_state(expected: bool, initial_delay: float = 5.0) -> bool:
-    """Poll until VPN reaches the expected state (log-based).
-
-    *initial_delay* gives the UI/daemon time to begin processing the click
-    before the first log check.
-    """
+    """Poll until VPN reaches the expected state (log-based)."""
     time.sleep(initial_delay)
     for _ in range(MAX_POLL_ATTEMPTS):
         if _is_connected() == expected:
@@ -268,10 +299,6 @@ def _poll_state(expected: bool, initial_delay: float = 5.0) -> bool:
         time.sleep(POLL_INTERVAL_SECONDS)
     return False
 
-
-# ---------------------------------------------------------------------------
-# Toggle helpers
-# ---------------------------------------------------------------------------
 
 def _turn_on() -> None:
     if _is_connected():
@@ -299,30 +326,12 @@ def _cycle() -> None:
 # ---------------------------------------------------------------------------
 
 def ensure_vpn(*, max_connected_hours: float = 6.0) -> None:
-    """Ensure VPN is connected with enough session time remaining.
-
-    Parameters
-    ----------
-    max_connected_hours:
-        If the current session has been connected longer than this, the
-        connection is cycled to avoid expiry mid-automation.  The SealSuite
-        session expires after 7 h 30 min, so the default of 6 h leaves a
-        comfortable buffer.
-
-    Raises
-    ------
-    VPNAppNotFoundError
-        CorpLink is not installed or could not be launched.
-    VPNConnectionError
-        VPN could not be toggled on.  If Accessibility permission is
-        missing, the error message includes instructions to grant it.
-    """
+    """Ensure VPN is connected with enough session time remaining."""
     # 1. Is CorpLink running?
     if not _is_running():
         log.info("CorpLink not running, launching...")
         app = _find_app()
         _launch_app(app)
-        # Wait for process to start
         for _ in range(MAX_POLL_ATTEMPTS):
             time.sleep(POLL_INTERVAL_SECONDS)
             if _is_running():
@@ -330,7 +339,7 @@ def ensure_vpn(*, max_connected_hours: float = 6.0) -> None:
         else:
             raise VPNAppNotFoundError("CorpLink did not start")
 
-    # 2. Check VPN state (log-based, no permissions needed)
+    # 2. Check VPN state
     connected = _is_connected()
 
     if not connected:
@@ -342,10 +351,7 @@ def ensure_vpn(*, max_connected_hours: float = 6.0) -> None:
     if hours is not None:
         log.info("VPN connected for %.1f hours", hours)
         if hours >= max_connected_hours:
-            log.info(
-                "Session older than %.1f hours, cycling to reset...",
-                max_connected_hours,
-            )
+            log.info("Session older than %.1f hours, cycling to reset...", max_connected_hours)
             _cycle()
             return
         log.info("Session healthy, no action needed")
