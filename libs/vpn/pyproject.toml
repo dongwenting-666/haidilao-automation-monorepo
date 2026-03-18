@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "SealSuite VPN middleware — ensures VPN is connected before automation runs"
 requires-python = ">=3.13"
 dependencies = [
-    "pyobjc-framework-quartz>=12.1 ; sys_platform == 'darwin'",
     "pywinauto>=0.6.9; sys_platform == 'win32'",
 ]
 
