@@ -3,16 +3,27 @@
 Status detection uses the world-readable CorpLink log file at
 ``/usr/local/corplink/logs/corplink.log`` (no permissions needed).
 
-VPN toggling uses cliclick to send hardware-level mouse clicks to the
-CorpLink Electron app's Connect/Disconnect button.
+VPN toggling uses cliclick (brew install cliclick) to send hardware-level
+mouse clicks to the CorpLink Electron app.
 
-Why cliclick:
-- CGEvent posted via kCGHIDEventTap without a proper CGEventSource is ignored
-  by Electron's renderer process.
+Why cliclick and not CGEvent/AppleScript:
+- CGEvent via kCGHIDEventTap without a proper CGEventSource is ignored by
+  Electron's renderer process.
 - AppleScript `click` on AXGroup/AXButton elements is unreliable in Electron.
-- cliclick uses the correct CGEventSource internally, which Electron accepts.
+- cliclick creates events with the correct CGEventSource that Electron accepts.
 
-Install: brew install cliclick
+Approach:
+1. Activate CorpLink and normalize its window to a fixed position/size via
+   AppleScript (so button coordinates are always stable).
+2. Navigate to the Network/VPN tab via sidebar click.
+3. Click the Connect/Disconnect button in the content area.
+
+All coordinates are in AppleScript/cliclick logical screen coordinates
+(origin top-left, Y increases downward, same coordinate space).
+
+Button offsets calibrated empirically at window position (100,100) size 888x560:
+  Sidebar Network icon: offset (5, 135) from window origin
+  VPN Connect button:   offset (430, 155) from window origin
 """
 
 import logging
@@ -156,45 +167,39 @@ def _get_connected_hours() -> float | None:
 
 
 # ---------------------------------------------------------------------------
-# VPN toggle — robust against minimized/off-screen/resized windows.
+# VPN toggle via cliclick — robust against minimized/off-screen/resized windows.
 #
 # Strategy:
-#   1. Ensure CorpLink is running; launch if not.
-#   2. AppleScript: hide all other apps, activate CorpLink, unminimize,
-#      normalize window to a known position and size.
-#   3. cliclick: click the Connect/Disconnect button at calibrated coords.
+#   1. Activate CorpLink and normalize window to a fixed position/size.
+#   2. Navigate to the Network/VPN tab via sidebar click.
+#   3. Click the Connect/Disconnect button.
 #
-# Button coordinates (calibrated, CorpLink v3.1.21, window at AppleScript
-# position 200,200 with size 888×560):
-#   The Connect button is at screen (680, 340), i.e. offset (480, 140) from
-#   the AppleScript-reported window origin. The 52px title bar gap between
-#   AppleScript position and actual render position is accounted for here.
+# All coordinates use the AppleScript/cliclick logical coordinate system
+# (origin = screen top-left, Y increases downward, same space as cliclick).
 #
-# Why cliclick works:
-#   cliclick uses CGEventCreateMouseEvent with a CGEventSource (HIDSystemState),
-#   which Electron's input event handling accepts. Plain CGEvent without a
-#   proper source, or AppleScript synthetic clicks, are ignored by Electron.
+# Calibrated offsets from window origin (window normalized to AS pos 100,100):
+#   Sidebar Network icon:  offset (5, 135) → absolute (105, 235)
+#   VPN Connect button:    offset (430, 155) → absolute (530, 255)
+#
+# Why cliclick works when CGEvent doesn't:
+#   cliclick uses CGEventCreateMouseEvent with kCGEventSourceStateHIDSystemState,
+#   which Electron's renderer accepts. CGEvent without a CGEventSource, and
+#   AppleScript synthetic clicks, are ignored by Electron.
 # ---------------------------------------------------------------------------
 
-# Fixed window placement — move here before clicking so coords are stable.
-_NORM_POS = (200, 200)
-_NORM_SIZE = (900, 600)  # macOS will constrain slightly; use returned geometry
+# Fixed window placement — normalize before clicking so offsets are stable.
+_NORM_X = 100
+_NORM_Y = 100
+_NORM_W = 900
+_NORM_H = 560
 
-# Connect button offset from AppleScript-reported window position (200, 200).
-# Empirically calibrated by scanning a 20-point grid — (680, 340) triggered
-# jsonRequest-connectVpn in the Electron debug log.
-_BTN_WIN_X = 480   # screen_x - as_window_x
-_BTN_WIN_Y = 140   # screen_y - as_window_y
+# Offsets from AppleScript window origin (calibrated at window pos 100,100).
+_SIDEBAR_NET_DX = 5    # Network tab sidebar icon X offset
+_SIDEBAR_NET_DY = 135  # Network tab sidebar icon Y offset
+_BTN_DX = 430          # VPN Connect/Disconnect button X offset
+_BTN_DY = 155          # VPN Connect/Disconnect button Y offset
 
-_PREPARE_SCRIPT = """\
-tell application "System Events"
-    set visApps to every application process whose visible is true and name is not "CorpLink" and name is not "Finder"
-    repeat with a in visApps
-        try
-            set visible of a to false
-        end try
-    end repeat
-end tell
+_PREPARE_SCRIPT = f"""\
 tell application "CorpLink" to activate
 delay 0.3
 tell application "System Events"
@@ -206,36 +211,36 @@ tell application "System Events"
         if not (exists window 1) then
             return "NO_WINDOW"
         end if
-        set position of window 1 to {200, 200}
-        set size of window 1 to {900, 600}
+        set position of window 1 to {{{_NORM_X}, {_NORM_Y}}}
+        set size of window 1 to {{{_NORM_W}, {_NORM_H}}}
         delay 0.4
-        set {wx, wy} to position of window 1
-        set {ww, wh} to size of window 1
+        set {{wx, wy}} to position of window 1
+        set {{ww, wh}} to size of window 1
         return (wx as string) & "," & (wy as string) & "," & (ww as string) & "," & (wh as string)
     end tell
 end tell
 """
 
-_CLICLICK = "cliclick"
 
-
-def _cliclick_available() -> bool:
+def _cliclick(*args: str) -> None:
+    """Run a cliclick command, raising VPNConnectionError on failure."""
     try:
-        return subprocess.run(
-            ["which", _CLICLICK], capture_output=True, timeout=3
-        ).returncode == 0
-    except Exception:
-        return False
+        result = subprocess.run(
+            ["cliclick"] + list(args),
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            raise VPNConnectionError(f"cliclick failed: {result.stderr.strip()}")
+    except FileNotFoundError:
+        raise VPNConnectionError("cliclick not found. Install with: brew install cliclick")
+    except subprocess.TimeoutExpired:
+        raise VPNConnectionError("cliclick timed out")
 
 
 def _click_vpn_button() -> None:
-    """Hide other windows, normalize CorpLink window, then click VPN button via cliclick."""
-    if not _cliclick_available():
-        raise VPNConnectionError(
-            "cliclick not found. Install with: brew install cliclick"
-        )
+    """Normalize CorpLink window, navigate to VPN tab, click Connect button via cliclick."""
 
-    # Step 1: Normalize window position via AppleScript
+    # Step 1: Normalize window position/size via AppleScript
     try:
         result = subprocess.run(
             ["osascript", "-e", _PREPARE_SCRIPT],
@@ -255,29 +260,35 @@ def _click_vpn_button() -> None:
     except (ValueError, TypeError):
         raise VPNConnectionError(f"Unexpected window geometry response: {output!r}")
 
-    # Step 2: Compute button screen coordinates
-    btn_x = wx + _BTN_WIN_X
-    btn_y = wy + _BTN_WIN_Y
+    net_x = wx + _SIDEBAR_NET_DX
+    net_y = wy + _SIDEBAR_NET_DY
+    btn_x = wx + _BTN_DX
+    btn_y = wy + _BTN_DY
 
-    log.debug("Clicking VPN button at screen (%d, %d) [window at (%d,%d) size %dx%d]",
-              btn_x, btn_y, wx, wy, ww, wh)
+    log.debug(
+        "Window at AS(%d,%d) size %dx%d → sidebar(%d,%d) button(%d,%d)",
+        wx, wy, ww, wh, net_x, net_y, btn_x, btn_y,
+    )
 
-    # Step 3: Re-activate right before clicking
+    # Step 2: Navigate to the Network/VPN tab (ensures Connect button is visible)
     subprocess.run(
-        ["osascript", "-e", 'tell application "CorpLink" to activate'],
+        ["osascript", "-e", "tell application \"CorpLink\" to activate"],
+        capture_output=True, timeout=5,
+    )
+    time.sleep(0.4)
+    _cliclick(f"c:{net_x},{net_y}")
+    time.sleep(1.0)  # let tab render
+
+    # Step 3: Re-activate and click the Connect/Disconnect button
+    subprocess.run(
+        ["osascript", "-e", "tell application \"CorpLink\" to activate"],
         capture_output=True, timeout=5,
     )
     time.sleep(0.5)
 
     # Step 4: Hardware click via cliclick
-    try:
-        subprocess.run(
-            [_CLICLICK, f"c:{btn_x},{btn_y}"],
-            capture_output=True, timeout=5,
-        )
-    except subprocess.TimeoutExpired:
-        raise VPNConnectionError("cliclick timed out")
-
+    time.sleep(0.3)
+    _cliclick(f"c:{btn_x},{btn_y}")
     time.sleep(0.3)
 
 
