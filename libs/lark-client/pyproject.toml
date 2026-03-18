@@ -1,0 +1,15 @@
+[project]
+name = "lark-client"
+version = "0.1.0"
+description = "Feishu/Lark bot client — send messages and access Drive files"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lark_client"]

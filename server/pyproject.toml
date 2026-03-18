@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "grpcio>=1.78.0",
     "grpcio-tools>=1.78.0",
+    "lark-client",
 ]
 
 [project.optional-dependencies]
@@ -21,3 +22,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/server"]
+
+[tool.uv.sources]
+lark-client = { workspace = true, editable = true }

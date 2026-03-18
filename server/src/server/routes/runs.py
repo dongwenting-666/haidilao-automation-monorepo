@@ -112,6 +112,17 @@ async def execute_run(run: Run) -> None:
     finally:
         run.finished_at = datetime.now(timezone.utc)
         run.queue_position = None
+        # Send Lark notification (non-blocking, errors are swallowed in notify module)
+        await asyncio.to_thread(_notify_run, run)
+
+
+def _notify_run(run: Run) -> None:
+    """Send a Lark notification for a completed run (called in a thread)."""
+    try:
+        from server.notify import notify_run_complete
+        notify_run_complete(run)
+    except Exception:
+        pass  # notification failures must never affect the run result
 
 
 async def _queue_worker() -> None:

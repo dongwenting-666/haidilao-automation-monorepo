@@ -9,6 +9,7 @@ members = [
     "haidilao-automation-monorepo",
     "ksb1-accounting-check",
     "ksb1-accounting-check-gui",
+    "lark-client",
     "ollama-client",
     "qbi-crawler",
     "sap-gui",
@@ -400,6 +401,17 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sap-gui", editable = "libs/sap-gui" },
 ]
+
+[[package]]
+name = "lark-client"
+version = "0.1.0"
+source = { editable = "libs/lark-client" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "macholib"
@@ -794,6 +806,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "grpcio" },
     { name = "grpcio-tools" },
+    { name = "lark-client" },
     { name = "pydantic-settings" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -812,6 +825,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.78.0" },
     { name = "grpcio-tools", specifier = ">=1.78.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "lark-client", editable = "libs/lark-client" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
