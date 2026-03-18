@@ -26,7 +26,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
 
-from daily_store_operation_report.constants import COMPETITOR, STORES
+from daily_store_operation_report.constants import STORES
 from daily_store_operation_report.sheets.styles import (
     BOLD,
     BOLD_TITLE,
@@ -86,9 +86,11 @@ def build_competitor_sheet(wb: Workbook, data: ReportData) -> None:
     apply_border(ws, 2, 2, 1, 6)
 
     # ── Rows 3–10: Data ──────────────────────────────────────────────────────
+    competitor_map = data.competitor
+
     for row_idx, store in enumerate(STORES, start=3):
         ws.row_dimensions[row_idx].height = 20
-        competitor = COMPETITOR[store]
+        competitor = competitor_map.get(store, "—")
 
         # Pull turnover values from the pre-computed store metrics
         store_metrics = data.stores.get(store)

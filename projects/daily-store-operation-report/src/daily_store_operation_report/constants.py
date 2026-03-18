@@ -14,18 +14,7 @@ STORES: list[str] = [
 
 REGION_LABEL = "加拿大片区"
 
-# Hypothetical competitor (假想敌) mapping: store → its designated benchmark store.
-# Fixed values — do not change without business sign-off.
-COMPETITOR: dict[str, str] = {
-    "加拿大一店": "加拿大五店",
-    "加拿大二店": "加拿大一店",
-    "加拿大三店": "加拿大五店",
-    "加拿大四店": "加拿大一店",
-    "加拿大五店": "加拿大三店",
-    "加拿大六店": "加拿大二店",
-    "加拿大七店": "加拿大一店",
-    "加拿大八店": "加拿大七店",
-}
+
 
 # Region groupings for Sheet 2 (同比数据)
 WEST_STORES = ["加拿大一店", "加拿大二店", "加拿大七店"]

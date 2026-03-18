@@ -10,8 +10,7 @@
 # Set LARK_APP_ID and LARK_APP_SECRET in .env to enable Lark integration.
 
 [daily-report]
-# chat_id = "oc_xxxxxxxxxxxxxxxxxxxxxxxx"
-# user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
+chat_id = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
 
 [ksb1]
 # chat_id = "oc_xxxxxxxxxxxxxxxxxxxxxxxx"

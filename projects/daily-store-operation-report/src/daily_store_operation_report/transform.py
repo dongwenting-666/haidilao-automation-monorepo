@@ -164,6 +164,26 @@ class Targets(TypedDict):
     turnover_rate: dict[str, dict[str, float]]
 
 
+def load_competitor(path: Path) -> dict[str, str]:
+    """Load the competitor (假想敌) mapping from competitor.json.
+
+    Returns a dict mapping store name → competitor store name.
+    Returns an empty dict (and logs a warning) if the file is missing.
+    Raises ValueError on malformed JSON.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        logger.warning("Competitor file not found: %s — competitor sheet will be empty", path)
+        return {}
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in competitor file {path}: {e}") from e
+    if not isinstance(data, dict):
+        raise ValueError(f"competitor.json must be a flat dict, got {type(data)}")
+    return data
+
+
 def load_targets(path: Path, month_key: str) -> Targets:
     """Load targets for a given month from targets.json."""
     try:
@@ -257,6 +277,7 @@ class ReportData:
 
     dates: ReportDates
     stores: dict[str, StoreMetrics] = field(default_factory=dict)
+    competitor: dict[str, str] = field(default_factory=dict)  # store → competitor store
 
 
 # ── Metric computation ────────────────────────────────────────────────────────
@@ -419,12 +440,17 @@ def compute_metrics(
     dates: ReportDates,
     files: DownloadedFiles,
     targets_path: Path,
+    competitor_path: Path | None = None,
 ) -> ReportData:
     """Load all raw data and compute every metric for the report."""
     raw = _load_all_raw_data(dates, files)
     targets = load_targets(targets_path, dates.month_key)
 
-    data = ReportData(dates=dates)
+    if competitor_path is None:
+        competitor_path = targets_path.parent / "competitor.json"
+    competitor = load_competitor(competitor_path)
+
+    data = ReportData(dates=dates, competitor=competitor)
     for store in STORES:
         data.stores[store] = _build_store_metrics(store, raw, targets)
 

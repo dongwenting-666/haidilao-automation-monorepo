@@ -16,12 +16,14 @@ from dotenv import load_dotenv
 from daily_store_operation_report.dates import compute_dates
 from daily_store_operation_report.download import DownloadedFiles, download_all
 from daily_store_operation_report.report import generate_report
-from daily_store_operation_report.transform import compute_metrics
+from daily_store_operation_report.transform import compute_metrics, load_competitor, load_targets
 from vpn.connect import ensure_vpn
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TARGETS = Path(__file__).parent / "targets.json"
+_DEFAULT_COMPETITOR = Path(__file__).parent / "competitor.json"
+_ALERT_CHAT_ID = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
 
 
 @functools.cache
@@ -85,6 +87,62 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
     return files
 
 
+def _lark_alert(message: str) -> None:
+    """Send a Lark text alert to the config group. Best-effort — never raises."""
+    try:
+        app_id = os.environ.get("LARK_APP_ID", "")
+        app_secret = os.environ.get("LARK_APP_SECRET", "")
+        if not app_id or not app_secret:
+            logger.warning("LARK_APP_ID/SECRET not set — skipping Lark alert")
+            return
+        from lark_client import LarkClient
+        with LarkClient(app_id=app_id, app_secret=app_secret) as client:
+            client.send_text(message, chat_id=_ALERT_CHAT_ID)
+        logger.info("Lark alert sent to %s", _ALERT_CHAT_ID)
+    except Exception:
+        logger.exception("Failed to send Lark alert")
+
+
+def _check_config(month_key: str, targets_path: Path) -> None:
+    """Check that targets and competitor config are set for *month_key*.
+
+    If either is missing, send a Lark alert and raise SystemExit to abort the run.
+    """
+    import json as _json
+
+    missing: list[str] = []
+
+    # Check targets.json has an entry for the current month
+    try:
+        with open(targets_path, encoding="utf-8") as f:
+            targets_data = _json.load(f)
+        if month_key not in targets_data:
+            missing.append(f"targets.json 中缺少 {month_key} 的目标数据")
+    except FileNotFoundError:
+        missing.append(f"targets.json 文件不存在：{targets_path}")
+
+    # Check competitor.json exists and is non-empty
+    competitor_path = targets_path.parent / "competitor.json"
+    try:
+        with open(competitor_path, encoding="utf-8") as f:
+            comp_data = _json.load(f)
+        if not comp_data:
+            missing.append("competitor.json 为空，请配置假想敌映射")
+    except FileNotFoundError:
+        missing.append(f"competitor.json 文件不存在：{competitor_path}")
+
+    if missing:
+        items = "\n".join(f"• {m}" for m in missing)
+        message = (
+            f"⚠️ 日报生成失败 — 配置缺失 ({month_key})\n\n"
+            f"{items}\n\n"
+            "请更新配置后重新运行。"
+        )
+        logger.error("Config missing for %s:\n%s", month_key, items)
+        _lark_alert(message)
+        sys.exit(1)
+
+
 def main() -> None:
     load_dotenv()
 
@@ -130,6 +188,10 @@ def main() -> None:
 
     dates = compute_dates(report_date)
     logger.info("Report date: %s (%s)", report_date, dates.month_key)
+
+    # Check that targets and competitor config exist for the current month.
+    # If missing, send a Lark alert and abort.
+    _check_config(dates.month_key, args.targets)
 
     # Resolve output directory
     if args.output_dir:
