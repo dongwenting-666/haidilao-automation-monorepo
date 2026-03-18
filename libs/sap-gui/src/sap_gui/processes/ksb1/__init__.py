@@ -180,7 +180,7 @@ def execute(
     date_from: date | None = None,
     date_to: date | None = None,
     max_rows: int = 9999999,
-    export_timeout: float = 120.0,
+    export_timeout: float = 300.0,
 ) -> Path:
     """Run the KSB1 export on an already-authenticated session.
 
@@ -241,7 +241,7 @@ def run(
     date_to: date | None = None,
     language: str = "ZH",
     max_rows: int = 9999999,
-    export_timeout: float = 120.0,
+    export_timeout: float = 300.0,
 ) -> Path:
     """Run the full KSB1 export flow (login + export).
 
