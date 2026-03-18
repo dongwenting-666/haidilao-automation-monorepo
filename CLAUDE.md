@@ -8,6 +8,17 @@ Detailed documentation lives in `docs/`. See [docs/README.md](docs/README.md) fo
 
 Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python >= 3.13 and **hatchling** as the build backend.
 
+## Server
+
+The `server/` directory contains a FastAPI app that exposes automation results via HTTP.
+
+- **LaunchAgent**: `com.haidilao.server` (managed via `launchctl`)
+- **Port**: 8000
+- **Key endpoints**:
+  - `GET /api/reports/daily/{date}` — daily store operation report
+  - `GET /api/reports/ksb1/{year}/{month}` — KSB1 accounting check report
+  - `GET /api/runs/{run_id}` — automation run status/result
+
 ## Repository Layout
 
 - `libs/` — Shared libraries: `sap-gui`, `qbi-crawler`, `excel-utils`, `vpn`, `ollama-client`
@@ -25,7 +36,7 @@ Each package follows `src/` layout. Projects depend on libs via `[tool.uv.source
 | `sap-gui` | Cross-platform SAP GUI automation (COM on Windows, Scripting Console on macOS) | [docs/sap-gui.md](docs/sap-gui.md) |
 | `qbi-crawler` | Quick BI dashboard export via Playwright | [docs/qbi-crawler.md](docs/qbi-crawler.md) |
 | `excel-utils` | Shared openpyxl utilities (read, write, style) | [docs/excel-utils.md](docs/excel-utils.md) |
-| `vpn` | SealSuite VPN automation (cross-platform) | — |
+| `vpn` | SealSuite VPN automation (macOS: cliclick + log-based status) | [docs/vpn.md](docs/vpn.md) |
 
 ## SAP GUI Quick Reference
 
@@ -54,6 +65,12 @@ cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --n
 # Daily store operation report
 uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10
 uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10 --skip-download --data-dir output/qbi
+
+# VPN unit tests
+uv run --project libs/vpn pytest libs/vpn/tests/test_darwin.py -v
+
+# VPN e2e tests (requires live CorpLink + Accessibility permission)
+uv run --project libs/vpn pytest libs/vpn/tests/test_e2e.py -v -s
 
 # Tests
 python -m pytest projects/ksb1-accounting-check/tests/ -v

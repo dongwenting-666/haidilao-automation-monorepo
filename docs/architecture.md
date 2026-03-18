@@ -14,6 +14,9 @@ haidilao-automation-monorepo/
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
 │   ├── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
 │   └── daily-store-operation-report/ # Daily store operations Excel report
+├── server/                        # FastAPI HTTP server (LaunchAgent: com.haidilao.server, port 8000)
+│   ├── src/server/                  # App, routes, scheduler, commands
+│   └── tests/
 ├── docs/                          # Documentation
 ├── output/                        # Default export destination (gitignored)
 │   ├── ksb1/                        # KSB1 accounting check exports
@@ -63,6 +66,12 @@ libs/qbi-crawler
 
 libs/excel-utils
     └── depends on → openpyxl           (Excel read/write)
+
+server/
+    ├── depends on → libs/vpn                         (VPN connect before runs)
+    ├── depends on → projects/ksb1-accounting-check   (report generation)
+    ├── depends on → projects/daily-store-operation-report (report generation)
+    └── depends on → fastapi / uvicorn                (HTTP server)
 ```
 
 Dependencies between workspace packages are declared via `[tool.uv.sources]` in each project's `pyproject.toml` using `workspace = true`.
