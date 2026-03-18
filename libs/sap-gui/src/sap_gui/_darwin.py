@@ -843,10 +843,10 @@ end tell
             win_count = 0
 
         if win_count > 1:
-            # Multiple windows suggest an active logged-in session.
-            # Force-close and reopen the Scripting Console — previous
-            # failed runs may have left it in a stale/unresponsive state.
-            log.info("SAP has %d windows; force-cycling Scripting Console...", win_count)
+            # Multiple windows — but this may be the connection screen + Scripting
+            # Console with no actual SAP session (no application.children).
+            # Probe quickly to distinguish "logged-in session" from "no session yet".
+            log.info("SAP has %d windows; probing for active session...", win_count)
             try:
                 self._bridge._close_console_window()
             except Exception:
@@ -858,18 +858,38 @@ end tell
             except SAPConnectionError:
                 pass
 
-            if self._poll_for_session(timeout=30.0, interval=3.0):
+            has_session = self._poll_for_session(timeout=15.0, interval=3.0)
+
+            if has_session:
                 self._info = _SAPInfo(self._bridge)
                 return
 
-            # Still unreachable — give up without killing the live session.
+            # No usable session found (e.g. SAP is at the connection picker with
+            # the Scripting Console open but application.children is empty).
+            # Kill and relaunch so auto_launch can establish a fresh connection.
+            if not auto_launch:
+                self._bridge.close()
+                self._bridge = None
+                raise SAPConnectionError(
+                    "SAP GUI is running but no active session is accessible. "
+                    "Please connect to a SAP system."
+                )
+            log.info("No SAP session accessible — killing and relaunching...")
+            self._bridge.close()
+            self._kill_sapgui()
+            self._launch_sapgui(conn_str)
+            self._bridge = _ScriptingBridge()
+            time.sleep(5)
+
+            if self._poll_for_session(timeout=90.0, interval=3.0):
+                self._info = _SAPInfo(self._bridge)
+                return
+
             self._bridge.close()
             self._bridge = None
             raise SAPConnectionError(
-                "SAP GUI is running with an active session but the "
-                "Scripting Console bridge could not be established. "
-                "Please ensure the Scripting Console is open and "
-                "the SAP session is responsive."
+                "SAP GUI relaunched but session still not reachable. "
+                "Check SAP credentials and connection string."
             )
 
         # Only one window (connection picker) — safe to kill and relaunch.
