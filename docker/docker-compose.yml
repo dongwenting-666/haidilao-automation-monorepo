@@ -1,0 +1,23 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: haidilao-postgres
+    environment:
+      POSTGRES_USER: haidilao
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-haidilao_dev}
+      POSTGRES_DB: haidilao
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haidilao"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
