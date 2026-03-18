@@ -844,13 +844,17 @@ end tell
 
         if win_count > 1:
             # Multiple windows suggest an active logged-in session.
-            # Try once more to open the Scripting Console — there may be
-            # a blocking dialog that clears on its own, or the console
-            # was simply never opened after a fresh login.
-            log.info("SAP has %d windows; retrying Scripting Console open...", win_count)
+            # Force-close and reopen the Scripting Console — previous
+            # failed runs may have left it in a stale/unresponsive state.
+            log.info("SAP has %d windows; force-cycling Scripting Console...", win_count)
+            try:
+                self._bridge._close_console_window()
+            except Exception:
+                pass
+            self._bridge.reset()
+            time.sleep(1.0)
             try:
                 self._bridge._open_console()
-                self._bridge.reset()
             except SAPConnectionError:
                 pass
 
