@@ -194,10 +194,12 @@ _NORM_W = 900
 _NORM_H = 560
 
 # Offsets from AppleScript window origin (calibrated at window pos 100,100).
-_SIDEBAR_NET_DX = 5    # Network tab sidebar icon X offset
+# Verified empirically: click at (window_x+200, window_y+100) hits the Connect button.
+# The Network sidebar tab click is at (window_x+30, window_y+135).
+_SIDEBAR_NET_DX = 30   # Network tab sidebar icon X offset
 _SIDEBAR_NET_DY = 135  # Network tab sidebar icon Y offset
-_BTN_DX = 430          # VPN Connect/Disconnect button X offset
-_BTN_DY = 155          # VPN Connect/Disconnect button Y offset
+_BTN_DX = 200          # VPN Connect/Disconnect button X offset (content pane centre)
+_BTN_DY = 100          # VPN Connect/Disconnect button Y offset
 
 _PREPARE_SCRIPT = f"""\
 tell application "CorpLink" to activate
