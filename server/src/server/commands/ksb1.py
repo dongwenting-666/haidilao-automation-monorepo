@@ -19,6 +19,13 @@ class KSB1Command(BaseCommand):
             "--project", str(self.working_dir),
             "python", "-m", "ksb1_accounting_check.main",
         ]
+        # Positional month/year args (must come before flags)
+        if month := params.get("month"):
+            args.append(str(month))
+            if year := params.get("year"):
+                args.append(str(year))
+        if params.get("skip_download"):
+            args.append("--skip-download")
         if model := params.get("model"):
             args.extend(["--model", str(model)])
         return args
