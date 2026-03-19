@@ -12,6 +12,8 @@ dependencies = [
     "grpcio-tools>=1.78.0",
     "lark-client",
     "db-client",
+    "itsdangerous>=2.1",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
