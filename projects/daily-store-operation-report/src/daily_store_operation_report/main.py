@@ -16,13 +16,11 @@ from dotenv import load_dotenv
 from daily_store_operation_report.dates import compute_dates
 from daily_store_operation_report.download import DownloadedFiles, download_all
 from daily_store_operation_report.report import generate_report
-from daily_store_operation_report.transform import compute_metrics, load_competitor, load_targets
+from daily_store_operation_report.transform import compute_metrics
 from vpn.connect import ensure_vpn
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TARGETS = Path(__file__).parent / "targets.json"
-_DEFAULT_COMPETITOR = Path(__file__).parent / "competitor.json"
 _ALERT_CHAT_ID = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
 
 
@@ -103,58 +101,29 @@ def _lark_alert(message: str) -> None:
         logger.exception("Failed to send Lark alert")
 
 
-def _check_config(month_key: str, targets_path: Path) -> None:
-    """Check that targets and competitor config are set for *month_key*.
+def _check_config(month_key: str) -> None:
+    """Check that targets and competitor config are in the DB for *month_key*.
 
-    Checks DB first; falls back to JSON files. If either is missing,
-    sends a Lark alert and raises SystemExit to abort the run.
+    If either is missing, sends a Lark alert and raises SystemExit to abort.
     """
-    import json as _json
+    from server.db import has_competitors, has_targets, is_db_available
 
     missing: list[str] = []
 
-    # Try DB first, then JSON for targets
-    try:
-        from server.db import has_targets, is_db_available
-        if is_db_available():
-            if not has_targets(month_key):
-                missing.append(f"数据库中缺少 {month_key} 的目标数据（请在管理后台配置）")
-        else:
-            raise ImportError  # fall through to JSON check
-    except Exception:
-        # Fall back to JSON check
-        try:
-            with open(targets_path, encoding="utf-8") as f:
-                targets_data = _json.load(f)
-            if month_key not in targets_data:
-                missing.append(f"targets.json 中缺少 {month_key} 的目标数据")
-        except FileNotFoundError:
-            missing.append(f"targets.json 文件不存在：{targets_path}")
-
-    # Try DB first, then JSON for competitors
-    try:
-        from server.db import has_competitors, is_db_available
-        if is_db_available():
-            if not has_competitors():
-                missing.append("数据库中缺少假想敌映射（请在管理后台配置）")
-        else:
-            raise ImportError  # fall through to JSON check
-    except Exception:
-        competitor_path = targets_path.parent / "competitor.json"
-        try:
-            with open(competitor_path, encoding="utf-8") as f:
-                comp_data = _json.load(f)
-            if not comp_data:
-                missing.append("competitor.json 为空，请配置假想敌映射")
-        except FileNotFoundError:
-            missing.append(f"competitor.json 文件不存在：{competitor_path}")
+    if not is_db_available():
+        missing.append("数据库未连接 — 请检查 DATABASE_URL 环境变量")
+    else:
+        if not has_targets(month_key):
+            missing.append(f"数据库中缺少 {month_key} 的目标数据，请前往 /admin/targets 配置")
+        if not has_competitors():
+            missing.append("数据库中缺少假想敌配置，请前往 /admin/competitors 配置")
 
     if missing:
         items = "\n".join(f"• {m}" for m in missing)
         message = (
             f"⚠️ 日报生成失败 — 配置缺失 ({month_key})\n\n"
             f"{items}\n\n"
-            "请更新配置后重新运行。"
+            "请前往管理后台更新配置：https://haidilao.wanghongming.xyz/admin"
         )
         logger.error("Config missing for %s:\n%s", month_key, items)
         _lark_alert(message)
@@ -176,7 +145,6 @@ def main() -> None:
     parser.add_argument("--skip-download", action="store_true", help="Use pre-downloaded files")
     parser.add_argument("--data-dir", type=Path, help="Directory with QBI export files")
     parser.add_argument("--output-dir", type=Path, default=None, help="Output directory")
-    parser.add_argument("--targets", type=Path, default=_DEFAULT_TARGETS, help="Path to targets.json")
     parser.add_argument("--headless", action="store_true", default=True)
     parser.add_argument("--no-headless", dest="headless", action="store_false")
 
@@ -209,7 +177,7 @@ def main() -> None:
 
     # Check that targets and competitor config exist for the current month.
     # If missing, send a Lark alert and abort.
-    _check_config(dates.month_key, args.targets)
+    _check_config(dates.month_key)
 
     # Resolve output directory
     if args.output_dir:
@@ -258,7 +226,7 @@ def main() -> None:
         )
 
     logger.info("Computing metrics...")
-    report_data = compute_metrics(dates, files, targets_path=args.targets)
+    report_data = compute_metrics(dates, files)
 
     logger.info("Generating report...")
     output_path = generate_report(report_data, output_dir)

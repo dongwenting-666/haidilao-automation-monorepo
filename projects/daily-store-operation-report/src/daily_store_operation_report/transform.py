@@ -439,16 +439,16 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
 def compute_metrics(
     dates: ReportDates,
     files: DownloadedFiles,
-    targets_path: Path,
-    competitor_path: Path | None = None,
 ) -> ReportData:
-    """Load all raw data and compute every metric for the report."""
-    raw = _load_all_raw_data(dates, files)
-    targets = load_targets(targets_path, dates.month_key)
+    """Load all raw data and compute every metric for the report.
 
-    if competitor_path is None:
-        competitor_path = targets_path.parent / "competitor.json"
-    competitor = load_competitor(competitor_path)
+    Targets and competitor mapping are loaded from the database.
+    Use the admin UI at /admin to configure them.
+    """
+    from server.db import get_competitor_for_report, get_targets_for_report
+    raw = _load_all_raw_data(dates, files)
+    targets: Targets = get_targets_for_report(dates.month_key)
+    competitor = get_competitor_for_report()
 
     data = ReportData(dates=dates, competitor=competitor)
     for store in STORES:

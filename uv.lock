@@ -876,6 +876,7 @@ version = "0.1.0"
 source = { editable = "server" }
 dependencies = [
     { name = "apscheduler" },
+    { name = "db-client" },
     { name = "fastapi" },
     { name = "grpcio" },
     { name = "grpcio-tools" },
@@ -894,6 +895,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.10.0,<4" },
+    { name = "db-client", editable = "libs/db-client" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "grpcio", specifier = ">=1.78.0" },
     { name = "grpcio-tools", specifier = ">=1.78.0" },

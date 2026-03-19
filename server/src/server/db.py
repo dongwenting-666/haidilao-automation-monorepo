@@ -289,25 +289,25 @@ def maybe_run_migrations() -> None:
 # ── Report helpers ────────────────────────────────────────────────────────────
 
 
-def get_targets_for_report(month_key: str, json_path: Path) -> dict:
-    """Return targets for the report: DB if available, else fall back to JSON."""
-    if is_db_available() and has_targets(month_key):
-        logger.debug("get_targets_for_report: loading from DB for %s", month_key)
-        return get_targets(month_key)
+def get_targets_for_report(month_key: str) -> dict:
+    """Return targets for the report from DB.
 
-    # Fall back to JSON
-    from daily_store_operation_report.transform import load_targets
-    logger.debug("get_targets_for_report: falling back to JSON for %s", month_key)
-    return load_targets(json_path, month_key)
+    Returns empty dicts if DB is not available or month has no targets.
+    Callers should use has_targets() first if they need to distinguish
+    between 'DB unavailable' and 'no data'.
+    """
+    if not is_db_available():
+        logger.warning("get_targets_for_report: DB not available, returning empty targets")
+        return {"revenue": {}, "turnover_rate": {}}
+    return get_targets(month_key)
 
 
-def get_competitor_for_report(json_path: Path) -> dict[str, str]:
-    """Return competitor map: DB if available, else fall back to JSON."""
-    if is_db_available() and has_competitors():
-        logger.debug("get_competitor_for_report: loading from DB")
-        return get_competitors()
+def get_competitor_for_report() -> dict[str, str]:
+    """Return competitor map from DB.
 
-    # Fall back to JSON
-    from daily_store_operation_report.transform import load_competitor
-    logger.debug("get_competitor_for_report: falling back to JSON")
-    return load_competitor(json_path)
+    Returns empty dict if DB is not available or no competitors configured.
+    """
+    if not is_db_available():
+        logger.warning("get_competitor_for_report: DB not available, returning empty map")
+        return {}
+    return get_competitors()
