@@ -158,6 +158,23 @@ async def check_treasury_loans(check_date: date):
 # KSB1 accounting check report
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Store working-hour data collection (manual trigger)
+# ---------------------------------------------------------------------------
+
+@router.get("/store-hours/check/{check_date}")
+async def check_store_hours(check_date: date):
+    """Trigger store working-hour data collection for a specific date.
+
+    Example: ``GET /api/reports/store-hours/check/2026-03-16``
+    """
+    return _serve_or_queue(
+        None,
+        "store-hours-collect",
+        {"date": check_date.isoformat()},
+    )
+
+
 @router.get("/ksb1/{year}/{month}")
 async def get_ksb1_report(year: int, month: int):
     """Download the KSB1 accounting check report for *year*/*month*.
