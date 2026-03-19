@@ -3,7 +3,8 @@
 Daily at 6:30 AM Vancouver time:
 1. Check if a monthly spreadsheet exists for the current month in the target folder.
    If not, copy the template to create one.
-2. Fill in 翻台率 (column D) and 总桌数 (column E) from daily store report data.
+2. Check columns D (翻台率) and E (总桌数) for all dates from day 1 to T-2.
+   For each missing date, load from the generated daily report XLSX and fill in.
 3. Check which blue columns (F–K: staffing data) are still empty for past dates.
    Report unfilled stores to the Lark chat group.
 
@@ -25,6 +26,7 @@ import logging
 import os
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
@@ -41,55 +43,42 @@ STORES = [
     "加拿大五店", "加拿大六店", "加拿大七店", "加拿大八店",
 ]
 
-# Template sheet IDs per store (from the template spreadsheet)
-STORE_SHEET_IDS = {
-    "加拿大一店": "0IXaeb",
-    "加拿大二店": "1rrErh",
-    "加拿大三店": "2BEubp",
-    "加拿大四店": "3DgyiA",
-    "加拿大五店": "4aoGEI",
-    "加拿大六店": "5MYjYy",
-    "加拿大七店": "6OsmBn",
-    "加拿大八店": "58PdOV",
-}
-
 # Layout: Row 4-5 = headers, Row 6 = day 1 of month
-_HEADER_ROWS = 5    # rows before data starts
-_COL_DATE = "B"     # date column (Excel serial)
-_COL_WEEKDAY = "C"  # weekday column
-_COL_TURNOVER = "D" # 翻台率 — we fill this
-_COL_TABLES = "E"   # 总桌数 — we fill this
-# Blue columns (store clerks must fill): F, G, H, I, J, K
-_BLUE_COLS = ["F", "G", "H", "I", "J", "K"]
-
+_HEADER_ROWS = 5
 _LARK_BASE = "https://open.feishu.cn/open-apis"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _excel_serial(d: date) -> int:
-    """Convert a Python date to an Excel serial number."""
     return (d - date(1900, 1, 1)).days + 2
 
 
 def _weekday_cn(d: date) -> str:
-    """Return Chinese weekday name for a date."""
-    names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-    return names[d.weekday()]
+    return ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][d.weekday()]
 
 
 def _month_file_name(year: int, month: int) -> str:
     return f"加拿大门店用工数据跟踪-{year}{month:02d}"
 
 
-def _api(token: str, method: str, path: str, **kwargs) -> dict:
-    """Call a Lark API endpoint, raise on error."""
-    resp = getattr(httpx, method)(
-        f"{_LARK_BASE}{path}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
-        **kwargs,
-    )
+def _api_get(token: str, path: str, **kwargs) -> dict:
+    resp = httpx.get(f"{_LARK_BASE}{path}", headers={"Authorization": f"Bearer {token}"},
+                     timeout=30, **kwargs)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _api_put(token: str, path: str, **kwargs) -> dict:
+    resp = httpx.put(f"{_LARK_BASE}{path}", headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": "application/json"}, timeout=30, **kwargs)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _api_post(token: str, path: str, **kwargs) -> dict:
+    resp = httpx.post(f"{_LARK_BASE}{path}", headers={"Authorization": f"Bearer {token}"},
+                      timeout=30, **kwargs)
     resp.raise_for_status()
     data = resp.json()
     if data.get("code") != 0:
@@ -97,20 +86,103 @@ def _api(token: str, method: str, path: str, **kwargs) -> dict:
     return data
 
 
+def _output_dir() -> Path:
+    """Resolve the output directory for daily reports."""
+    # Walk up from this file to find the monorepo root
+    p = Path(__file__).resolve().parent
+    while p != p.parent:
+        if (p / "pyproject.toml").exists() and "[tool.uv.workspace]" in (p / "pyproject.toml").read_text():
+            return p / "output" / "daily-report"
+        p = p.parent
+    return Path.cwd() / "output" / "daily-report"
+
+
+# ── Load data from daily report XLSX ──────────────────────────────────────────
+
+def load_daily_data(report_date: date) -> tuple[dict[str, float], dict[str, float]]:
+    """Load turnover rate and table count from the generated daily report XLSX.
+
+    Returns (turnover_by_store, tables_by_store). Empty dicts if file not found.
+    """
+    import openpyxl
+
+    report_path = _output_dir() / f"database_report_{report_date.year}_{report_date.month:02d}_{report_date.day:02d}.xlsx"
+    if not report_path.exists():
+        logger.warning("Daily report not found: %s", report_path)
+        return {}, {}
+
+    wb = openpyxl.load_workbook(report_path, data_only=True)
+    ws = wb.worksheets[0]  # 对比上月表
+
+    # Row 2 columns C-J = store names in order
+    stores = [ws.cell(2, c).value for c in range(3, 11)]
+
+    # Row 3: 今日总桌数 (columns C-J, same order as stores)
+    tables: dict[str, float] = {}
+    for i, store in enumerate(stores):
+        val = ws.cell(3, 3 + i).value
+        if store and val is not None:
+            tables[store] = float(val)
+
+    # Row 25: 翻台率排名店铺 (store names, ranked)
+    # Row 26: 翻台率排名 (values, ranked)
+    ranked_stores = [ws.cell(25, c).value for c in range(3, 11)]
+    ranked_values = [ws.cell(26, c).value for c in range(3, 11)]
+    turnover: dict[str, float] = {}
+    for store, val in zip(ranked_stores, ranked_values):
+        if store and val is not None:
+            turnover[store] = float(val)
+
+    wb.close()
+    logger.info("Loaded daily data from %s: %d stores", report_path.name, len(turnover))
+    return turnover, tables
+
+
+def ensure_daily_report(report_date: date) -> bool:
+    """Ensure the daily report XLSX exists for the given date.
+
+    Calls the server API to generate it if missing. Returns True if available.
+    """
+    report_path = _output_dir() / f"database_report_{report_date.year}_{report_date.month:02d}_{report_date.day:02d}.xlsx"
+    if report_path.exists():
+        return True
+
+    logger.info("Daily report for %s not found — requesting generation...", report_date)
+    try:
+        resp = httpx.get(
+            f"http://localhost:8000/api/reports/daily/{report_date.isoformat()}",
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            # File was served directly (already existed)
+            return True
+        if resp.status_code == 202:
+            # Queued for generation — wait for it
+            run_id = resp.json().get("run_id")
+            logger.info("Report queued (run %s), waiting...", run_id)
+            for _ in range(60):  # wait up to 5 minutes
+                import time
+                time.sleep(5)
+                status_resp = httpx.get(f"http://localhost:8000/api/runs/{run_id}", timeout=10)
+                status = status_resp.json().get("status")
+                if status == "success":
+                    return True
+                if status == "failed":
+                    logger.error("Daily report generation failed for %s", report_date)
+                    return False
+            logger.error("Timed out waiting for daily report %s", report_date)
+            return False
+    except Exception as e:
+        logger.error("Failed to request daily report for %s: %s", report_date, e)
+    return False
+
+
 # ── Find or create monthly spreadsheet ────────────────────────────────────────
 
 def find_monthly_sheet(token: str, folder_token: str, year: int, month: int) -> str | None:
-    """Find an existing monthly spreadsheet in the folder. Returns token or None."""
     target_name = _month_file_name(year, month)
-    resp = httpx.get(
-        f"{_LARK_BASE}/drive/v1/files",
-        headers={"Authorization": f"Bearer {token}"},
-        params={"folder_token": folder_token, "page_size": 50},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    files = resp.json().get("data", {}).get("files", [])
-    for f in files:
+    data = _api_get(token, "/drive/v1/files", params={"folder_token": folder_token, "page_size": 50})
+    for f in data.get("data", {}).get("files", []):
         if target_name in f.get("name", ""):
             logger.info("Found existing sheet: %s (token=%s)", f["name"], f["token"])
             return f["token"]
@@ -119,272 +191,174 @@ def find_monthly_sheet(token: str, folder_token: str, year: int, month: int) -> 
 
 def create_monthly_sheet(token: str, template_token: str, folder_token: str,
                          year: int, month: int) -> str:
-    """Copy the template spreadsheet and set up dates for the target month.
-
-    Returns the new spreadsheet token.
-    """
     title = _month_file_name(year, month)
-    logger.info("Creating new monthly sheet: %s", title)
+    logger.info("Creating monthly sheet: %s", title)
 
-    # Copy the template
-    data = _api(token, "post", f"/drive/v1/files/{template_token}/copy",
-        json={
-            "name": title,
-            "type": "sheet",
-            "folder_token": folder_token,
-        },
-    )
+    data = _api_post(token, f"/drive/v1/files/{template_token}/copy",
+        json={"name": title, "type": "sheet", "folder_token": folder_token})
     new_token = data["data"]["file"]["token"]
-    logger.info("Copied template → %s (token=%s)", title, new_token)
+    logger.info("Created %s (token=%s)", title, new_token)
 
-    # Get sheet tab IDs from the new spreadsheet
-    sheets_data = _api(token, "get",
-        f"/sheets/v3/spreadsheets/{new_token}/sheets/query")
+    # Get sheet tab IDs
+    sheets_data = _api_get(token, f"/sheets/v3/spreadsheets/{new_token}/sheets/query")
     new_sheets = {s["title"]: s["sheet_id"] for s in sheets_data["data"]["sheets"]}
 
-    # Fill in dates for each store tab
+    # Fill dates for each store tab
     days_in_month = calendar.monthrange(year, month)[1]
     for store in STORES:
         sheet_id = new_sheets.get(store)
         if not sheet_id:
-            logger.warning("Sheet tab for %s not found in new spreadsheet", store)
             continue
-
-        # Build date + weekday values for rows 6 to 6+days_in_month-1
         values = []
         for day in range(1, days_in_month + 1):
             d = date(year, month, day)
             values.append([_excel_serial(d), _weekday_cn(d)])
-
-        # Write B6:C{last_row}
         last_row = _HEADER_ROWS + days_in_month
-        range_str = f"{sheet_id}!B{_HEADER_ROWS + 1}:C{last_row}"
-
-        httpx.put(
-            f"{_LARK_BASE}/sheets/v2/spreadsheets/{new_token}/values",
-            headers={"Authorization": f"Bearer {token}",
-                     "Content-Type": "application/json"},
-            json={"valueRange": {"range": range_str, "values": values}},
-            timeout=15,
-        )
+        _api_put(token, f"/sheets/v2/spreadsheets/{new_token}/values",
+            json={"valueRange": {"range": f"{sheet_id}!B{_HEADER_ROWS+1}:C{last_row}", "values": values}})
         logger.info("  %s: wrote %d date rows", store, days_in_month)
 
     return new_token
 
 
+def get_sheet_tabs(token: str, sheet_token: str) -> dict[str, str]:
+    """Get {store_name: sheet_id} mapping for a spreadsheet."""
+    data = _api_get(token, f"/sheets/v3/spreadsheets/{sheet_token}/sheets/query")
+    return {s["title"]: s["sheet_id"] for s in data["data"]["sheets"]}
+
+
 # ── Fill turnover and table data ──────────────────────────────────────────────
 
-def fill_turnover_data(token: str, sheet_token: str, report_date: date,
-                       turnover_data: dict[str, float],
-                       tables_data: dict[str, float]) -> None:
-    """Write 翻台率 and 总桌数 for a specific date across all store tabs."""
+def fill_missing_data(token: str, sheet_token: str, year: int, month: int,
+                      up_to_date: date) -> list[date]:
+    """Check and fill columns D/E for all dates from day 1 up to *up_to_date*.
 
-    # Get sheet tab IDs
-    sheets_data = _api(token, "get",
-        f"/sheets/v3/spreadsheets/{sheet_token}/sheets/query")
-    store_sheets = {s["title"]: s["sheet_id"] for s in sheets_data["data"]["sheets"]}
+    Returns the list of dates that were newly filled.
+    """
+    store_sheets = get_sheet_tabs(token, sheet_token)
+    filled_dates: list[date] = []
 
-    # Calculate which row this date maps to
-    row = _HEADER_ROWS + report_date.day  # day 1 = row 6, day 2 = row 7, etc.
+    # Read existing D/E data for the first store to find which days are already filled
+    first_store = STORES[0]
+    first_id = store_sheets.get(first_store)
+    if not first_id:
+        return []
 
-    for store in STORES:
-        sheet_id = store_sheets.get(store)
-        if not sheet_id:
+    last_day = up_to_date.day
+    range_str = f"{first_id}!D{_HEADER_ROWS+1}:E{_HEADER_ROWS+last_day}"
+    data = _api_get(token, f"/sheets/v2/spreadsheets/{sheet_token}/values/{range_str}")
+    existing_rows = data.get("data", {}).get("valueRange", {}).get("values", [])
+
+    for day in range(1, last_day + 1):
+        d = date(year, month, day)
+        row_idx = day - 1  # 0-based in the values list
+
+        # Check if this day already has data
+        if row_idx < len(existing_rows):
+            row = existing_rows[row_idx]
+            if row and len(row) >= 2 and row[0] is not None and row[0] != "":
+                continue  # already filled
+
+        # Need to fill this date — ensure daily report exists
+        if not ensure_daily_report(d):
+            logger.warning("Skipping %s — daily report unavailable", d)
             continue
 
-        turnover = turnover_data.get(store, 0)
-        tables = tables_data.get(store, 0)
+        turnover, tables = load_daily_data(d)
+        if not turnover:
+            logger.warning("Skipping %s — no data in report", d)
+            continue
 
-        # Write D{row}:E{row}
-        range_str = f"{sheet_id}!D{row}:E{row}"
-        httpx.put(
-            f"{_LARK_BASE}/sheets/v2/spreadsheets/{sheet_token}/values",
-            headers={"Authorization": f"Bearer {token}",
-                     "Content-Type": "application/json"},
-            json={"valueRange": {"range": range_str, "values": [[turnover, tables]]}},
-            timeout=15,
-        )
-        logger.debug("  %s row %d: 翻台率=%.2f 总桌数=%.0f", store, row, turnover, tables)
+        # Write to all store tabs
+        row_num = _HEADER_ROWS + day
+        for store in STORES:
+            sid = store_sheets.get(store)
+            if not sid:
+                continue
+            t = turnover.get(store, 0)
+            tb = tables.get(store, 0)
+            _api_put(token, f"/sheets/v2/spreadsheets/{sheet_token}/values",
+                json={"valueRange": {"range": f"{sid}!D{row_num}:E{row_num}", "values": [[t, tb]]}})
 
-    logger.info("Filled turnover/tables data for %s", report_date)
+        filled_dates.append(d)
+        logger.info("Filled %s: %d stores", d, len(turnover))
+
+    return filled_dates
 
 
 # ── Check unfilled blue columns ───────────────────────────────────────────────
 
-def check_unfilled(token: str, sheet_token: str, today: date) -> dict[str, list[date]]:
-    """Check which stores have unfilled blue columns for past dates.
-
-    Returns {store_name: [list of dates with missing data]}.
-    """
-    sheets_data = _api(token, "get",
-        f"/sheets/v3/spreadsheets/{sheet_token}/sheets/query")
-    store_sheets = {s["title"]: s["sheet_id"] for s in sheets_data["data"]["sheets"]}
-
+def check_unfilled(token: str, sheet_token: str, year: int, month: int,
+                   up_to_date: date) -> dict[str, list[date]]:
+    """Check which stores have unfilled blue columns (F-K) for past dates."""
+    store_sheets = get_sheet_tabs(token, sheet_token)
     unfilled: dict[str, list[date]] = {}
+    last_day = up_to_date.day
 
     for store in STORES:
-        sheet_id = store_sheets.get(store)
-        if not sheet_id:
+        sid = store_sheets.get(store)
+        if not sid:
             continue
 
-        # Read blue columns (F-K) for all days up to yesterday
-        yesterday = today - timedelta(days=1)
-        if yesterday.day < 1:
-            continue
+        range_str = f"{sid}!F{_HEADER_ROWS+1}:K{_HEADER_ROWS+last_day}"
+        data = _api_get(token, f"/sheets/v2/spreadsheets/{sheet_token}/values/{range_str}")
+        rows = data.get("data", {}).get("valueRange", {}).get("values", [])
 
-        first_row = _HEADER_ROWS + 1   # day 1
-        last_row = _HEADER_ROWS + yesterday.day  # up to yesterday
-
-        range_str = f"{sheet_id}!F{first_row}:K{last_row}"
-        resp = httpx.get(
-            f"{_LARK_BASE}/sheets/v2/spreadsheets/{sheet_token}/values/{range_str}",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        rows = resp.json().get("data", {}).get("valueRange", {}).get("values", [])
-
-        missing_dates = []
-        for day_offset, row in enumerate(rows):
-            d = date(today.year, today.month, day_offset + 1)
-            # Check if ALL blue cells are empty for this day
-            all_empty = all(
-                (cell is None or cell == "" or cell == 0)
-                for cell in (row if row else [])
-            )
+        missing = []
+        for day_offset in range(last_day):
+            row = rows[day_offset] if day_offset < len(rows) else []
+            all_empty = all((c is None or c == "" or c == 0) for c in (row if row else []))
             if all_empty:
-                missing_dates.append(d)
+                missing.append(date(year, month, day_offset + 1))
 
-        if missing_dates:
-            unfilled[store] = missing_dates
+        if missing:
+            unfilled[store] = missing
 
     return unfilled
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 
-def send_unfilled_alert(token: str, chat_id: str, unfilled: dict[str, list[date]],
-                        sheet_url: str) -> None:
-    """Send a Lark card listing stores with unfilled staffing data."""
-    lines = [f"**📋 以下门店有未填写的用工数据：**\n"]
+def send_data_summary(token: str, chat_id: str, year: int, month: int,
+                      filled_dates: list[date], turnover: dict[str, float],
+                      tables: dict[str, float]) -> None:
+    lines = [f"**✅ {year}年{month}月 用工表 翻台率/总桌数已自动填入**\n"]
+    lines.append(f"新填入日期：{', '.join(d.strftime('%m/%d') for d in filled_dates)}\n")
+    if turnover:
+        for store in STORES:
+            t = turnover.get(store, 0)
+            tb = tables.get(store, 0)
+            lines.append(f"▸ {store}：翻台率 {t:.2f}　总桌数 {tb:.0f}")
 
+    card = json.dumps({
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": "📊 用工表数据已更新"}, "template": "green"},
+        "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}],
+    })
+    httpx.post(f"{_LARK_BASE}/im/v1/messages", params={"receive_id_type": "chat_id"},
+        headers={"Authorization": f"Bearer {token}"},
+        json={"receive_id": chat_id, "msg_type": "interactive", "content": card}, timeout=15)
+
+
+def send_unfilled_alert(token: str, chat_id: str, year: int, month: int,
+                        unfilled: dict[str, list[date]], sheet_url: str) -> None:
+    lines = [f"**📋 {year}年{month}月 用工数据表 — 以下门店有未填写数据：**\n"]
     for store, dates in sorted(unfilled.items()):
         date_strs = ", ".join(d.strftime("%m/%d") for d in dates[:7])
         extra = f" 等{len(dates)}天" if len(dates) > 7 else ""
         lines.append(f"▸ **{store}**：{date_strs}{extra}")
-
     lines.append(f"\n[👉 点击填写]({sheet_url})")
     lines.append("\n> 请门店尽快完成蓝色列数据填写")
 
     card = json.dumps({
         "config": {"wide_screen_mode": True},
-        "header": {
-            "title": {"tag": "plain_text", "content": "⚠️ 用工数据未填写提醒"},
-            "template": "yellow",
-        },
-        "elements": [
-            {"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}
-        ],
+        "header": {"title": {"tag": "plain_text", "content": f"⚠️ {month}月用工数据未填写提醒"}, "template": "yellow"},
+        "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}],
     })
-
-    httpx.post(
-        f"{_LARK_BASE}/im/v1/messages",
-        params={"receive_id_type": "chat_id"},
+    httpx.post(f"{_LARK_BASE}/im/v1/messages", params={"receive_id_type": "chat_id"},
         headers={"Authorization": f"Bearer {token}"},
-        json={"receive_id": chat_id, "msg_type": "interactive", "content": card},
-        timeout=15,
-    )
+        json={"receive_id": chat_id, "msg_type": "interactive", "content": card}, timeout=15)
     logger.info("Sent unfilled alert for %d stores", len(unfilled))
-
-
-def send_data_filled_summary(token: str, chat_id: str, report_date: date,
-                             turnover: dict[str, float], tables: dict[str, float]) -> None:
-    """Send a summary of today's filled data."""
-    lines = [f"**✅ {report_date.strftime('%Y-%m-%d')} 翻台率/总桌数已自动填入**\n"]
-    for store in STORES:
-        t = turnover.get(store, 0)
-        tb = tables.get(store, 0)
-        lines.append(f"▸ {store}：翻台率 {t:.2f}　总桌数 {tb:.0f}")
-
-    card = json.dumps({
-        "config": {"wide_screen_mode": True},
-        "header": {
-            "title": {"tag": "plain_text", "content": "📊 用工表数据已更新"},
-            "template": "green",
-        },
-        "elements": [
-            {"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}
-        ],
-    })
-
-    httpx.post(
-        f"{_LARK_BASE}/im/v1/messages",
-        params={"receive_id_type": "chat_id"},
-        headers={"Authorization": f"Bearer {token}"},
-        json={"receive_id": chat_id, "msg_type": "interactive", "content": card},
-        timeout=15,
-    )
-
-
-# ── Load daily report data ────────────────────────────────────────────────────
-
-def load_daily_data(report_date: date) -> tuple[dict[str, float], dict[str, float]]:
-    """Load turnover rate and table count from the daily store report database.
-
-    Returns (turnover_by_store, tables_by_store).
-    """
-    try:
-        from server.db import get_db, is_db_available
-    except ImportError:
-        logger.warning("server.db not available — cannot load daily data from DB")
-        return {}, {}
-
-    if not is_db_available():
-        logger.warning("Database not available — returning empty data")
-        return {}, {}
-
-    db = get_db()
-    if db is None:
-        return {}, {}
-
-    # The daily report stores QBI data in output files, not DB.
-    # We need to read the QBI XLSX directly — but for now, we can pull
-    # from the same source the daily report uses.
-    # Simplest approach: read the latest generated report XLSX.
-    from pathlib import Path
-    report_path = Path(os.environ.get("OUTPUT_DIR",
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "output"))
-    ) / "daily-report" / f"database_report_{report_date.year}_{report_date.month:02d}_{report_date.day:02d}.xlsx"
-
-    if not report_path.exists():
-        logger.warning("Daily report not found at %s", report_path)
-        return {}, {}
-
-    import openpyxl
-    wb = openpyxl.load_workbook(report_path, data_only=True)
-    # The 对比上月表 (Sheet 1) has turnover rate and table count per store
-    ws = wb.worksheets[0]  # 对比上月表
-
-    turnover: dict[str, float] = {}
-    tables: dict[str, float] = {}
-
-    # Find the turnover rate and tables rows — scan for matching labels
-    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, values_only=False):
-        first_cell = row[0].value if row[0].value else ""
-        if "翻台率" in str(first_cell) and "考核" in str(first_cell):
-            # This row has turnover rates per store (columns match store order)
-            for i, store in enumerate(STORES):
-                cell = row[i + 1] if i + 1 < len(row) else None
-                if cell and cell.value is not None:
-                    turnover[store] = float(cell.value)
-        elif str(first_cell).strip() == "营业桌数(考核)":
-            for i, store in enumerate(STORES):
-                cell = row[i + 1] if i + 1 < len(row) else None
-                if cell and cell.value is not None:
-                    tables[store] = float(cell.value)
-
-    wb.close()
-    return turnover, tables
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -393,14 +367,10 @@ def main() -> None:
     import argparse
 
     load_dotenv()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="Store working-hour data collection")
-    parser.add_argument("--date", type=str, default=None,
-                        help="Check date YYYY-MM-DD (default: yesterday)")
+    parser.add_argument("--date", type=str, default=None, help="Target date YYYY-MM-DD (default: T-2)")
     args = parser.parse_args()
 
     app_id = os.environ.get("LARK_APP_ID", "")
@@ -420,35 +390,34 @@ def main() -> None:
     with LarkClient(app_id=app_id, app_secret=app_secret) as client:
         token = client._get_token()
 
-    # Report date = 2 days ago (data needs a day to settle in QBI before report runs)
-    report_date = date.fromisoformat(args.date) if args.date else date.today() - timedelta(days=2)
-    today = date.today()
-    year, month = report_date.year, report_date.month
+    # T-2: if today is 2026-03-18, target date = 2026-03-16
+    target_date = date.fromisoformat(args.date) if args.date else date.today() - timedelta(days=2)
+    year, month = target_date.year, target_date.month
 
-    logger.info("Processing date: %s (month: %04d-%02d)", report_date, year, month)
+    logger.info("Target date: %s (month: %04d-%02d)", target_date, year, month)
 
-    # Step 1: Find or create the monthly spreadsheet
+    # Step 1: Find or create monthly spreadsheet
     sheet_token = find_monthly_sheet(token, folder_token, year, month)
     if not sheet_token:
         sheet_token = create_monthly_sheet(token, template_token, folder_token, year, month)
 
     sheet_url = f"https://haidilao.feishu.cn/sheets/{sheet_token}"
 
-    # Step 2: Load and fill turnover/tables data
-    turnover, tables_count = load_daily_data(report_date)
-    if turnover and tables_count:
-        fill_turnover_data(token, sheet_token, report_date, turnover, tables_count)
-        send_data_filled_summary(token, chat_id, report_date, turnover, tables_count)
+    # Step 2: Fill missing D/E data for all dates from day 1 to target_date
+    filled_dates = fill_missing_data(token, sheet_token, year, month, target_date)
+    if filled_dates:
+        # Load the last filled date's data for the summary
+        turnover, tables = load_daily_data(filled_dates[-1])
+        send_data_summary(token, chat_id, year, month, filled_dates, turnover, tables)
     else:
-        logger.warning("No daily data available for %s — skipping fill", report_date)
+        logger.info("All dates already filled for D/E columns")
 
-    # Step 3: Check for unfilled blue columns and alert
-    if today.month == month:  # only check current month
-        unfilled = check_unfilled(token, sheet_token, today)
-        if unfilled:
-            send_unfilled_alert(token, chat_id, unfilled, sheet_url)
-        else:
-            logger.info("All stores have filled staffing data up to yesterday ✓")
+    # Step 3: Check unfilled blue columns and alert
+    unfilled = check_unfilled(token, sheet_token, year, month, target_date)
+    if unfilled:
+        send_unfilled_alert(token, chat_id, year, month, unfilled, sheet_url)
+    else:
+        logger.info("All stores have filled staffing data up to %s ✓", target_date)
 
     logger.info("Done")
 
