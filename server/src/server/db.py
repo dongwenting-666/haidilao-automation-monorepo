@@ -311,3 +311,58 @@ def get_competitor_for_report() -> dict[str, str]:
         logger.warning("get_competitor_for_report: DB not available, returning empty map")
         return {}
     return get_competitors()
+
+
+# ── Admin users ───────────────────────────────────────────────────────────────
+
+
+def upsert_admin_user(open_id: str, name: str, avatar_url: str = "") -> None:
+    """Record a login attempt. Creates the user if new, updates last_seen if existing."""
+    db = get_db()
+    if db is None:
+        return
+    db.execute(
+        """
+        INSERT INTO admin_users (open_id, name, avatar_url, first_seen_at, last_seen_at)
+        VALUES (%s, %s, %s, NOW(), NOW())
+        ON CONFLICT (open_id) DO UPDATE SET
+            name         = EXCLUDED.name,
+            avatar_url   = EXCLUDED.avatar_url,
+            last_seen_at = NOW()
+        """,
+        (open_id, name, avatar_url),
+    )
+
+
+def is_db_whitelisted(open_id: str) -> bool:
+    """Return True if the user is whitelisted in the DB."""
+    db = get_db()
+    if db is None:
+        return False
+    row = db.fetchone(
+        "SELECT whitelisted FROM admin_users WHERE open_id = %s",
+        (open_id,),
+    )
+    return bool(row and row["whitelisted"])
+
+
+def set_admin_whitelist(open_id: str, whitelisted: bool) -> None:
+    """Grant or revoke whitelist status for a user."""
+    db = get_db()
+    if db is None:
+        raise RuntimeError("DB not available")
+    db.execute(
+        "UPDATE admin_users SET whitelisted = %s WHERE open_id = %s",
+        (whitelisted, open_id),
+    )
+
+
+def get_admin_users() -> list[dict]:
+    """Return all admin_users rows, ordered by last_seen desc."""
+    db = get_db()
+    if db is None:
+        return []
+    return db.fetchall(
+        "SELECT open_id, name, avatar_url, whitelisted, first_seen_at, last_seen_at "
+        "FROM admin_users ORDER BY last_seen_at DESC"
+    )

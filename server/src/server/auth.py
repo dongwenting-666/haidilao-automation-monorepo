@@ -75,7 +75,21 @@ def clear_session_cookie(response) -> None:
 
 
 def is_whitelisted(open_id: str) -> bool:
-    """Return True if open_id is in the ADMIN_WHITELIST env var."""
+    """Return True if open_id is allowed admin access.
+
+    Checks (in order):
+    1. DB admin_users.whitelisted column (if DB is available)
+    2. ADMIN_WHITELIST env var (bootstrap / fallback)
+    """
+    # DB check first
+    try:
+        from server.db import is_db_whitelisted
+        if is_db_whitelisted(open_id):
+            return True
+    except Exception:
+        pass
+
+    # Env var fallback (used on first login before DB record exists)
     whitelist_raw = os.environ.get("ADMIN_WHITELIST", "")
     if not whitelist_raw.strip():
         return False

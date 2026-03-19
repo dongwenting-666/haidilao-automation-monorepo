@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
+from server.db import upsert_admin_user
 from server.auth import (
     LoginRequired,
     clear_session_cookie,
@@ -232,6 +233,13 @@ async def oauth_callback(request: Request, code: str | None = None, state: str |
 
     open_id = user_info["open_id"]
     name = user_info["name"]
+    avatar_url = user_info.get("avatar_url", "")
+
+    # Record this user in DB (creates row if new, updates last_seen if existing)
+    try:
+        upsert_admin_user(open_id, name, avatar_url)
+    except Exception:
+        logger.exception("Failed to record admin user in DB")
 
     if not is_whitelisted(open_id):
         logger.warning("Blocked non-whitelisted user: open_id=%s name=%s", open_id, name)
@@ -611,3 +619,105 @@ async def save_competitors(body: SaveCompetitorsBody, session: dict = Depends(re
         return {"ok": True}
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+# ── GET /admin/users ──────────────────────────────────────────────────────────
+
+
+@router.get("/users")
+async def users_page(request: Request, session: dict = Depends(require_auth)):
+    from server.db import get_admin_users
+    users = get_admin_users()
+
+    rows = ""
+    for u in users:
+        wl = u["whitelisted"]
+        badge = '<span style="color:#27ae60;font-weight:bold">✓ 已授权</span>' if wl \
+            else '<span style="color:#c0392b">✗ 未授权</span>'
+        btn_label = "撤销" if wl else "授权"
+        btn_color = "#c0392b" if wl else "#27ae60"
+        last = str(u["last_seen_at"])[:16].replace("T", " ") if u["last_seen_at"] else "—"
+        first = str(u["first_seen_at"])[:16].replace("T", " ") if u["first_seen_at"] else "—"
+        avatar = f'<img src="{u["avatar_url"]}" style="width:28px;height:28px;border-radius:50%;vertical-align:middle;margin-right:6px">' if u["avatar_url"] else "👤"
+        rows += f"""<tr>
+            <td>{avatar}{u["name"]}</td>
+            <td style="font-family:monospace;font-size:0.85em">{u["open_id"]}</td>
+            <td>{badge}</td>
+            <td>{first}</td>
+            <td>{last}</td>
+            <td><button onclick="toggleUser('{u["open_id"]}',{str(not wl).lower()})"
+                style="background:{btn_color};color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer">{btn_label}</button></td>
+        </tr>"""
+
+    if not rows:
+        rows = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px">暂无登录记录</td></tr>'
+
+    name = session.get("name", "")
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>用户管理 — Haidilao Admin</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;background:#f5f7fa;color:#333}}
+.nav{{background:#1a1a2e;padding:0 24px;display:flex;align-items:center;gap:24px;height:52px}}
+.nav a{{color:#fff;text-decoration:none;font-size:0.9rem;opacity:.75;padding:8px 0}}
+.nav a:hover,.nav a.active{{opacity:1}}
+.nav .logo{{color:#fff;font-weight:700;font-size:1.1rem;margin-right:16px}}
+.nav .user{{margin-left:auto;color:#fff;font-size:0.85rem;opacity:.75}}
+.nav .user a{{color:#fff;opacity:.75;margin-left:12px}}
+.container{{max-width:960px;margin:32px auto;padding:0 16px}}
+h1{{font-size:1.4rem;margin-bottom:20px;color:#1a1a2e}}
+table{{width:100%;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border-collapse:collapse}}
+th{{background:#f0f4ff;padding:12px 16px;text-align:left;font-size:0.82rem;color:#555;font-weight:600;border-bottom:1px solid #e8ecf4}}
+td{{padding:11px 16px;border-bottom:1px solid #f0f0f0;font-size:0.88rem;vertical-align:middle}}
+tr:last-child td{{border-bottom:none}}
+#toast{{position:fixed;bottom:24px;right:24px;background:#333;color:#fff;padding:12px 20px;border-radius:8px;display:none;font-size:0.9rem}}
+</style></head>
+<body>
+<nav class="nav">
+  <span class="logo">🔧 管理后台</span>
+  <a href="/admin/targets">目标数据</a>
+  <a href="/admin/competitors">假想敌</a>
+  <a href="/admin/users" class="active">用户管理</a>
+  <span class="user">{name} · <a href="/admin/logout">退出</a></span>
+</nav>
+<div class="container">
+  <h1>用户管理</h1>
+  <table>
+    <thead><tr>
+      <th>用户</th><th>open_id</th><th>状态</th><th>首次登录</th><th>最近登录</th><th>操作</th>
+    </tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+</div>
+<div id="toast"></div>
+<script>
+async function toggleUser(openId, grant) {{
+  const r = await fetch('/admin/users/whitelist', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{open_id: openId, whitelisted: grant}})
+  }});
+  const d = await r.json();
+  const toast = document.getElementById('toast');
+  toast.textContent = d.ok ? (grant ? '✓ 已授权' : '✓ 已撤销') : '操作失败: ' + (d.error || '');
+  toast.style.display = 'block';
+  setTimeout(() => {{ toast.style.display = 'none'; location.reload(); }}, 1200);
+}}
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
+@router.post("/users/whitelist")
+async def set_whitelist(request: Request, session: dict = Depends(require_auth)):
+    from server.db import set_admin_whitelist
+    body = await request.json()
+    open_id = body.get("open_id", "")
+    whitelisted = bool(body.get("whitelisted", False))
+    if not open_id:
+        return {"ok": False, "error": "open_id required"}
+    try:
+        set_admin_whitelist(open_id, whitelisted)
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
