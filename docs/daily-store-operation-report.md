@@ -97,6 +97,21 @@ Gold theme with region grouping (西部 3 stores, 东部 5 stores). Four compari
 
 Blue theme. Same layout as Sheet 1 but comparing against previous year instead of previous month. Shares implementation with Sheet 1 via `comparison_sheet.py`.
 
+### Sheet 5: 假想敌翻台率对比 (Competitor Turnover Comparison)
+
+Green/teal theme. Compares each store's turnover rate against its designated competitor store.
+
+| Column | Content |
+|--------|---------|
+| 门店 | Store name |
+| 假想敌 | Competitor store name |
+| {prev_month}月份翻台率差异 | Full previous-month turnover delta (store − competitor) |
+| {cur_month}月截止目前门店翻台率 | Current month MTD turnover rate (store) |
+| {cur_month}月截止目前假想敌翻台率 | Current month MTD turnover rate (competitor) |
+| 差异对比 | MTD delta (store − competitor) |
+
+Month labels are dynamic (e.g. "2月" / "3月"). Competitor store assignments are configured in the DB via `/admin/competitors`.
+
 ### Sheet 4: 分时段-上报 (Time-Period Breakdown)
 
 Per-store colors with 4 time slots per store. Shows turnover rates and table counts broken down by:
@@ -135,29 +150,38 @@ class ComparisonConfig:
 - Region turnover average: excludes stores with `mtd_tables == 0` to avoid dilution
 - Time-slot daily turnover = sum of per-slot rates (each slot is independent)
 
-### targets.json Schema
+### Targets & Competitor Config — DB-Backed
+
+Targets (revenue + turnover rate) and competitor store mappings are stored in PostgreSQL, managed via the admin UI:
+
+- **Targets**: `/admin/targets` — set monthly revenue (万 CAD) and turnover rate per time slot per store
+- **Competitors**: `/admin/competitors` — set competitor store name for each of the 8 stores
+
+The `--targets` CLI flag is no longer needed. The report reads from the DB via `server.db.get_targets_for_report()`.
+
+**Missing config guard (`_check_config`):** Before downloading data, the report checks that both targets and competitor config exist for the requested month. If either is missing, it:
+1. Sends a Lark alert to the configured notification target
+2. Prints the admin URL: https://haidilao.wanghongming.xyz/admin
+3. Exits with a non-zero code (no QBI download attempted)
+
+This guard requires `DATABASE_URL` to be set and the server package to be importable. When running standalone (without server), ensure the monorepo is installed via `uv sync`.
+
+**Legacy `targets.json` schema** (for reference — no longer used in production):
 
 ```json
 {
   "2026-02": {
-    "revenue": {
-      "加拿大一店": 50.0,
-      "加拿大二店": 45.0
-    },
+    "revenue": { "加拿大一店": 50.0 },
     "turnover_rate": {
       "加拿大一店": {
-        "08:00-13:59": 1.12,
-        "14:00-16:59": 0.71,
-        "17:00-21:59": 1.98,
-        "22:00-(次)07:59": 0.80,
+        "08:00-13:59": 1.12, "14:00-16:59": 0.71,
+        "17:00-21:59": 1.98, "22:00-(次)07:59": 0.80,
         "total": 4.61
       }
     }
   }
 }
 ```
-
-Missing month or store defaults to 0. Structure is validated at load time.
 
 ## Dependencies
 

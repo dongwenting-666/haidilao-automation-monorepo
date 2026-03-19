@@ -12,4 +12,7 @@ Architecture and reference documentation for the Haidilao Automation Monorepo.
 - [KSB1 GUI & EXE](./ksb1-accounting-check-gui.md) — Desktop GUI application and PyInstaller packaging
 - [Daily Store Operation Report](./daily-store-operation-report.md) — QBI data pipeline, 4-sheet Excel report generation
 - [VPN Library](./vpn.md) — SealSuite/CorpLink VPN automation (macOS, cliclick, log-based status)
+- [Lark Client](./lark-client.md) — Feishu/Lark bot client (messaging, Drive, OAuth)
+- [DB Client](./db-client.md) — PostgreSQL client (psycopg3 pool, migrations)
+- [Server](./server.md) — FastAPI server, admin UI, Lark OAuth, run queue, scheduler
 - [Edit History](./edit-history/) — Session-level change logs

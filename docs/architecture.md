@@ -9,11 +9,14 @@ haidilao-automation-monorepo/
 │   ├── qbi-crawler/                 # Quick BI web crawler (Playwright)
 │   ├── excel-utils/                 # Shared Excel generation utilities
 │   ├── vpn/                          # SealSuite VPN automation (cross-platform)
-│   └── ollama-client/               # LLM client wrapper
+│   ├── ollama-client/               # LLM client wrapper
+│   ├── lark-client/                 # Feishu/Lark bot client (messaging, Drive)
+│   └── db-client/                   # PostgreSQL client (psycopg3 pool, migrations)
 ├── projects/                      # Automation projects
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
 │   ├── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
 │   └── daily-store-operation-report/ # Daily store operations Excel report
+├── docker/                        # Docker Compose for PostgreSQL (port 5432)
 ├── server/                        # FastAPI HTTP server (LaunchAgent: com.haidilao.server, port 8000)
 │   ├── src/server/                  # App, routes, scheduler, commands
 │   └── tests/
@@ -39,6 +42,9 @@ haidilao-automation-monorepo/
 | LLM Enhancement | Ollama (local, optional) |
 | Desktop GUI | tkinter |
 | EXE Packaging | PyInstaller (single-file) |
+| Database | PostgreSQL 16 (Docker or external) |
+| Messaging | Feishu/Lark bot API |
+| Auth | Lark OAuth + itsdangerous cookie sessions |
 
 ## Package Relationships
 
@@ -69,9 +75,17 @@ libs/excel-utils
 
 server/
     ├── depends on → libs/vpn                         (VPN connect before runs)
+    ├── depends on → libs/lark-client                 (run completion notifications)
+    ├── depends on → libs/db-client                   (targets, competitors, admin users)
     ├── depends on → projects/ksb1-accounting-check   (report generation)
     ├── depends on → projects/daily-store-operation-report (report generation)
     └── depends on → fastapi / uvicorn                (HTTP server)
+
+libs/lark-client
+    └── depends on → httpx                            (HTTP client)
+
+libs/db-client
+    └── depends on → psycopg[binary], psycopg-pool    (PostgreSQL driver)
 ```
 
 Dependencies between workspace packages are declared via `[tool.uv.sources]` in each project's `pyproject.toml` using `workspace = true`.
@@ -169,25 +183,32 @@ Quick BI (qbi.superhi-tech.com) ──Playwright──> qbi-crawler library
     DownloadedFiles (5 XLSX paths)
             │
             ▼
+    PostgreSQL (store_targets, store_competitors)
+            │
+            ▼ (via server.db)
     transform.py
     │
     ├── _load_all_raw_data() → RawData (26 typed fields)
     ├── _build_store_metrics() × 8 stores → StoreMetrics
-    └── load_targets() from targets.json
+    └── load_targets() from DB  [was: targets.json]
             │
             ▼
     ReportData (dates + 8 StoreMetrics)
             │
             ▼
-    4 sheet builders:
+    5 sheet builders:
     ├── comparison_sheet (shared) → Sheet 1: MoM (gold)
     ├── comparison_sheet (shared) → Sheet 3: YoY (blue)
     ├── yoy_summary → Sheet 2: region summary (gold)
-    └── time_period → Sheet 4: per-store time slots
+    ├── time_period → Sheet 4: per-store time slots
+    └── competitor → Sheet 5: 假想敌翻台率对比 (competitor data from DB)
             │
             ▼
     _format_numbers() → round floats, apply "0.00"
             │
             ▼
     database_report_YYYY_MM_DD.xlsx (output/daily-report/)
+            │
+            ▼
+    server.notify.notify_run_complete() → Lark card message (if configured)
 ```
