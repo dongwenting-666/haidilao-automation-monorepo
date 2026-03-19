@@ -112,6 +112,22 @@ def is_whitelisted(open_id: str) -> bool:
     return open_id in allowed
 
 
+def is_super_admin(open_id: str) -> bool:
+    """Return True if open_id is in the SUPER_ADMIN_OPEN_IDS env var.
+
+    Falls back to ADMIN_WHITELIST if SUPER_ADMIN_OPEN_IDS is not set
+    (single-admin setups where the only admin is super admin).
+    """
+    raw = os.environ.get("SUPER_ADMIN_OPEN_IDS", "").strip()
+    if not raw:
+        # fallback: if only one admin exists, they are super admin
+        raw = os.environ.get("ADMIN_WHITELIST", "").strip()
+    if not raw:
+        return False
+    allowed = {oid.strip() for oid in raw.split(",") if oid.strip()}
+    return open_id in allowed
+
+
 # ── FastAPI dependency ────────────────────────────────────────────────────────
 
 

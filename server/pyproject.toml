@@ -12,6 +12,8 @@ dependencies = [
     "db-client",
     "itsdangerous>=2.1",
     "httpx>=0.27",
+    "minio>=7.2.20",
+    "python-multipart>=0.0.22",
 ]
 
 [project.optional-dependencies]
