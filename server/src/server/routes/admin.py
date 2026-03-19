@@ -106,7 +106,7 @@ _BASE_STYLE = """
 
 _HEADER_TMPL = """
 <header>
-  <h1>🍲 海底捞管理后台</h1>
+  <h1>🍲 海底捞兔子Agent加拿大片区管理后台</h1>
   <nav>
     <a href="/admin/targets" class="{t_active}">月度目标</a>
     <a href="/admin/competitors" class="{c_active}">假想敌配置</a>
@@ -156,7 +156,7 @@ async def login_page(request: Request, next: str = "/admin/targets"):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>登录 — 海底捞管理后台</title>
+<title>登录 — 海底捞兔子Agent加拿大片区管理后台</title>
 <style>
   * {{ box-sizing: border-box; }}
   body {{
@@ -187,7 +187,7 @@ async def login_page(request: Request, next: str = "/admin/targets"):
 <body>
 <div class="login-card">
   <div class="logo">🍲</div>
-  <h1>海底捞管理后台</h1>
+  <h1>海底捞兔子Agent加拿大片区管理后台</h1>
   <p class="subtitle">请使用飞书账号登录</p>
   <a href="{auth_url}" class="btn-lark">
     <svg class="lark-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
