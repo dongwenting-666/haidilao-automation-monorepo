@@ -1,5 +1,39 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 5) — Scheduled Maintenance
+
+### Summary
+Light pass. Two recent commits (session expiry bug fixes in `tools.py`) had a minor doc discrepancy. Fixed and pushed.
+
+### Fixes Applied
+
+#### 1. Fixed `samesite=strict` → `samesite=lax` in `docs/server.md` ✅
+- Auth flow section said `samesite=strict` but `auth.py` has used `samesite="lax"` since implementation
+- Corrected to `samesite=lax`
+
+#### 2. Documented JSON 401 behavior for expired sessions ✅
+- Commit `e86217b` added `LoginRequired` exception handler in `app.py` that returns JSON 401 for AJAX/POST/API paths instead of an HTML redirect
+- Commit `aebafd0` refined the JS client to redirect to `/admin/logout` on 401
+- Neither change was reflected in `docs/server.md` auth flow section
+- Added step 7 to the auth flow describing this behavior
+- **Commit:** `e471cf1`
+
+### No Other Issues Found
+
+- **Structure vs README/CLAUDE.md:** Fully aligned.
+- **Python syntax:** All files parse OK (`ast` check). Zero real unused imports.
+- **`from __future__ import annotations`:** Simple AST scanner flags this as "unused"; it's a module directive false positive — not an issue.
+- **git status:** Working tree clean. All 3 ahead commits now pushed.
+- **output/daily-report/:** Still missing Mar 18–Mar 19. Ongoing issue.
+- **output/ksb1/:** 2026-02 and 2026-03 directories present — looks healthy.
+
+### Ongoing Recommendations
+
+1. **Missing daily reports (Mar 18–Mar 19):** Check `/api/runs` at https://haidilao.wanghongming.xyz/api/runs for the failed run details. May need manual trigger.
+2. **`github_webhook.py`:** Still harmless — keep or remove in a future cleanup pass.
+
+---
+
 ## 2026-03-19 (Run 4) — Scheduled Maintenance
 
 ### Summary
