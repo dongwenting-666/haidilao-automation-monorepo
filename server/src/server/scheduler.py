@@ -21,22 +21,34 @@ def _parse_cron(expr: str) -> dict[str, str]:
 
 
 async def _run_daily_report() -> None:
-    """Trigger daily-report command via the run system.
-
-    Async so APScheduler's AsyncIOExecutor runs it directly in the event
-    loop (sync jobs get dispatched to a thread pool instead).
-    """
+    """Trigger daily-report command via the run system."""
     from server.routes.runs import create_run
     create_run("daily-report", {})
 
 
+async def _run_treasury_loan_watch() -> None:
+    """Trigger treasury-loan-watch command via the run system."""
+    from server.routes.runs import create_run
+    create_run("treasury-loan-watch", {})
+
+
 def setup_default_jobs() -> None:
     """Register the default cron jobs."""
+    # Daily store operation report
     trigger = CronTrigger(**_parse_cron(settings.daily_report_cron))
     scheduler.add_job(
         _run_daily_report,
         trigger=trigger,
         id="daily-report-cron",
         name="Daily store operation report",
+        replace_existing=True,
+    )
+
+    # Treasury loan maturity watch — 6 AM Vancouver time (America/Vancouver = UTC-7/8)
+    scheduler.add_job(
+        _run_treasury_loan_watch,
+        CronTrigger(hour=6, minute=0, timezone="America/Vancouver"),
+        id="treasury-loan-watch-cron",
+        name="Treasury loan maturity watch",
         replace_existing=True,
     )
