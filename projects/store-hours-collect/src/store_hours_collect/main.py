@@ -139,17 +139,41 @@ def load_daily_data(report_date: date) -> tuple[dict[str, float], dict[str, floa
 
 
 def ensure_daily_report(report_date: date) -> bool:
-    """Check if the daily report XLSX exists for the given date.
+    """Ensure the daily report XLSX exists for the given date.
 
-    Returns True if the file is available on disk. Does NOT trigger generation
-    — the daily report cron handles that separately. This avoids deadlocking
-    the serial execution queue.
+    If not cached on disk, generates it directly via subprocess (NOT via the
+    server queue, to avoid deadlocking the serial execution queue).
+    Returns True if the file is available after generation.
     """
+    import subprocess
+
     report_path = _output_dir() / f"database_report_{report_date.year}_{report_date.month:02d}_{report_date.day:02d}.xlsx"
     if report_path.exists():
         return True
-    logger.debug("Daily report not available for %s (not yet generated)", report_date)
-    return False
+
+    logger.info("Generating daily report for %s...", report_date)
+    repo_root = _output_dir().parent.parent
+    try:
+        result = subprocess.run(
+            [
+                "uv", "run",
+                "--project", str(repo_root / "projects" / "daily-store-operation-report"),
+                "python", "-m", "daily_store_operation_report.main",
+                report_date.isoformat(),
+            ],
+            capture_output=True, text=True, timeout=300, cwd=str(repo_root),
+        )
+        if result.returncode != 0:
+            logger.error("Daily report generation failed for %s:\n%s", report_date, result.stdout[-500:])
+            return False
+        logger.info("Daily report generated for %s", report_date)
+        return report_path.exists()
+    except subprocess.TimeoutExpired:
+        logger.error("Daily report generation timed out for %s", report_date)
+        return False
+    except Exception as e:
+        logger.error("Failed to generate daily report for %s: %s", report_date, e)
+        return False
 
 
 # ── Find or create monthly spreadsheet ────────────────────────────────────────
