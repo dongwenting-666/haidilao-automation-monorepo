@@ -59,7 +59,6 @@ def build_competitor_sheet(wb: Workbook, data: ReportData) -> None:
         ws.merge_cells("A1:F1")
         cell = ws["A1"]
         cell.value = "假想敌配置未设置 — 请前往管理后台配置：/admin/competitors"
-        from openpyxl.styles import Alignment, Font
         cell.font = Font(italic=True, color="FF888888", size=11)
         cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 30
