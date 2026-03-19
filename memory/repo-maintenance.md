@@ -1,5 +1,37 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 4) — Scheduled Maintenance
+
+### Summary
+Short pass after runs 1–3 earlier today. One batch of unused imports found and cleaned up across 5 files. No structural changes, no doc gaps.
+
+### Fixes Applied
+
+#### 1. Removed unused imports across 5 files ✅
+
+- **`competitor.py`:** `BOLD_TITLE`, `THIN_BORDER` — only in import, not referenced in sheet body (likely left over from an earlier styling pass)
+- **`time_period.py`:** `REGION_LABEL` — not used in sheet body
+- **`auth.py`:** `quote`, `RedirectResponse` — both moved to `app.py` when the `LoginRequired` global exception handler was added in `30c7cf9`
+- **`admin.py`:** `LoginRequired` — exception handler lives in `app.py`; admin.py doesn't handle it
+- **`test_routes_tools.py`:** `io` — never referenced in any test
+- All files syntax-checked with `python3 -m ast` before commit.
+- **Commit:** `0ec96a9`
+
+### No Other Issues Found
+
+- **Structure vs README/CLAUDE.md:** Fully aligned.
+- **git status:** Working tree clean. All changes pushed.
+- **output/daily-report/:** Still missing Mar 18–Mar 19. Ongoing issue from prior runs — check `/api/runs` for details.
+- **Hardcoded values / config hygiene:** pyproject.toml files consistent; no stale deps found.
+- **Modularity:** No circular imports, clean lib interfaces.
+
+### Ongoing Recommendations
+
+1. **Missing daily reports (Mar 18–Mar 19+):** Check `/api/runs` at https://haidilao.wanghongming.xyz/api/runs. May need manual trigger.
+2. **`github_webhook.py`:** Still harmless — keep or remove in a future cleanup pass.
+
+---
+
 ## 2026-03-19 (Run 3) — Scheduled Maintenance
 
 ### Summary
