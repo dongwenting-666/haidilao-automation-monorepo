@@ -240,14 +240,12 @@ async function uploadFiles(files) {{
     try {{
       const res  = await fetch('/admin/tools/upload', {{ method: 'POST', body: fd }});
       if (res.status === 401 || res.redirected) {{
-        showMsg('✗ 会话已过期，请刷新页面重新登录后再上传', false);
-        bar.style.display = 'none';
+        window.location.href = '/admin/logout';
         return;
       }}
       const ct = res.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {{
-        showMsg('✗ 会话已过期，请刷新页面重新登录后再上传', false);
-        bar.style.display = 'none';
+        window.location.href = '/admin/logout';
         return;
       }}
       const data = await res.json();
