@@ -11,6 +11,7 @@ dependencies = [
     "grpcio>=1.78.0",
     "grpcio-tools>=1.78.0",
     "lark-client",
+    "db-client",
 ]
 
 [project.optional-dependencies]
@@ -25,3 +26,4 @@ packages = ["src/server"]
 
 [tool.uv.sources]
 lark-client = { workspace = true, editable = true }
+db-client = { workspace = true, editable = true }

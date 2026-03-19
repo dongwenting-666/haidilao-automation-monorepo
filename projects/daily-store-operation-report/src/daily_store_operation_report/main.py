@@ -106,30 +106,48 @@ def _lark_alert(message: str) -> None:
 def _check_config(month_key: str, targets_path: Path) -> None:
     """Check that targets and competitor config are set for *month_key*.
 
-    If either is missing, send a Lark alert and raise SystemExit to abort the run.
+    Checks DB first; falls back to JSON files. If either is missing,
+    sends a Lark alert and raises SystemExit to abort the run.
     """
     import json as _json
 
     missing: list[str] = []
 
-    # Check targets.json has an entry for the current month
+    # Try DB first, then JSON for targets
     try:
-        with open(targets_path, encoding="utf-8") as f:
-            targets_data = _json.load(f)
-        if month_key not in targets_data:
-            missing.append(f"targets.json 中缺少 {month_key} 的目标数据")
-    except FileNotFoundError:
-        missing.append(f"targets.json 文件不存在：{targets_path}")
+        from server.db import has_targets, is_db_available
+        if is_db_available():
+            if not has_targets(month_key):
+                missing.append(f"数据库中缺少 {month_key} 的目标数据（请在管理后台配置）")
+        else:
+            raise ImportError  # fall through to JSON check
+    except Exception:
+        # Fall back to JSON check
+        try:
+            with open(targets_path, encoding="utf-8") as f:
+                targets_data = _json.load(f)
+            if month_key not in targets_data:
+                missing.append(f"targets.json 中缺少 {month_key} 的目标数据")
+        except FileNotFoundError:
+            missing.append(f"targets.json 文件不存在：{targets_path}")
 
-    # Check competitor.json exists and is non-empty
-    competitor_path = targets_path.parent / "competitor.json"
+    # Try DB first, then JSON for competitors
     try:
-        with open(competitor_path, encoding="utf-8") as f:
-            comp_data = _json.load(f)
-        if not comp_data:
-            missing.append("competitor.json 为空，请配置假想敌映射")
-    except FileNotFoundError:
-        missing.append(f"competitor.json 文件不存在：{competitor_path}")
+        from server.db import has_competitors, is_db_available
+        if is_db_available():
+            if not has_competitors():
+                missing.append("数据库中缺少假想敌映射（请在管理后台配置）")
+        else:
+            raise ImportError  # fall through to JSON check
+    except Exception:
+        competitor_path = targets_path.parent / "competitor.json"
+        try:
+            with open(competitor_path, encoding="utf-8") as f:
+                comp_data = _json.load(f)
+            if not comp_data:
+                missing.append("competitor.json 为空，请配置假想敌映射")
+        except FileNotFoundError:
+            missing.append(f"competitor.json 文件不存在：{competitor_path}")
 
     if missing:
         items = "\n".join(f"• {m}" for m in missing)
