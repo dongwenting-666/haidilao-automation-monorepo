@@ -21,6 +21,7 @@ The `server/` directory contains a FastAPI app that exposes automation results v
   - `GET /api/runs/{run_id}` — automation run status/result
   - `GET /api/commands` — list commands; `POST /api/commands/{name}/run` — trigger
   - `GET /api/files/` — list output files; `GET /api/files/{path}` — download
+  - `POST /api/github/webhook` — GitHub issue/comment events; writes to `/tmp/github-issue-triggers.json`
 - **Admin UI**: `/admin` — targets, competitors, users (Lark OAuth login required)
 
 ## Repository Layout
@@ -121,6 +122,7 @@ playwright install chromium
 | `HOURS_NOTIFY_CHAT_ID` | store-hours-collect | Lark group chat ID for working-hour data alerts |
 | `HOURS_TEMPLATE_TOKEN` | store-hours-collect | Feishu template spreadsheet token (default provided) |
 | `HOURS_FOLDER_TOKEN` | store-hours-collect | Feishu target folder token (default provided) |
+| `GITHUB_WEBHOOK_SECRET` | server (github_webhook) | HMAC-SHA256 secret for verifying GitHub webhook payloads; skip verification if unset |
 
 ## Software Install Links
 

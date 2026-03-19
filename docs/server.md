@@ -82,6 +82,14 @@ The server runs as `uv run --project server python -m server` from the monorepo 
 |--------|------|-------------|
 | `GET` | `/api/jobs` | List scheduled APScheduler jobs |
 
+### GitHub Webhook
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/github/webhook` | Receive GitHub issue/comment/label events |
+
+Listens for `issues` and `issue_comment` events. Validates the HMAC-SHA256 signature from `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET` (if set). Filtered events are appended to `/tmp/github-issue-triggers.json` (capped at 50 entries) for the agent cron to poll.
+
 ---
 
 ## Admin UI
@@ -139,6 +147,7 @@ Shows all `admin_users` rows (Lark open_id, name, first login time). Allows togg
 | `QBI_USERNAME` | `` | Quick BI LDAP username |
 | `QBI_PASSWORD` | `` | Quick BI LDAP password |
 | `SAP_USERNAME` / `SAP_PASSWORD` | `` | SAP login credentials |
+| `GITHUB_WEBHOOK_SECRET` | `` | HMAC-SHA256 secret for GitHub webhook signature verification; skip verification if unset |
 
 All variables loaded from `.env` in the repo root via `pydantic-settings`.
 
