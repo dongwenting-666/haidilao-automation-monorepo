@@ -8,8 +8,6 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "apscheduler>=3.10.0,<4",
     "pydantic-settings>=2.0.0",
-    "grpcio>=1.78.0",
-    "grpcio-tools>=1.78.0",
     "lark-client",
     "db-client",
     "itsdangerous>=2.1",

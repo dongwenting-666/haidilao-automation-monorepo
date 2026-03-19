@@ -75,6 +75,7 @@ uv run --project server python -m server
 | `GET /api/reports/daily/{date}` | Trigger daily store operations report |
 | `GET /api/runs` | List all job runs |
 | `GET /api/runs/{run_id}` | Get run status and logs |
+| `POST /api/github/webhook` | Receive GitHub issue/comment events (HMAC-verified) |
 
 ### Admin Panel
 
