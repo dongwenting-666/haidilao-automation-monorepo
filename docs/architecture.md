@@ -15,7 +15,8 @@ haidilao-automation-monorepo/
 ├── projects/                      # Automation projects
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
 │   ├── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
-│   └── daily-store-operation-report/ # Daily store operations Excel report
+│   ├── daily-store-operation-report/ # Daily store operations Excel report
+│   └── treasury-loan-watch/         # Daily TREASURY inter-company loan maturity checker
 ├── docker/                        # Docker Compose for PostgreSQL (port 5432)
 ├── server/                        # FastAPI HTTP server (LaunchAgent: com.haidilao.server, port 8000)
 │   ├── src/server/                  # App, routes, scheduler, commands
@@ -86,6 +87,10 @@ libs/lark-client
 
 libs/db-client
     └── depends on → psycopg[binary], psycopg-pool    (PostgreSQL driver)
+
+projects/treasury-loan-watch
+    ├── depends on → libs/lark-client   (Feishu sheet read + Lark card delivery)
+    └── depends on → python-dotenv      (env config)
 ```
 
 Dependencies between workspace packages are declared via `[tool.uv.sources]` in each project's `pyproject.toml` using `workspace = true`.

@@ -15,4 +15,5 @@ Architecture and reference documentation for the Haidilao Automation Monorepo.
 - [Lark Client](./lark-client.md) — Feishu/Lark bot client (messaging, Drive, OAuth)
 - [DB Client](./db-client.md) — PostgreSQL client (psycopg3 pool, migrations)
 - [Server](./server.md) — FastAPI server, admin UI, Lark OAuth, run queue, scheduler
+- [Treasury Loan Watch](./treasury-loan-watch.md) — Daily TREASURY inter-company loan maturity checker
 - [Edit History](./edit-history/) — Session-level change logs

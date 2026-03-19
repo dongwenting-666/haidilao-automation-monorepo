@@ -73,6 +73,7 @@ The server runs as `uv run --project server python -m server` from the monorepo 
 |--------|------|-------------|
 | `GET` | `/api/commands` | List available automation commands |
 | `POST` | `/api/commands/{name}/run` | Trigger a command run; body: `{"params": {...}}` |
+| `POST` | `/api/runs` | Trigger a run by command name; body: `{"command": "<name>"}` |
 
 ### Jobs
 
@@ -157,6 +158,13 @@ Migrations run automatically at startup via `maybe_run_migrations()`.
 
 ## Scheduler
 
-Default cron job: daily report at 06:00 (`daily_report_cron = "0 6 * * *"`, configurable in `.env`).
+Registered cron jobs:
 
-The report command checks for missing targets/competitor config via `_check_config()` before running. If config is missing, it sends a Lark alert and aborts.
+| Command | Schedule | Timezone | Description |
+|---------|----------|----------|-------------|
+| `daily-report` | `0 6 * * *` | `America/Vancouver` | Daily store operation report (configurable via `daily_report_cron` in `.env`) |
+| `treasury-loan-watch` | `0 6 * * *` | `America/Vancouver` | TREASURY inter-company loan maturity check |
+
+The daily report command checks for missing targets/competitor config via `_check_config()` before running. If config is missing, it sends a Lark alert and aborts.
+
+The treasury-loan-watch command reads maturity dates from a Feishu sheet and sends a Lark card to `TREASURY_NOTIFY_CHAT_ID` if any loans mature on the day of the run.
