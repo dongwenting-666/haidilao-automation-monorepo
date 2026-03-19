@@ -1,5 +1,36 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 3) — Scheduled Maintenance
+
+### Summary
+Routine pass after the MinIO/Tools feature (#3) merged earlier today. One doc gap found and fixed.
+
+### Fixes Applied
+
+#### 1. Documented MinIO Admin Tools feature in `docs/server.md`, `README.md`, `CLAUDE.md` ✅
+
+The MinIO-backed `/admin/tools` page (super-admin file uploads) was merged in commit `0c1a8fe`/`6001c31` but not documented anywhere:
+
+- **`docs/server.md`:** Added `/admin/tools` to Admin UI table; added new "### /admin/tools" subsection with route table, super-admin access explanation, localhost-only agent endpoint note, and docker-compose startup command; added `MINIO_*` + `SUPER_ADMIN_OPEN_IDS` to environment variables table.
+- **`README.md`:** Added `/api/tools/agent/{key}` to API endpoints table; expanded Admin Panel section with a proper route table (targets/competitors/users/tools); added `docker compose up -d` to Setup instructions.
+- **`CLAUDE.md`:** Added missing `COOKIE_SECURE` env var row (it was in `docs/server.md` and `.env.example` but absent from CLAUDE.md's env table).
+- **Commit:** `9333c4d`
+
+### No Other Issues Found
+
+- **Structure vs README/CLAUDE.md:** Fully aligned.
+- **Code quality:** No unused imports, no TODOs/FIXMEs. `tools.py` and `auth.py` are clean.
+- **git status:** Working tree clean. 2 unpushed commits from run 2 are now pushed.
+- **output/daily-report/:** Mar 18–19 still missing (same as prior run). Recommend checking `/api/runs` for the failed run details.
+- **docker-compose.yml:** Already includes MinIO service (9000/9001). No changes needed.
+
+### Ongoing Recommendations
+
+1. **Missing daily reports (Mar 18–19):** Check `/api/runs` at https://haidilao.wanghongming.xyz/api/runs. May need manual trigger: `GET /api/reports/daily/2026-03-18` and `GET /api/reports/daily/2026-03-19`.
+2. **`github_webhook.py`:** Still harmless — keep or remove in a future cleanup pass.
+
+---
+
 ## 2026-03-19 (Run 2) — Scheduled Maintenance
 
 ### Summary
