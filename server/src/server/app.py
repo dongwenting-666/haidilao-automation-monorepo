@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from server.auth import LoginRequired
 from server.routes import api_router
@@ -41,4 +41,17 @@ app.include_router(github_webhook_router)
 
 @app.exception_handler(LoginRequired)
 async def login_required_handler(request: Request, exc: LoginRequired):
+    # For AJAX/API requests (POST, or requests expecting JSON), return 401 JSON
+    # instead of a redirect so the client can handle it gracefully.
+    accept = request.headers.get("accept", "")
+    is_json_request = (
+        request.method in ("POST", "PUT", "PATCH", "DELETE")
+        or "application/json" in accept
+        or request.headers.get("x-requested-with", "").lower() == "xmlhttprequest"
+    )
+    if is_json_request:
+        return JSONResponse(
+            {"ok": False, "error": "未登录，请先登录管理后台", "redirect": f"/admin/login?next={quote(exc.next_url)}"},
+            status_code=401,
+        )
     return RedirectResponse(url=f"/admin/login?next={quote(exc.next_url)}", status_code=302)
