@@ -21,3 +21,15 @@ CREATE TABLE IF NOT EXISTS store_competitors (
     competitor_name VARCHAR(64) NOT NULL,
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Admin users — records everyone who attempts login via Lark OAuth
+-- whitelisted=true means they can access the admin UI
+CREATE TABLE IF NOT EXISTS admin_users (
+    id            SERIAL PRIMARY KEY,
+    open_id       VARCHAR(64)  NOT NULL UNIQUE,
+    name          VARCHAR(128) NOT NULL,
+    avatar_url    TEXT         DEFAULT '',
+    whitelisted   BOOLEAN      DEFAULT false,
+    first_seen_at TIMESTAMPTZ  DEFAULT NOW(),
+    last_seen_at  TIMESTAMPTZ  DEFAULT NOW()
+);
