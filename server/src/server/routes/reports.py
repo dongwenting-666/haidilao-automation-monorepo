@@ -136,6 +136,28 @@ def _ksb1_report_path(year: int, month: int) -> Path | None:
     return candidates[-1] if candidates else None
 
 
+# ---------------------------------------------------------------------------
+# Treasury loan watch (test/manual trigger)
+# ---------------------------------------------------------------------------
+
+@router.get("/treasury/check/{check_date}")
+async def check_treasury_loans(check_date: date):
+    """Trigger a treasury loan maturity check for a specific date.
+
+    Useful for testing: ``GET /api/reports/treasury/check/2026-03-22``
+    will check and notify for loans due on March 22.
+    """
+    return _serve_or_queue(
+        None,  # no cached file — always runs
+        "treasury-loan-watch",
+        {"date": check_date.isoformat()},
+    )
+
+
+# ---------------------------------------------------------------------------
+# KSB1 accounting check report
+# ---------------------------------------------------------------------------
+
 @router.get("/ksb1/{year}/{month}")
 async def get_ksb1_report(year: int, month: int):
     """Download the KSB1 accounting check report for *year*/*month*.

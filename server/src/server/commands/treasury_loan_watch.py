@@ -14,8 +14,11 @@ class TreasuryLoanWatchCommand(BaseCommand):
         return REPO_ROOT / "projects" / "treasury-loan-watch"
 
     def build_args(self, params: dict[str, Any]) -> list[str]:
-        return [
+        args = [
             "uv", "run",
             "--project", str(self.working_dir),
             "python", "-m", "treasury_loan_watch.main",
         ]
+        if check_date := params.get("date"):
+            args.extend(["--date", str(check_date)])
+        return args

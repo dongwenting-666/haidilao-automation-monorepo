@@ -220,11 +220,20 @@ def send_notification(chat_id: str, due_loans: list[LoanRecord], today: date) ->
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    import argparse
+
     load_dotenv()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
+
+    parser = argparse.ArgumentParser(description="Treasury loan maturity watch")
+    parser.add_argument(
+        "--date", type=str, default=None,
+        help="Check date in YYYY-MM-DD format (default: today)",
+    )
+    args = parser.parse_args()
 
     app_id = os.environ.get("LARK_APP_ID", "")
     app_secret = os.environ.get("LARK_APP_SECRET", "")
@@ -244,20 +253,20 @@ def main() -> None:
     with LarkClient(app_id=app_id, app_secret=app_secret) as client:
         token = client._get_token()
 
-    today = date.today()
-    logger.info("Checking loan maturities for %s", today)
+    check_date = date.fromisoformat(args.date) if args.date else date.today()
+    logger.info("Checking loan maturities for %s", check_date)
 
     loans = fetch_loans(token, sheet_token, sheet_id)
     logger.info("Loaded %d loan records", len(loans))
 
-    due_today = [loan for loan in loans if loan.maturity_date == today]
-    logger.info("%d loan(s) due today", len(due_today))
+    due = [loan for loan in loans if loan.maturity_date == check_date]
+    logger.info("%d loan(s) due on %s", len(due), check_date)
 
-    if not due_today:
-        logger.info("No loans due today — nothing to notify")
+    if not due:
+        logger.info("No loans due on %s — nothing to notify", check_date)
         return
 
-    send_notification(chat_id, due_today, today)
+    send_notification(chat_id, due, check_date)
     logger.info("Done")
 
 
