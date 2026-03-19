@@ -139,41 +139,16 @@ def load_daily_data(report_date: date) -> tuple[dict[str, float], dict[str, floa
 
 
 def ensure_daily_report(report_date: date) -> bool:
-    """Ensure the daily report XLSX exists for the given date.
+    """Check if the daily report XLSX exists for the given date.
 
-    Calls the server API to generate it if missing. Returns True if available.
+    Returns True if the file is available on disk. Does NOT trigger generation
+    — the daily report cron handles that separately. This avoids deadlocking
+    the serial execution queue.
     """
     report_path = _output_dir() / f"database_report_{report_date.year}_{report_date.month:02d}_{report_date.day:02d}.xlsx"
     if report_path.exists():
         return True
-
-    logger.info("Daily report for %s not found — requesting generation...", report_date)
-    try:
-        resp = httpx.get(
-            f"http://localhost:8000/api/reports/daily/{report_date.isoformat()}",
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            # File was served directly (already existed)
-            return True
-        if resp.status_code == 202:
-            # Queued for generation — wait for it
-            run_id = resp.json().get("run_id")
-            logger.info("Report queued (run %s), waiting...", run_id)
-            for _ in range(60):  # wait up to 5 minutes
-                import time
-                time.sleep(5)
-                status_resp = httpx.get(f"http://localhost:8000/api/runs/{run_id}", timeout=10)
-                status = status_resp.json().get("status")
-                if status == "success":
-                    return True
-                if status == "failed":
-                    logger.error("Daily report generation failed for %s", report_date)
-                    return False
-            logger.error("Timed out waiting for daily report %s", report_date)
-            return False
-    except Exception as e:
-        logger.error("Failed to request daily report for %s: %s", report_date, e)
+    logger.debug("Daily report not available for %s (not yet generated)", report_date)
     return False
 
 
