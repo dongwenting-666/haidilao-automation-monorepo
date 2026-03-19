@@ -283,21 +283,26 @@ async function loadFiles() {{
     for (const f of data) {{
       const dlUrl    = '/admin/tools/files/' + encodeURIComponent(f.key);
       const agentUrl = f.agent_url || 'http://localhost:8000/api/tools/agent/' + encodeURIComponent(f.key);
+      // Escape any HTML/JS special chars before injecting into attribute values
+      const escFilename = f.filename
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
       const preview  = isImage(f.filename)
-        ? `<div class="preview"><img src="${{dlUrl}}" alt="${{f.filename}}" loading="lazy"></div>`
+        ? `<div class="preview"><img src="${{dlUrl}}" alt="${{escFilename}}" loading="lazy"></div>`
         : '<span style="font-size:1.5rem">📄</span>';
 
-      html += `<tr>
+      // Store key/agentUrl as data-* attributes to avoid inline JS injection
+      html += `<tr data-key="${{encodeURIComponent(f.key)}}" data-agent-url="${{encodeURIComponent(agentUrl)}}">
         <td>${{preview}}</td>
-        <td><a class="file-link" href="${{dlUrl}}" download="${{f.filename}}">${{f.filename}}</a></td>
+        <td><a class="file-link" href="${{dlUrl}}" download="${{escFilename}}">${{escFilename}}</a></td>
         <td class="size">${{formatSize(f.size)}}</td>
         <td class="size">${{f.last_modified ? formatDate(f.last_modified) : '—'}}</td>
         <td>
           <code class="url">${{agentUrl}}</code>
-          <button class="copy-btn" onclick="copyText('${{agentUrl}}', this)">复制</button>
+          <button class="copy-btn" onclick="copyText(decodeURIComponent(this.closest('tr').dataset.agentUrl), this)">复制</button>
         </td>
         <td>
-          <button class="btn btn-danger" onclick="deleteFile('${{f.key}}')">删除</button>
+          <button class="btn btn-danger" onclick="deleteFile(decodeURIComponent(this.closest('tr').dataset.key))">删除</button>
         </td>
       </tr>`;
     }}
@@ -430,7 +435,8 @@ async def download_file(key: str, session: dict = Depends(_require_super_admin))
             io.BytesIO(data),
             media_type=content_type,
             headers={
-                "Content-Disposition": f'inline; filename="{quote(filename)}"',
+                # RFC 5987 encoding for non-ASCII filenames
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename, safe='')}",
                 "Content-Length": str(file_size),
             },
         )
@@ -488,7 +494,8 @@ async def agent_download(key: str, request: Request):
             io.BytesIO(data),
             media_type=content_type,
             headers={
-                "Content-Disposition": f'inline; filename="{quote(filename)}"',
+                # RFC 5987 encoding for non-ASCII filenames
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename, safe='')}",
                 "Content-Length": str(stat.size),
             },
         )

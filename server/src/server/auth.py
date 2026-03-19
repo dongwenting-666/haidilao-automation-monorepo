@@ -26,14 +26,22 @@ _SESSION_MAX_AGE = 8 * 3600  # 8 hours
 _COOKIE_NAME = "admin_session"
 
 
+# Module-level cache for the fallback secret so get_session() and
+# set_session_cookie() always use the *same* key within a process lifetime.
+_fallback_secret: str = ""
+
+
 def _get_signer() -> TimestampSigner:
+    global _fallback_secret
     secret = os.environ.get("SESSION_SECRET", "")
     if not secret:
-        secret = secrets.token_hex(32)
-        logger.warning(
-            "SESSION_SECRET not set — using a random key. "
-            "Sessions will not survive server restarts. Set SESSION_SECRET in env."
-        )
+        if not _fallback_secret:
+            _fallback_secret = secrets.token_hex(32)
+            logger.warning(
+                "SESSION_SECRET not set — using a random key. "
+                "Sessions will not survive server restarts. Set SESSION_SECRET in env."
+            )
+        secret = _fallback_secret
     return TimestampSigner(secret)
 
 
