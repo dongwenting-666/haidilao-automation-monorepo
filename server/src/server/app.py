@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from server.auth import LoginRequired
 from server.routes import api_router
 from server.routes.admin import router as admin_router
-from server.routes.tools import router as tools_router
+from server.routes.tools import router as tools_router, agent_router as tools_agent_router
 from server.routes.github_webhook import router as github_webhook_router
 from server.routes.runs import start_queue_worker
 from server.scheduler import scheduler, setup_default_jobs
@@ -35,6 +35,7 @@ app = FastAPI(
 app.include_router(api_router)
 app.include_router(admin_router)
 app.include_router(tools_router)
+app.include_router(tools_agent_router)
 app.include_router(github_webhook_router)
 
 

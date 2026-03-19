@@ -29,6 +29,7 @@ from server.auth import (
     exchange_code,
     get_lark_auth_url,
     get_session,
+    is_super_admin,
     is_whitelisted,
     require_auth,
     set_session_cookie,
@@ -110,18 +111,23 @@ _HEADER_TMPL = """
   <nav>
     <a href="/admin/targets" class="{t_active}">月度目标</a>
     <a href="/admin/competitors" class="{c_active}">假想敌配置</a>
-    <a href="/admin/tools" class="{tools_active}">工具</a>
+    {tools_link}
   </nav>
   <span class="user-info">👤 {name} &nbsp;·&nbsp; <a href="/admin/logout" style="color:rgba(255,255,255,0.75);font-size:0.82rem">退出</a></span>
 </header>
 """
 
+_TOOLS_NAV_LINK = '<a href="/admin/tools" class="{tools_active}">工具</a>'
 
-def _header(page: str, name: str = "") -> str:
+
+def _header(page: str, name: str = "", super_admin: bool = False) -> str:
+    tools_link = _TOOLS_NAV_LINK.format(
+        tools_active="active" if page == "tools" else ""
+    ) if super_admin else ""
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
-        tools_active="active" if page == "tools" else "",
+        tools_link=tools_link,
         name=name or "管理员",
     )
 
@@ -339,6 +345,7 @@ async def targets_page(request: Request, month: str | None = None, session: dict
 
     db_section = _db_warning() if not db_ok else ""
     user_name = session.get("name", "管理员")
+    _is_super = is_super_admin(session.get("open_id", ""))
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -347,7 +354,7 @@ async def targets_page(request: Request, month: str | None = None, session: dict
 <title>月度目标 — 管理后台</title>
 </head>
 <body>
-{_header("targets", user_name)}
+{_header("targets", user_name, super_admin=_is_super)}
 <div class="container">
 {db_section}
 <div class="card">
@@ -529,6 +536,7 @@ async def competitors_page(request: Request, session: dict = Depends(require_aut
 
     db_section = _db_warning() if not db_ok else ""
     user_name = session.get("name", "管理员")
+    _is_super = is_super_admin(session.get("open_id", ""))
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -537,7 +545,7 @@ async def competitors_page(request: Request, session: dict = Depends(require_aut
 <title>假想敌配置 — 管理后台</title>
 </head>
 <body>
-{_header("competitors", user_name)}
+{_header("competitors", user_name, super_admin=_is_super)}
 <div class="container">
 {db_section}
 <div class="card">

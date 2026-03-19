@@ -23,6 +23,9 @@ The `server/` directory contains a FastAPI app that exposes automation results v
   - `GET /api/files/` — list output files; `GET /api/files/{path}` — download
   - `POST /api/github/webhook` — GitHub issue/comment events; writes to `/tmp/github-issue-triggers.json`
 - **Admin UI**: `/admin` — targets, competitors, users (Lark OAuth login required)
+  - **Tools page**: `/admin/tools` — super-admin only; upload/list/delete files in MinIO bucket
+  - **Agent file access**: `GET /api/tools/agent/{key}` — no auth, localhost-only (127.0.0.1 / ::1);
+    lets the agent read uploaded files without a session cookie
 
 ## Repository Layout
 
@@ -123,6 +126,12 @@ playwright install chromium
 | `HOURS_TEMPLATE_TOKEN` | store-hours-collect | Feishu template spreadsheet token (default provided) |
 | `HOURS_FOLDER_TOKEN` | store-hours-collect | Feishu target folder token (default provided) |
 | `GITHUB_WEBHOOK_SECRET` | server (github_webhook) | HMAC-SHA256 secret for verifying GitHub webhook payloads; skip verification if unset |
+| `MINIO_ENDPOINT` | server (tools) | MinIO API endpoint (default: `localhost:9000`) |
+| `MINIO_ROOT_USER` | server (tools) | MinIO access key (default: `haidilao`) |
+| `MINIO_ROOT_PASSWORD` | server (tools) | MinIO secret key (default: `haidilao_minio_dev`) |
+| `MINIO_BUCKET` | server (tools) | MinIO bucket for uploads (default: `tools-uploads`) |
+| `MINIO_SECURE` | server (tools) | Use TLS for MinIO (default: `false`) |
+| `SUPER_ADMIN_OPEN_IDS` | server (auth, tools) | Comma-separated Lark open_ids with super-admin access |
 
 ## Software Install Links
 
