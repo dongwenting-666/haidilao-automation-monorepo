@@ -420,8 +420,8 @@ def main() -> None:
     with LarkClient(app_id=app_id, app_secret=app_secret) as client:
         token = client._get_token()
 
-    # Report date = yesterday (we fill in yesterday's data each morning)
-    report_date = date.fromisoformat(args.date) if args.date else date.today() - timedelta(days=1)
+    # Report date = 2 days ago (data needs a day to settle in QBI before report runs)
+    report_date = date.fromisoformat(args.date) if args.date else date.today() - timedelta(days=2)
     today = date.today()
     year, month = report_date.year, report_date.month
 
