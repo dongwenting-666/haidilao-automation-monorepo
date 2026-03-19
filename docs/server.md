@@ -152,8 +152,9 @@ docker compose -f docker/docker-compose.yml up -d
 4. `is_whitelisted(open_id)` checks:
    - DB: `admin_users.whitelisted = true`
    - Fallback: `ADMIN_WHITELIST` env var (comma-separated open_ids)
-5. Session cookie set (HMAC-signed, 8h TTL, `httponly`, `samesite=strict`)
+5. Session cookie set (HMAC-signed, 8h TTL, `httponly`, `samesite=lax`)
 6. Cookies are `Secure` by default; set `COOKIE_SECURE=false` in `.env` for local dev over HTTP
+7. Expired/missing session on AJAX/API/POST requests → `JSON 401 {"ok": false, "error": "..."}` instead of HTML redirect; JS client detects this and redirects to `/admin/logout` to clear the cookie
 
 ---
 
