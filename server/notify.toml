@@ -18,3 +18,6 @@ chat_id = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
 
 [treasury-loan-watch]
 chat_id = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
+
+[store-hours-collect]
+chat_id = "oc_78f29489a577f10e36ebf989bccdcc83"

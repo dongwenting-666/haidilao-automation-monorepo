@@ -32,6 +32,12 @@ async def _run_treasury_loan_watch() -> None:
     create_run("treasury-loan-watch", {})
 
 
+async def _run_store_hours_collect() -> None:
+    """Trigger store-hours-collect command via the run system."""
+    from server.routes.runs import create_run
+    create_run("store-hours-collect", {})
+
+
 def setup_default_jobs() -> None:
     """Register the default cron jobs."""
     # Daily store operation report
@@ -44,11 +50,20 @@ def setup_default_jobs() -> None:
         replace_existing=True,
     )
 
-    # Treasury loan maturity watch — 6 AM Vancouver time (America/Vancouver = UTC-7/8)
+    # Treasury loan maturity watch — 6:00 AM Vancouver time
     scheduler.add_job(
         _run_treasury_loan_watch,
         CronTrigger(hour=6, minute=0, timezone="America/Vancouver"),
         id="treasury-loan-watch-cron",
         name="Treasury loan maturity watch",
+        replace_existing=True,
+    )
+
+    # Store working-hour data collection — 6:30 AM Vancouver time
+    scheduler.add_job(
+        _run_store_hours_collect,
+        CronTrigger(hour=6, minute=30, timezone="America/Vancouver"),
+        id="store-hours-collect-cron",
+        name="Store working-hour data collection",
         replace_existing=True,
     )
