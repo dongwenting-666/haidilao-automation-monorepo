@@ -48,6 +48,9 @@ async def login_required_handler(request: Request, exc: LoginRequired):
         request.method in ("POST", "PUT", "PATCH", "DELETE")
         or "application/json" in accept
         or request.headers.get("x-requested-with", "").lower() == "xmlhttprequest"
+        or request.url.path.startswith("/api/")
+        or "/upload" in request.url.path
+        or "/files" in request.url.path
     )
     if is_json_request:
         return JSONResponse(

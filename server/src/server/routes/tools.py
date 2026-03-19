@@ -239,12 +239,18 @@ async function uploadFiles(files) {{
     fd.append('file', file);
     try {{
       const res  = await fetch('/admin/tools/upload', {{ method: 'POST', body: fd }});
-      const data = await res.json();
-      if (res.status === 401) {{
-        showMsg('✗ 会话已过期，请重新登录后再上传', false);
+      if (res.status === 401 || res.redirected) {{
+        showMsg('✗ 会话已过期，请刷新页面重新登录后再上传', false);
         bar.style.display = 'none';
         return;
       }}
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {{
+        showMsg('✗ 会话已过期，请刷新页面重新登录后再上传', false);
+        bar.style.display = 'none';
+        return;
+      }}
+      const data = await res.json();
       if (!data.ok) throw new Error(data.error || '未知错误');
     }} catch(e) {{
       showMsg('✗ 上传失败: ' + e.message, false);
