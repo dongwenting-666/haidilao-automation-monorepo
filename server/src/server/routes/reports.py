@@ -95,10 +95,16 @@ def _daily_report_path(report_date: date) -> Path:
 
 
 @router.get("/daily/{report_date}")
-async def get_daily_report(report_date: date):
-    """Download the daily store operation report for *report_date* (YYYY-MM-DD)."""
+async def get_daily_report(report_date: date, no_cache: bool = False):
+    """Download the daily store operation report for *report_date* (YYYY-MM-DD).
+
+    Pass ``?no_cache=true`` to force regeneration even if a file already exists.
+    """
+    path = _daily_report_path(report_date)
+    if no_cache and path.is_file():
+        path.unlink()
     return _serve_or_queue(
-        _daily_report_path(report_date),
+        path,
         "daily-report",
         {"date": report_date.isoformat()},
     )
