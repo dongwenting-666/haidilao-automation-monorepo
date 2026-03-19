@@ -125,6 +125,7 @@ playwright install chromium
 | `HOURS_NOTIFY_CHAT_ID` | store-hours-collect | Lark group chat ID for working-hour data alerts |
 | `HOURS_TEMPLATE_TOKEN` | store-hours-collect | Feishu template spreadsheet token (default provided) |
 | `HOURS_FOLDER_TOKEN` | store-hours-collect | Feishu target folder token (default provided) |
+| `COOKIE_SECURE` | server (auth) | Set to `false` for local HTTP dev; default `true` (cookies marked Secure) |
 | `GITHUB_WEBHOOK_SECRET` | server (github_webhook) | HMAC-SHA256 secret for verifying GitHub webhook payloads; skip verification if unset |
 | `MINIO_ENDPOINT` | server (tools) | MinIO API endpoint (default: `localhost:9000`) |
 | `MINIO_ROOT_USER` | server (tools) | MinIO access key (default: `haidilao`) |

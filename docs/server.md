@@ -105,6 +105,7 @@ All admin pages require authentication (Lark OAuth). Unauthenticated requests re
 | `/admin/targets` | Manage monthly store targets (revenue + turnover rate per slot) |
 | `/admin/competitors` | Manage store → competitor mappings |
 | `/admin/users` | View Lark users who have logged in; toggle whitelist access |
+| `/admin/tools` | **Super-admin only** — upload, list, and delete files in MinIO storage |
 
 ### /admin/targets
 
@@ -117,6 +118,29 @@ Set the competitor store name for each of the 8 stores. Used to generate Sheet 5
 ### /admin/users
 
 Shows all `admin_users` rows (Lark open_id, name, first login time). Allows toggling `whitelisted` status per user via `POST /admin/users/whitelist`.
+
+### /admin/tools (super-admin only)
+
+MinIO-backed file storage for sharing files with the automation agent. Files are stored in the configured MinIO bucket (`MINIO_BUCKET`). Each uploaded file gets an **Agent URL** (`http://localhost:8000/api/tools/agent/{key}`) that the agent can access without a session cookie — the endpoint is restricted to localhost (`127.0.0.1` / `::1`) only.
+
+**Routes:**
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/admin/tools` | super-admin | Upload/list/delete UI |
+| `POST` | `/admin/tools/upload` | super-admin | Upload a file → MinIO, returns `{key, url, agent_url}` |
+| `GET` | `/admin/tools/files` | super-admin | List all files in MinIO bucket |
+| `GET` | `/admin/tools/files/{key}` | super-admin | Download/proxy a file |
+| `DELETE` | `/admin/tools/files/{key}` | super-admin | Delete a file |
+| `GET` | `/api/tools/agent/{key}` | localhost only | Download file without auth (agent use) |
+
+Super-admin access is controlled by `SUPER_ADMIN_OPEN_IDS` env var. Falls back to `ADMIN_WHITELIST` if not set.
+
+MinIO runs via docker-compose on ports `9000` (API) and `9001` (console). Start it alongside Postgres:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
 
 ---
 
@@ -148,6 +172,12 @@ Shows all `admin_users` rows (Lark open_id, name, first login time). Allows togg
 | `QBI_PASSWORD` | `` | Quick BI LDAP password |
 | `SAP_USERNAME` / `SAP_PASSWORD` | `` | SAP login credentials |
 | `GITHUB_WEBHOOK_SECRET` | `` | HMAC-SHA256 secret for GitHub webhook signature verification; skip verification if unset |
+| `MINIO_ENDPOINT` | `localhost:9000` | MinIO API endpoint |
+| `MINIO_ROOT_USER` | `haidilao` | MinIO access key |
+| `MINIO_ROOT_PASSWORD` | `haidilao_minio_dev` | MinIO secret key |
+| `MINIO_BUCKET` | `tools-uploads` | MinIO bucket for file uploads |
+| `MINIO_SECURE` | `false` | Use TLS for MinIO |
+| `SUPER_ADMIN_OPEN_IDS` | `` | Comma-separated Lark open_ids with super-admin access (tools page); falls back to `ADMIN_WHITELIST` |
 
 All variables loaded from `.env` in the repo root via `pydantic-settings`.
 

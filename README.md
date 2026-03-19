@@ -53,6 +53,9 @@ uv sync
 # Copy and configure environment variables
 cp .env.example .env
 
+# Start PostgreSQL + pgAdmin + MinIO (Docker)
+docker compose -f docker/docker-compose.yml up -d
+
 # Install Playwright browsers
 uv run playwright install chromium
 ```
@@ -76,10 +79,18 @@ uv run --project server python -m server
 | `GET /api/runs` | List all job runs |
 | `GET /api/runs/{run_id}` | Get run status and logs |
 | `POST /api/github/webhook` | Receive GitHub issue/comment events (HMAC-verified) |
+| `GET /api/tools/agent/{key}` | Download MinIO file (localhost-only, no auth) |
 
 ### Admin Panel
 
-The admin panel is available at `/admin` and provides a web UI for managing and monitoring jobs.
+The admin panel is available at `/admin` and provides a web UI for managing and monitoring jobs. Requires Lark OAuth login.
+
+| Path | Description |
+|------|-------------|
+| `/admin/targets` | Monthly store revenue + turnover rate targets |
+| `/admin/competitors` | Store → competitor mappings |
+| `/admin/users` | Lark user list + whitelist management |
+| `/admin/tools` | **Super-admin** — upload/list/delete files in MinIO |
 
 ## Projects
 
