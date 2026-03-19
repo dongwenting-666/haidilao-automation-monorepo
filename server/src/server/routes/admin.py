@@ -24,7 +24,6 @@ from pydantic import BaseModel
 
 from server.db import upsert_admin_user
 from server.auth import (
-    LoginRequired,
     clear_session_cookie,
     exchange_code,
     get_lark_auth_url,

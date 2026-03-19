@@ -29,9 +29,7 @@ from openpyxl.workbook import Workbook
 from daily_store_operation_report.constants import STORES
 from daily_store_operation_report.sheets.styles import (
     BOLD,
-    BOLD_TITLE,
     CENTER,
-    THIN_BORDER,
     WHITE_BOLD,
     apply_border,
 )

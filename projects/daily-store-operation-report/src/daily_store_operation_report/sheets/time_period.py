@@ -8,7 +8,6 @@ from openpyxl.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from daily_store_operation_report.constants import (
-    REGION_LABEL,
     STORES,
     TIME_SLOTS,
     WEEKDAY_NAMES,

@@ -12,11 +12,10 @@ import json
 import logging
 import os
 import secrets
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import Request
-from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 
 logger = logging.getLogger(__name__)
