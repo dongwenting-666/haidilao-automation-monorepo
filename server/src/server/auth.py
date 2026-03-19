@@ -51,6 +51,16 @@ def get_session(request: Request) -> dict | None:
         return None
 
 
+def _cookie_secure() -> bool:
+    """Return True if cookies should be marked Secure (HTTPS-only).
+
+    Set COOKIE_SECURE=false in .env or environment to disable for local
+    development. Defaults to True (production-safe).
+    """
+    val = os.environ.get("COOKIE_SECURE", "true").lower()
+    return val not in ("false", "0", "no")
+
+
 def set_session_cookie(response, open_id: str, name: str) -> None:
     """Attach a signed session cookie to *response*."""
     payload = json.dumps({"open_id": open_id, "name": name})
@@ -61,14 +71,19 @@ def set_session_cookie(response, open_id: str, name: str) -> None:
         value=signed,
         max_age=_SESSION_MAX_AGE,
         httponly=True,
-        samesite="lax",
-        secure=True,  # only send over HTTPS
+        samesite="strict",
+        secure=_cookie_secure(),
     )
 
 
 def clear_session_cookie(response) -> None:
     """Remove the session cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, httponly=True, samesite="lax", secure=True)
+    response.delete_cookie(
+        key=_COOKIE_NAME,
+        httponly=True,
+        samesite="strict",
+        secure=_cookie_secure(),
+    )
 
 
 # ── Whitelist ────────────────────────────────────────────────────────────────
@@ -183,8 +198,15 @@ async def exchange_code(code: str, redirect_uri: str) -> dict:
             raise RuntimeError(f"Failed to get user info: {info_data}")
 
         user = info_data["data"]
+        open_id = user.get("open_id", "")
+        if not open_id:
+            raise RuntimeError(
+                "Lark did not return an open_id for this user. "
+                "Ensure the app has the 'contact:user.base:readonly' scope "
+                "and the user granted it."
+            )
         return {
-            "open_id": user.get("open_id", ""),
+            "open_id": open_id,
             "name": user.get("name", user.get("en_name", "Unknown")),
             "avatar_url": user.get("avatar_url", ""),
         }

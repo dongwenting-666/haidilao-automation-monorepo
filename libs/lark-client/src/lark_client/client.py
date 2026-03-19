@@ -177,30 +177,6 @@ class LarkClient:
     # Drive / file access
     # ------------------------------------------------------------------
 
-    def get_file_meta(self, file_token: str, file_type: str = "file") -> dict:
-        """Get metadata for a Drive file.
-
-        Parameters
-        ----------
-        file_token:
-            The file token (from a Feishu Drive link).
-        file_type:
-            "file" for regular files, "docx" for documents, "sheet" for
-            spreadsheets, etc.
-        """
-        resp = self._get(
-            f"/drive/v1/metas/batch_query",
-            params=None,
-        )
-        # Use the single-file meta endpoint instead
-        data = self._get(
-            f"/drive/v1/files/{file_token}",
-            params={"type": file_type},
-        ).json()
-        if data.get("code") != 0:
-            raise LarkAPIError(data.get("code", -1), data.get("msg", "unknown"))
-        return data.get("data", {})
-
     def download_file(self, file_token: str) -> bytes:
         """Download a Drive file and return its raw bytes.
 

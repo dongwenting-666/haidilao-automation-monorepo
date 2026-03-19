@@ -13,6 +13,7 @@ Routes:
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 from urllib.parse import quote, unquote
@@ -252,8 +253,8 @@ async def oauth_callback(request: Request, code: str | None = None, state: str |
 h2{{color:#c0392b}}p{{color:#666}}a{{color:#c0392b}}</style></head>
 <body><div class="card">
 <h2>🚫 访问被拒绝</h2>
-<p>您的账号（{name}）没有访问权限。</p>
-<p style="font-size:0.85rem;color:#aaa">open_id: {open_id}</p>
+<p>您的账号（{html.escape(name)}）没有访问权限。</p>
+<p style="font-size:0.85rem;color:#aaa">open_id: {html.escape(open_id)}</p>
 <a href="/admin/login">返回登录</a>
 </div></body></html>""",
             status_code=403,
@@ -716,6 +717,10 @@ async def set_whitelist(request: Request, session: dict = Depends(require_auth))
     whitelisted = bool(body.get("whitelisted", False))
     if not open_id:
         return {"ok": False, "error": "open_id required"}
+    from server.db import get_admin_users
+    known_ids = {u["open_id"] for u in get_admin_users()}
+    if open_id not in known_ids:
+        return {"ok": False, "error": "user not found"}
     try:
         set_admin_whitelist(open_id, whitelisted)
         return {"ok": True}

@@ -106,7 +106,15 @@ def _check_config(month_key: str) -> None:
 
     If either is missing, sends a Lark alert and raises SystemExit to abort.
     """
-    from server.db import has_competitors, has_targets, is_db_available
+    try:
+        from server.db import has_competitors, has_targets, is_db_available
+    except ImportError:
+        logger.error(
+            "Cannot import server.db — ensure DATABASE_URL is set and the "
+            "server package is installed (run from the monorepo root with uv)."
+        )
+        _lark_alert(f"⚠️ 日报生成失败\n\n无法导入数据库模块，请检查运行环境。")
+        sys.exit(1)
 
     missing: list[str] = []
 

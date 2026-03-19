@@ -36,6 +36,8 @@ _NOTIFY_CONFIG = Path(__file__).resolve().parents[4] / "notify.toml"
 
 @lru_cache(maxsize=1)
 def _load_targets() -> dict[str, dict[str, str]]:
+    # NOTE: results are cached for the lifetime of the process.
+    # Changes to notify.toml require a server restart to take effect.
     """Load and cache the notify.toml targets.
 
     Returns a dict mapping command name → {chat_id/user_id: value}.

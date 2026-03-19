@@ -47,8 +47,23 @@ _SHEET_NAME = "假想敌翻台率对比"
 
 
 def build_competitor_sheet(wb: Workbook, data: ReportData) -> None:
-    """Add the competitor turnover comparison sheet to *wb*."""
+    """Add the competitor turnover comparison sheet to *wb*.
+
+    If ``data.competitor`` is empty (DB not configured), the sheet is still
+    created but shows a placeholder message instead of data rows.
+    """
     ws = wb.create_sheet(_SHEET_NAME)
+
+    # If no competitor config, show a placeholder and return early.
+    if not data.competitor:
+        ws.merge_cells("A1:F1")
+        cell = ws["A1"]
+        cell.value = "假想敌配置未设置 — 请前往管理后台配置：/admin/competitors"
+        from openpyxl.styles import Alignment, Font
+        cell.font = Font(italic=True, color="FF888888", size=11)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 30
+        return
 
     dates = data.dates
     prev_month = dates.prev_end.month
