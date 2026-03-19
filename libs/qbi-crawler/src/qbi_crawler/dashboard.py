@@ -282,6 +282,59 @@ def set_date_range(iframe: Frame, start: str, end: str) -> None:
     iframe.wait_for_load_state("domcontentloaded")
 
 
+def _click_export_and_wait_for_dialog(
+    iframe: Frame, page: Page, *, max_attempts: int = 3
+) -> None:
+    """Click the 导出 button and wait for the export modal to appear.
+
+    QBI's export dialog occasionally fails to render on the first click.
+    This helper retries the click up to *max_attempts* times, dismissing any
+    stale modal between attempts.
+    """
+    _DIALOG_SELECTOR = '.ant-modal-wrap.mix-export-modal-wrapper'
+    _EXPORT_BTN = 'li.preview-mini-menu-list-item:has-text("导出")'
+
+    for attempt in range(1, max_attempts + 1):
+        # Dismiss any leftover modal from a previous attempt
+        stale = page.query_selector(_DIALOG_SELECTOR)
+        if stale and stale.is_visible():
+            close_btn = page.query_selector('.ant-modal-wrap.mix-export-modal-wrapper .ant-modal-close')
+            if close_btn:
+                close_btn.click()
+                time.sleep(0.5)
+
+        export_btn = iframe.query_selector(_EXPORT_BTN)
+        if not export_btn:
+            export_btn = iframe.wait_for_selector(_EXPORT_BTN, timeout=_EXPORT_BTN_TIMEOUT_MS)
+        if not export_btn:
+            raise QBIError("导出 button not found")
+
+        export_btn.click()
+        logger.info("Export menu item clicked (attempt %d/%d), waiting for dialog…", attempt, max_attempts)
+
+        try:
+            page.wait_for_selector(
+                _DIALOG_SELECTOR,
+                timeout=15_000,
+                state="visible",
+            )
+            logger.info("Export dialog appeared")
+            return  # success
+        except PlaywrightError:
+            logger.warning(
+                "Export dialog did not appear (attempt %d/%d)",
+                attempt, max_attempts,
+            )
+            if attempt < max_attempts:
+                # Press Escape to clear any half-rendered state, then retry
+                page.keyboard.press("Escape")
+                time.sleep(2)
+
+    raise QBIError(
+        f"Export dialog failed to render after {max_attempts} attempts"
+    )
+
+
 def export_excel(iframe: Frame, download_dir: Path) -> Path:
     """Click the export button, confirm EXCEL export, and return the downloaded file.
 
@@ -295,30 +348,14 @@ def export_excel(iframe: Frame, download_dir: Path) -> Path:
     download_dir = Path(download_dir)
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    # Click the floating 导出 button
-    export_btn = iframe.wait_for_selector(
-        'li.preview-mini-menu-list-item:has-text("导出")',
-        timeout=_EXPORT_BTN_TIMEOUT_MS,
-    )
-    if not export_btn:
-        raise QBIError("导出 button not found")
-    export_btn.click()
-    logger.info("Export menu item clicked, waiting for dialog…")
-
-    # The export dialog may be a modal or inline.  Search both iframe and page.
     page = iframe.page
-    search_ctx = page  # Use page for direct navigation mode
 
-    # Wait for the export dialog to fully render (may take several seconds)
-    try:
-        search_ctx.wait_for_selector(
-            '.ant-modal, [class*="export"], [class*="Export"], .ant-radio-wrapper',
-            timeout=15_000,
-            state="attached",
-        )
-    except PlaywrightError:
-        logger.warning("Export dialog may not have rendered, trying anyway…")
-    time.sleep(2)
+    # Click 导出 and wait for the export modal (with retries)
+    _click_export_and_wait_for_dialog(iframe, page)
+    time.sleep(1)
+
+    # Search for dialog elements on the page (modal is outside any iframe)
+    search_ctx = page
 
     # Ensure EXCEL is selected (it's the default, but be explicit)
     excel_radio = search_ctx.query_selector('input.ant-radio-input[value="EXCEL"]')
@@ -345,20 +382,13 @@ def export_excel(iframe: Frame, download_dir: Path) -> Path:
             '.ant-modal .ant-btn-primary:has-text("确定")',
             'button.ant-btn-primary:has-text("确 定")',
             'button.ant-btn-primary:has-text("确定")',
-            'button:has-text("确 定")',
-            'button:has-text("确定")',
-            '.ant-btn-primary',
         ]:
             confirm_btn = search_ctx.query_selector(selector)
             if confirm_btn and confirm_btn.is_visible():
                 break
             confirm_btn = None
         if not confirm_btn:
-            # Debug: list ALL elements in the page (not just visible buttons)
-            modals = search_ctx.query_selector_all('.ant-modal, .ant-modal-content, [class*="modal"], [class*="dialog"]')
-            all_btns = search_ctx.query_selector_all("button, [role='button'], .ant-btn")
-            btn_info = [(b.inner_text().strip()[:30], b.get_attribute("class") or "", b.is_visible()) for b in all_btns[:15]]
-            raise QBIError(f"确定 button not found. Modals: {len(modals)}, Buttons: {btn_info}")
+            raise QBIError("确定 button not found in export dialog")
         confirm_btn.click()
         logger.info("Export confirmed, waiting for download…")
 
