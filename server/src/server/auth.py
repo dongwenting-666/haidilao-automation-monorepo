@@ -104,23 +104,30 @@ def is_whitelisted(open_id: str) -> bool:
         pass
 
     # Env var fallback (used on first login before DB record exists)
-    whitelist_raw = os.environ.get("ADMIN_WHITELIST", "")
-    if not whitelist_raw.strip():
+    whitelist_raw = os.environ.get("ADMIN_WHITELIST", "").strip()
+    if not whitelist_raw:
+        from server.config import settings
+        whitelist_raw = settings.admin_whitelist.strip()
+    if not whitelist_raw:
         return False
     allowed = {oid.strip() for oid in whitelist_raw.split(",") if oid.strip()}
     return open_id in allowed
 
 
 def is_super_admin(open_id: str) -> bool:
-    """Return True if open_id is in the SUPER_ADMIN_OPEN_IDS env var.
+    """Return True if open_id is a super admin.
 
-    Falls back to ADMIN_WHITELIST if SUPER_ADMIN_OPEN_IDS is not set
-    (single-admin setups where the only admin is super admin).
+    Checks SUPER_ADMIN_OPEN_IDS env var first, then falls back to
+    the admin_whitelist from Settings (single-admin setups where
+    the only admin is super admin).
     """
     raw = os.environ.get("SUPER_ADMIN_OPEN_IDS", "").strip()
     if not raw:
-        # fallback: if only one admin exists, they are super admin
         raw = os.environ.get("ADMIN_WHITELIST", "").strip()
+    if not raw:
+        # Fall back to pydantic settings (which loads from .env)
+        from server.config import settings
+        raw = settings.admin_whitelist.strip()
     if not raw:
         return False
     allowed = {oid.strip() for oid in raw.split(",") if oid.strip()}

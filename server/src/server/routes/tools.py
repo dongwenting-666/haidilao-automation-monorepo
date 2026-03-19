@@ -60,7 +60,8 @@ def _get_minio_client():
 
 def _require_super_admin(session: dict = Depends(require_auth)) -> dict:
     """FastAPI dependency — requires super admin, else 403."""
-    if not is_super_admin(session.get("open_id", "")):
+    open_id = session.get("open_id", "")
+    if not is_super_admin(open_id):
         raise HTTPException(status_code=403, detail="Super admin only")
     return session
 
