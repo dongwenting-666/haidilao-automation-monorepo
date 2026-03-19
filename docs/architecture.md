@@ -16,7 +16,8 @@ haidilao-automation-monorepo/
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
 │   ├── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
 │   ├── daily-store-operation-report/ # Daily store operations Excel report
-│   └── treasury-loan-watch/         # Daily TREASURY inter-company loan maturity checker
+│   ├── treasury-loan-watch/         # Daily TREASURY inter-company loan maturity checker
+│   └── store-hours-collect/         # Daily 6:30 AM Feishu working-hour spreadsheet manager
 ├── docker/                        # Docker Compose for PostgreSQL (port 5432)
 ├── server/                        # FastAPI HTTP server (LaunchAgent: com.haidilao.server, port 8000)
 │   ├── src/server/                  # App, routes, scheduler, commands
@@ -91,6 +92,13 @@ libs/db-client
 projects/treasury-loan-watch
     ├── depends on → libs/lark-client   (Feishu sheet read + Lark card delivery)
     └── depends on → python-dotenv      (env config)
+
+projects/store-hours-collect
+    ├── depends on → libs/lark-client   (Feishu token + Lark card delivery)
+    ├── depends on → httpx              (Feishu Sheets API calls)
+    ├── depends on → openpyxl           (read daily report XLSX)
+    └── depends on → python-dotenv      (env config)
+    [also spawns daily-store-operation-report as subprocess when daily report is missing]
 ```
 
 Dependencies between workspace packages are declared via `[tool.uv.sources]` in each project's `pyproject.toml` using `workspace = true`.

@@ -59,6 +59,7 @@ The server runs as `uv run --project server python -m server` from the monorepo 
 | `GET` | `/api/reports/daily/{date}/status` | Check status of a daily report run |
 | `GET` | `/api/reports/ksb1/{year}/{month}` | Download KSB1 report; returns 200 (file) or 202 (queued) |
 | `GET` | `/api/reports/ksb1/{year}/{month}/status` | Check status of a KSB1 report run |
+| `GET` | `/api/reports/store-hours/check/{date}` | Manually trigger store-hours-collect for a specific date (YYYY-MM-DD) |
 
 ### Files
 
@@ -164,6 +165,7 @@ Registered cron jobs:
 |---------|----------|----------|-------------|
 | `daily-report` | `0 6 * * *` | `America/Vancouver` | Daily store operation report (configurable via `daily_report_cron` in `.env`) |
 | `treasury-loan-watch` | `0 6 * * *` | `America/Vancouver` | TREASURY inter-company loan maturity check |
+| `store-hours-collect` | `30 6 * * *` | `America/Vancouver` | Fill 翻台率/总桌数 in monthly Feishu working-hour sheets; alert on unfilled staffing data |
 
 The daily report command checks for missing targets/competitor config via `_check_config()` before running. If config is missing, it sends a Lark alert and aborts.
 

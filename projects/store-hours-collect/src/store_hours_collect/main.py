@@ -66,14 +66,20 @@ def _api_get(token: str, path: str, **kwargs) -> dict:
     resp = httpx.get(f"{_LARK_BASE}{path}", headers={"Authorization": f"Bearer {token}"},
                      timeout=30, **kwargs)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(f"Lark API error: {data.get('code')} {data.get('msg')}")
+    return data
 
 
 def _api_put(token: str, path: str, **kwargs) -> dict:
     resp = httpx.put(f"{_LARK_BASE}{path}", headers={"Authorization": f"Bearer {token}",
                      "Content-Type": "application/json"}, timeout=30, **kwargs)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(f"Lark API error: {data.get('code')} {data.get('msg')}")
+    return data
 
 
 def _api_post(token: str, path: str, **kwargs) -> dict:
@@ -334,9 +340,13 @@ def send_data_summary(token: str, chat_id: str, year: int, month: int,
         "header": {"title": {"tag": "plain_text", "content": "📊 用工表数据已更新"}, "template": "green"},
         "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}],
     })
-    httpx.post(f"{_LARK_BASE}/im/v1/messages", params={"receive_id_type": "chat_id"},
+    resp = httpx.post(f"{_LARK_BASE}/im/v1/messages", params={"receive_id_type": "chat_id"},
         headers={"Authorization": f"Bearer {token}"},
         json={"receive_id": chat_id, "msg_type": "interactive", "content": card}, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        logger.error("Failed to send data summary: %s %s", data.get("code"), data.get("msg"))
 
 
 def send_unfilled_alert(token: str, chat_id: str, year: int, month: int,
@@ -354,10 +364,15 @@ def send_unfilled_alert(token: str, chat_id: str, year: int, month: int,
         "header": {"title": {"tag": "plain_text", "content": f"⚠️ {month}月用工数据未填写提醒"}, "template": "yellow"},
         "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}],
     })
-    httpx.post(f"{_LARK_BASE}/im/v1/messages", params={"receive_id_type": "chat_id"},
+    resp = httpx.post(f"{_LARK_BASE}/im/v1/messages", params={"receive_id_type": "chat_id"},
         headers={"Authorization": f"Bearer {token}"},
         json={"receive_id": chat_id, "msg_type": "interactive", "content": card}, timeout=15)
-    logger.info("Sent unfilled alert for %d stores", len(unfilled))
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        logger.error("Failed to send unfilled alert: %s %s", data.get("code"), data.get("msg"))
+    else:
+        logger.info("Sent unfilled alert for %d stores", len(unfilled))
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

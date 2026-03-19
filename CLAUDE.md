@@ -26,7 +26,7 @@ The `server/` directory contains a FastAPI app that exposes automation results v
 ## Repository Layout
 
 - `libs/` — Shared libraries: `sap-gui`, `qbi-crawler`, `excel-utils`, `vpn`, `ollama-client`, `lark-client`, `db-client`
-- `projects/` — Automation projects: `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`, `treasury-loan-watch`
+- `projects/` — Automation projects: `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`, `treasury-loan-watch`, `store-hours-collect`
 - `scripts/` — Standalone utility scripts (e.g., `vpn_reconnect.py`)
 - `output/` — Default export destination (gitignored): `output/ksb1/`, `output/qbi/`, `output/daily-report/`
 - `docs/` — Architecture docs, library references, edit history
@@ -75,6 +75,11 @@ uv run --project projects/daily-store-operation-report python -m daily_store_ope
 # Treasury loan watch
 uv run --project projects/treasury-loan-watch python -m treasury_loan_watch.main
 
+# Store hours collect (T-2 default)
+uv run --project projects/store-hours-collect python -m store_hours_collect.main
+# Store hours collect (specific date)
+uv run --project projects/store-hours-collect python -m store_hours_collect.main --date 2026-03-16
+
 # VPN unit tests
 uv run --project libs/vpn pytest libs/vpn/tests/test_darwin.py -v
 
@@ -113,6 +118,9 @@ playwright install chromium
 | `SESSION_SECRET` | server | HMAC key for signing session cookies |
 | `LARK_OAUTH_REDIRECT_URI` | server | Lark OAuth redirect URI (default: `https://haidilao.wanghongming.xyz/admin/oauth/callback`) |
 | `TREASURY_NOTIFY_CHAT_ID` | treasury-loan-watch | Lark group chat ID for loan maturity alerts |
+| `HOURS_NOTIFY_CHAT_ID` | store-hours-collect | Lark group chat ID for working-hour data alerts |
+| `HOURS_TEMPLATE_TOKEN` | store-hours-collect | Feishu template spreadsheet token (default provided) |
+| `HOURS_FOLDER_TOKEN` | store-hours-collect | Feishu target folder token (default provided) |
 
 ## Software Install Links
 

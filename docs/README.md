@@ -16,4 +16,5 @@ Architecture and reference documentation for the Haidilao Automation Monorepo.
 - [DB Client](./db-client.md) — PostgreSQL client (psycopg3 pool, migrations)
 - [Server](./server.md) — FastAPI server, admin UI, Lark OAuth, run queue, scheduler
 - [Treasury Loan Watch](./treasury-loan-watch.md) — Daily TREASURY inter-company loan maturity checker
+- [Store Hours Collect](./store-hours-collect.md) — Daily 6:30 AM job: manages monthly Feishu working-hour spreadsheets, fills 翻台率/总桌数, checks staffing columns
 - [Edit History](./edit-history/) — Session-level change logs
