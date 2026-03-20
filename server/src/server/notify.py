@@ -32,7 +32,7 @@ import logging
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from server.routes.runs import Run
@@ -152,6 +152,38 @@ def notify_run_complete(run: "Run") -> None:
         log.info("Lark notification sent for run %s (%s)", run.id, run.status.value)
     except Exception:
         log.exception("Failed to send Lark notification for run %s", run.id)
+
+
+def notify_daily_report_file(report_path: "Path") -> None:
+    """Send the generated daily report xlsx to the production accounting chat.
+
+    Reads the ``production_accounting_report_chat`` alias from notify.toml
+    [chats] and uploads the file as a Lark IM file message.  Silent no-op if
+    Lark is not configured or the alias is missing.
+    """
+    from server.config import settings
+    if not settings.lark_enabled:
+        return
+
+    chat_id = chat_id_for("production_accounting_report_chat")
+    if not chat_id:
+        log.warning("notify: 'production_accounting_report_chat' alias not found in notify.toml [chats], skipping file send")
+        return
+
+    try:
+        client = _client()
+        if client is None:
+            return
+        with client:
+            client.send_file(
+                report_path,
+                filename=report_path.name,
+                chat_id=chat_id,
+                file_type="xlsx",
+            )
+        log.info("Daily report file sent to production_accounting_report_chat: %s", report_path.name)
+    except Exception:
+        log.exception("Failed to send daily report file to Lark")
 
 
 def notify_text(command: str, text: str) -> None:

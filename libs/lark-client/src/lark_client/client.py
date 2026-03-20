@@ -173,6 +173,74 @@ class LarkClient:
             },
         )
 
+    def send_file(
+        self,
+        path_or_bytes: "str | bytes | pathlib.Path",
+        filename: str,
+        *,
+        chat_id: str | None = None,
+        user_id: str | None = None,
+        file_type: str = "xlsx",
+    ) -> dict:
+        """Upload a file to Lark IM and send it as a file message.
+
+        The file is first uploaded via ``/im/v1/files`` (IM file storage, not
+        Drive), then sent as a ``file`` message to the target chat or user.
+
+        Parameters
+        ----------
+        path_or_bytes:
+            Local file path (str or Path) or raw bytes to send.
+        filename:
+            Display name shown in the chat (e.g. ``"report_2026_03_20.xlsx"``).
+        chat_id:
+            Target group open_chat_id.
+        user_id:
+            Target user open_id (DM).
+        file_type:
+            Lark file type hint: ``"xlsx"`` | ``"pdf"`` | ``"doc"`` | etc.
+            Defaults to ``"xlsx"``.
+        """
+        import io
+        import json
+        import pathlib
+
+        # Read bytes if a path was given
+        if isinstance(path_or_bytes, (str, pathlib.Path)):
+            data = pathlib.Path(path_or_bytes).read_bytes()
+        else:
+            data = path_or_bytes
+
+        token = self._get_token()
+
+        # Step 1: upload to IM file storage
+        upload_resp = self._http.post(
+            f"{_BASE}/im/v1/files",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"file_type": file_type, "file_name": filename},
+            files={"file": (filename, io.BytesIO(data), "application/octet-stream")},
+        )
+        upload_resp.raise_for_status()
+        upload_data = upload_resp.json()
+        if upload_data.get("code") != 0:
+            raise LarkAPIError(
+                upload_data.get("code", -1),
+                upload_data.get("msg", "IM file upload failed"),
+            )
+        file_key = upload_data["data"]["file_key"]
+        log.debug("IM file uploaded: key=%s filename=%s", file_key, filename)
+
+        # Step 2: send as a file message
+        receive_id, id_type = _resolve_target(chat_id, user_id)
+        return self._post(
+            f"/im/v1/messages?receive_id_type={id_type}",
+            {
+                "receive_id": receive_id,
+                "msg_type": "file",
+                "content": json.dumps({"file_key": file_key}),
+            },
+        )
+
     # ------------------------------------------------------------------
     # Drive / file access
     # ------------------------------------------------------------------
