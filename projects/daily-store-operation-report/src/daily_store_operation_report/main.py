@@ -8,7 +8,8 @@ import io
 import logging
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -208,7 +209,7 @@ def main() -> None:
         "date",
         nargs="?",
         default=None,
-        help="Report date in YYYY-MM-DD format (default: yesterday)",
+        help="Report date in YYYY-MM-DD format (default: T-2, two days ago)",
     )
     parser.add_argument("--skip-download", action="store_true", help="Use pre-downloaded files")
     parser.add_argument("--data-dir", type=Path, help="Directory with QBI export files")
@@ -234,11 +235,28 @@ def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
+    # Vancouver time is the reference for T-2 constraint
+    vancouver_now = datetime.now(ZoneInfo("America/Vancouver"))
+    vancouver_today = vancouver_now.date()
+
     # Resolve report date
     if args.date:
         report_date = date.fromisoformat(args.date)
     else:
-        report_date = date.today() - timedelta(days=1)
+        report_date = vancouver_today - timedelta(days=2)
+
+    # QBI data is only reliable T-2. Refuse to generate if report_date is
+    # more recent than 2 days ago in Vancouver time.
+    earliest_valid = vancouver_today - timedelta(days=2)
+    if report_date > earliest_valid:
+        msg = (
+            f"Report date {report_date} is too recent — QBI data is only "
+            f"reliable T-2. Today (Vancouver) is {vancouver_today}, "
+            f"earliest valid report date is {earliest_valid}."
+        )
+        logger.error(msg)
+        _lark_alert(f"⚠️ 日报生成被拒绝\n\n{msg}")
+        sys.exit(1)
 
     dates = compute_dates(report_date)
     logger.info("Report date: %s (%s)", report_date, dates.month_key)
