@@ -150,17 +150,16 @@ class TestSuperAdminRoutes:
     """Tests with a valid super-admin session and mocked MinIO."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self):
-        """Patch is_super_admin to return True for all tests in this class."""
+    def _setup(self, client: TestClient):
+        """Patch is_super_admin to return True and pre-set session cookies on client."""
+        cookies = _make_session_cookie(open_id="ou_superadmin_test", name="Super Admin")
+        client.cookies.set("admin_session", cookies["admin_session"])
         with patch("server.routes.tools.is_super_admin", return_value=True):
             yield
-
-    @property
-    def cookies(self) -> dict:
-        return _make_session_cookie(open_id="ou_superadmin_test", name="Super Admin")
+        client.cookies.clear()
 
     def test_tools_page_returns_html(self, client: TestClient):
-        resp = client.get("/admin/tools/", cookies=self.cookies)
+        resp = client.get("/admin/tools/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "工具" in resp.text
@@ -174,7 +173,6 @@ class TestSuperAdminRoutes:
             resp = client.post(
                 "/admin/tools/upload",
                 files={"file": ("hello.txt", b"hello world", "text/plain")},
-                cookies=self.cookies,
             )
 
         assert resp.status_code == 200
@@ -187,7 +185,7 @@ class TestSuperAdminRoutes:
 
     def test_list_files_empty(self, client: TestClient):
         with patch("server.routes.tools._get_minio_client", return_value=_mock_minio_client()):
-            resp = client.get("/admin/tools/files", cookies=self.cookies)
+            resp = client.get("/admin/tools/files")
 
         assert resp.status_code == 200
         assert resp.json() == []
@@ -200,7 +198,7 @@ class TestSuperAdminRoutes:
 
         mock_mc = _mock_minio_client(objects=[obj])
         with patch("server.routes.tools._get_minio_client", return_value=mock_mc):
-            resp = client.get("/admin/tools/files", cookies=self.cookies)
+            resp = client.get("/admin/tools/files")
 
         assert resp.status_code == 200
         files = resp.json()
@@ -217,10 +215,7 @@ class TestSuperAdminRoutes:
         mock_mc.remove_object.return_value = None
 
         with patch("server.routes.tools._get_minio_client", return_value=mock_mc):
-            resp = client.delete(
-                "/admin/tools/files/some-key",
-                cookies=self.cookies,
-            )
+            resp = client.delete("/admin/tools/files/some-key")
 
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
@@ -241,10 +236,7 @@ class TestSuperAdminRoutes:
         mock_mc.get_object.return_value = mock_minio_resp
 
         with patch("server.routes.tools._get_minio_client", return_value=mock_mc):
-            resp = client.get(
-                "/admin/tools/files/some-uuid_document.pdf",
-                cookies=self.cookies,
-            )
+            resp = client.get("/admin/tools/files/some-uuid_document.pdf")
 
         assert resp.status_code == 200
         assert resp.content == content
@@ -256,7 +248,7 @@ class TestSuperAdminRoutes:
             "server.routes.tools._get_minio_client",
             side_effect=HTTPException(status_code=503, detail="MinIO unavailable"),
         ):
-            resp = client.get("/admin/tools/files", cookies=self.cookies)
+            resp = client.get("/admin/tools/files")
 
         assert resp.status_code == 503
 
@@ -266,8 +258,11 @@ class TestSuperAdminRoutes:
 class TestNonSuperAdmin:
     def test_tools_page_requires_super_admin(self, client: TestClient):
         """Authenticated non-super-admin users should receive 403."""
-        cookies = _make_session_cookie(open_id="ou_regular_user", name="Regular User")
+        client.cookies.set(
+            "admin_session",
+            _make_session_cookie(open_id="ou_regular_user", name="Regular User")["admin_session"],
+        )
         with patch("server.routes.tools.is_super_admin", return_value=False):
-            resp = client.get("/admin/tools/", cookies=cookies, follow_redirects=False)
+            resp = client.get("/admin/tools/", follow_redirects=False)
         # super admin check raises 403, which the app returns (not a redirect)
         assert resp.status_code == 403
