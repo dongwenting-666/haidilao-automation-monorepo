@@ -221,11 +221,32 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
     ws.cell(row=r, column=1, value="区域整体")
 
     store_subtotals = [_store_slot_totals(data.stores[s]) for s in STORES]
+    store_seats = [data.stores[s].seats for s in STORES]
+
+    # Columns that use weighted average (current period TR: cols 3, 5, 8)
+    # vs simple average excluding zeros (YoY/comparison TR: cols 4, 10)
+    # vs difference cols that are computed from other cols (6, 7, 12)
+    _WEIGHTED_AVG_COLS = {3, 5, 8}  # current-period TR → weighted by seats
+    _SIMPLE_AVG_COLS = {4, 10}       # YoY TR → simple avg excluding zeros (stores may not exist in prior year)
 
     for col_idx in range(3, _NCOLS + 1):
         values = [st[col_idx] for st in store_subtotals]
         total = sum(values)
-        if col_idx in _AVG_COLS:
+        if col_idx in _WEIGHTED_AVG_COLS:
+            total_seats = sum(s for s in store_seats if s > 0)
+            if total_seats:
+                total = sum(
+                    v * s for v, s in zip(values, store_seats) if s > 0
+                ) / total_seats
+            else:
+                nonzero = sum(1 for v in values if v != 0)
+                total = total / (nonzero or 1)
+        elif col_idx in _SIMPLE_AVG_COLS:
+            nonzero = sum(1 for v in values if v != 0)
+            total = total / (nonzero or 1)
+        elif col_idx in _AVG_COLS:
+            # Other avg cols (6=目标差异, 7=同比差异, 12=翻台率同比差异)
+            # These are differences — compute from the already-averaged values
             nonzero = sum(1 for v in values if v != 0)
             total = total / (nonzero or 1)
         ws.cell(row=r, column=col_idx, value=total)
