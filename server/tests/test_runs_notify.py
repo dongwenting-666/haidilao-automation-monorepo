@@ -114,7 +114,7 @@ class TestNotifyRun:
             _notify_run(run)
             mock.assert_called_once_with(run)
 
-    def test_daily_report_success_sends_file(self, daily_dir, make_run):
+    def test_scheduled_daily_report_success_sends_file(self, daily_dir, make_run):
         report = daily_dir / "database_report_2026_03_18.xlsx"
         report.write_bytes(b"excel")
         run = make_run(
@@ -122,14 +122,32 @@ class TestNotifyRun:
             status="success",
             logs=f"Report saved to {report}",
         )
+        run.scheduled = True
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run
             _notify_run(run)
             mock_file.assert_called_once_with(report)
 
+    def test_non_scheduled_daily_report_no_file_send(self, daily_dir, make_run):
+        """Manual/API-triggered runs should NOT send to production chat."""
+        report = daily_dir / "database_report_2026_03_18.xlsx"
+        report.write_bytes(b"excel")
+        run = make_run(
+            command="daily-report",
+            status="success",
+            logs=f"Report saved to {report}",
+        )
+        run.scheduled = False  # not from scheduler
+        with patch("server.notify.notify_run_complete"), \
+             patch("server.notify.notify_daily_report_file") as mock_file:
+            from server.routes.runs import _notify_run
+            _notify_run(run)
+            mock_file.assert_not_called()
+
     def test_daily_report_failure_no_file_send(self, daily_dir, make_run):
         run = make_run(command="daily-report", status="failed")
+        run.scheduled = True
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run
@@ -138,6 +156,7 @@ class TestNotifyRun:
 
     def test_non_daily_report_no_file_send(self, make_run):
         run = make_run(command="ksb1", status="success")
+        run.scheduled = True
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run

@@ -29,9 +29,9 @@ class RunStatus(str, Enum):
 
 
 class Run:
-    __slots__ = ("id", "command", "status", "params", "started_at", "finished_at", "logs", "queue_position")
+    __slots__ = ("id", "command", "status", "params", "started_at", "finished_at", "logs", "queue_position", "scheduled")
 
-    def __init__(self, command: str, params: dict[str, Any]) -> None:
+    def __init__(self, command: str, params: dict[str, Any], *, scheduled: bool = False) -> None:
         self.id: str = uuid.uuid4().hex[:12]
         self.command = command
         self.params = params
@@ -40,6 +40,7 @@ class Run:
         self.finished_at: datetime | None = None
         self.logs: str = ""
         self.queue_position: int | None = None  # None when running or done
+        self.scheduled: bool = scheduled  # True only for scheduler-triggered runs
 
     def to_dict(self, include_logs: bool = False) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -124,9 +125,9 @@ def _notify_run(run: Run) -> None:
     except Exception:
         pass  # notification failures must never affect the run result
 
-    # For a successful daily-report, also send the xlsx file to the production
-    # accounting chat so recipients get it directly without visiting the server.
-    if run.command == "daily-report" and run.status.value == "success":
+    # For a successful *scheduled* daily-report, send the xlsx to production chat.
+    # Non-scheduled runs (manual API triggers, tests) do NOT deliver to production.
+    if run.command == "daily-report" and run.status.value == "success" and run.scheduled:
         try:
             from server.notify import notify_daily_report_file
             report_path = _find_report_from_run(run)
@@ -192,9 +193,14 @@ def start_queue_worker() -> None:
     _worker_task = loop.create_task(_queue_worker())
 
 
-def create_run(command_name: str, params: dict[str, Any]) -> Run:
-    """Create a Run, enqueue it for serial execution, and return it."""
-    run = Run(command_name, params)
+def create_run(command_name: str, params: dict[str, Any], *, scheduled: bool = False) -> Run:
+    """Create a Run, enqueue it for serial execution, and return it.
+
+    Set *scheduled=True* for runs created by the internal scheduler (cron).
+    Only scheduled runs trigger production deliveries (e.g. sending the daily
+    report xlsx to the production chat).
+    """
+    run = Run(command_name, params, scheduled=scheduled)
     _runs[run.id] = run
     _evict_old_runs()
     _queue.put_nowait(run)
