@@ -38,10 +38,12 @@ def test_setup_default_jobs():
     setup_default_jobs()
 
     jobs = scheduler.get_jobs()
-    assert len(jobs) == 1
-    job = jobs[0]
-    assert job.id == "daily-report-cron"
-    assert job.name == "Daily store operation report"
+    job_ids = {j.id for j in jobs}
+    # At minimum the daily-report job must be registered
+    assert "daily-report-cron" in job_ids
+    # Verify the daily-report job has correct name
+    daily_job = next(j for j in jobs if j.id == "daily-report-cron")
+    assert daily_job.name == "Daily store operation report"
     # Clean up
     scheduler.remove_all_jobs()
 

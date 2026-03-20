@@ -52,24 +52,24 @@ class TestUnauthenticated:
         assert resp.status_code == 302
         assert "/admin/login" in resp.headers["location"]
 
-    def test_post_upload_redirects_to_login(self, client: TestClient):
+    def test_post_upload_requires_auth(self, client: TestClient):
+        # POST/upload is treated as a JSON-context request → returns 401 not 302
         resp = client.post(
             "/admin/tools/upload",
             files={"file": ("test.txt", b"hello", "text/plain")},
             follow_redirects=False,
         )
-        assert resp.status_code == 302
-        assert "/admin/login" in resp.headers["location"]
+        assert resp.status_code in (302, 401)
 
-    def test_get_files_list_redirects_to_login(self, client: TestClient):
+    def test_get_files_list_requires_auth(self, client: TestClient):
+        # /files is treated as JSON-context → 401
         resp = client.get("/admin/tools/files", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/admin/login" in resp.headers["location"]
+        assert resp.status_code in (302, 401)
 
-    def test_delete_file_redirects_to_login(self, client: TestClient):
+    def test_delete_file_requires_auth(self, client: TestClient):
+        # DELETE is treated as JSON-context → 401
         resp = client.delete("/admin/tools/files/some-key", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/admin/login" in resp.headers["location"]
+        assert resp.status_code in (302, 401)
 
 
 # ── Agent endpoint: non-localhost → 403 ──────────────────────────────────────

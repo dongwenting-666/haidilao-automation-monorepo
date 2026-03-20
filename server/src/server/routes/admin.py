@@ -217,7 +217,7 @@ async def login_page(request: Request, next: str = "/admin/targets"):
 async def oauth_callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None):
     if error:
         return HTMLResponse(
-            content=f"<h2>授权失败</h2><p>{error}</p><a href='/admin/login'>重新登录</a>",
+            content=f"<h2>授权失败</h2><p>{html.escape(str(error))}</p><a href='/admin/login'>重新登录</a>",
             status_code=400,
         )
 
@@ -235,7 +235,7 @@ async def oauth_callback(request: Request, code: str | None = None, state: str |
     except Exception as exc:
         logger.exception("OAuth code exchange failed")
         return HTMLResponse(
-            content=f"<h2>登录失败</h2><p>无法获取用户信息：{exc}</p><a href='/admin/login'>重新登录</a>",
+            content=f"<h2>登录失败</h2><p>无法获取用户信息：{html.escape(str(exc))}</p><a href='/admin/login'>重新登录</a>",
             status_code=500,
         )
 

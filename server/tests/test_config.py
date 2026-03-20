@@ -22,8 +22,9 @@ def test_settings_defaults():
 def test_settings_env_override(monkeypatch):
     from server.config import Settings
 
-    monkeypatch.setenv("SERVER_SERVER_PORT", "9999")
-    monkeypatch.setenv("SERVER_DAILY_REPORT_CRON", "30 7 * * 1-5")
+    # Settings uses env_prefix="" so vars are accessed directly without prefix
+    monkeypatch.setenv("SERVER_PORT", "9999")
+    monkeypatch.setenv("DAILY_REPORT_CRON", "30 7 * * 1-5")
     s = Settings()
     assert s.server_port == 9999
     assert s.daily_report_cron == "30 7 * * 1-5"
