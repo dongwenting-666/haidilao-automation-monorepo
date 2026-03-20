@@ -9,7 +9,6 @@ CorpLink is not installed.
 """
 
 import sys
-import time
 from pathlib import Path
 
 import pytest
