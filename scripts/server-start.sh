@@ -106,7 +106,7 @@ send_recovery_notice() {
 服务器已重启并通过健康检查。OpenClaw 正在调查崩溃原因并将在 TUI 中报告。"
 
     # 2. Wake agent in isolated session — instruct it to investigate and report on TUI
-    local recovery_message="✅ RECOVERY: Haidilao automation server has recovered at $timestamp after crash ($crash_info). Please: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) summarise what went wrong and whether any action is needed, (3) send a brief status update to Hongming NOW on TUI (this session) in plain language — what crashed, why, and whether it's fully resolved. Keep it short."
+    local recovery_message="✅ RECOVERY: Haidilao automation server has recovered at $timestamp after crash ($crash_info). Please: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) write a short plain-language report (2-4 sentences: what crashed, why, current status, any action needed), (3) send it to Hongming on Lark by running: cd $REPO_ROOT && uv run --project server python scripts/lark-notify.py hongming \"YOUR REPORT HERE\", (4) post the same report here on TUI as well. If you need Hongming's input to resolve something, say so explicitly on TUI."
 
     /opt/homebrew/bin/openclaw cron add \
         --name "server-recovery-$(date +%s)" \
@@ -147,7 +147,7 @@ launchd 正在自动重启服务器（30秒后）。
 服务器恢复后将发送通知，OpenClaw 将在 TUI 中报告调查结果。"
 
     # 2. Wake OpenClaw agent to investigate (reports back on TUI)
-    local alert_message="🔴 SYSTEM ALERT: Haidilao automation server crashed at $timestamp (exit code $exit_code). Repo: $REPO_ROOT/server.log. IMPORTANT: Do NOT send a final report yet — wait for the recovery notice. Your job right now is to: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) prepare your diagnosis. You will be triggered again after recovery to deliver the full report on TUI."
+    local alert_message="🔴 SYSTEM ALERT: Haidilao automation server crashed at $timestamp (exit code $exit_code). Your job: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) prepare a short diagnosis (what broke and why). Do NOT send the full report yet — a recovery notice will fire once the server restarts healthy, at which point you will send the report to both Lark and TUI."
 
     /opt/homebrew/bin/openclaw cron add \
         --name "server-crash-$(date +%s)" \
