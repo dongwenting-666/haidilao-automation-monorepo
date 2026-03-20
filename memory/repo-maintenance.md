@@ -1,5 +1,42 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 9) — Scheduled Maintenance (8:55 PM)
+
+### Summary
+Clean pass. One uncommitted change in `docker/init/03_revenue_precision.sql` (upgrading revenue precision from `NUMERIC(15,5)` to `NUMERIC(20,11)`) was found and committed along with a matching fix to `01_schema.sql` so fresh deployments also use the final precision. All 4 remaining "unused import" hits from the scanner are confirmed false positives (TYPE_CHECKING guard, conditional platform imports). Daily reports Mar 1–19 all present. Pruned 15 Mar 17 QBI raw downloads (oldest stale files). No structural changes, no new projects.
+
+### Fixes Applied
+
+#### 1. Committed precision migration upgrade ✅
+- `docker/init/03_revenue_precision.sql`: was edited locally to upgrade from `NUMERIC(15,5)` → `NUMERIC(20,11)` but never staged
+- Also updated `docker/init/01_schema.sql` baseline from `NUMERIC(12,2)` → `NUMERIC(20,11)` so fresh Docker init matches the final state
+- **Commit:** `4086a5e`
+
+#### 2. Pruned stale QBI raw downloads ✅
+- Deleted 15 Mar 17 files from `output/qbi/` (`find -mtime +1 -delete`)
+- These are processed intermediate files; daily report for Mar 17 already in `output/daily-report/`
+- 130 files remain (Mar 18–19); they'll age out in tomorrow's run
+
+### Code Review Results
+- All 4 "unused import" scanner hits confirmed false positives:
+  - `notify.py: Run` → under `TYPE_CHECKING` guard
+  - `session.py: SAPSession/SAPSessionManager` → conditional `if sys.platform == "win32"`
+  - `connect.py: ensure_vpn` → conditional `if sys.platform == "darwin"`
+- No real issues found.
+
+### Output Directory Health
+- `output/daily-report/`: 19 files (Mar 1–19) — complete, healthy
+- `output/qbi/`: 130 files / 16MB (Mar 18–19 only after pruning)
+- `output/ksb1/`: 2.3MB — healthy
+
+### No Other Issues Found
+- README.md, CLAUDE.md: fully up to date, no structural changes
+- docs/: all pages current
+- `git status`: clean after commit
+- Server API: `/api/runs` shows 3 successful daily-report runs today
+
+---
+
 ## 2026-03-19 (Run 8) — Scheduled Maintenance (7:47 PM)
 
 ### Summary
