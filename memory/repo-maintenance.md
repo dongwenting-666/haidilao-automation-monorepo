@@ -314,3 +314,55 @@ Two doc gaps fixed, one .gitignore gap fixed.
 |------|---------|
 | `da3a054` | docs: document GitHub webhook endpoint and add GITHUB_WEBHOOK_SECRET to .env.example |
 | `f5f98b0` | chore: add .pytest_cache to .gitignore |
+
+---
+
+## 2026-03-19 (Run 10) — Scheduled Maintenance
+
+### Summary
+Maintenance pass after a large burst of bug-fix commits on Mar 19. Doc updates only — no code changes needed.
+
+### Findings
+
+#### 1. Documentation Fixes ✅
+
+**`docs/daily-store-operation-report.md` — stale CLI option table:**
+- Default date still said "yesterday" → updated to "T-2, two days ago in Vancouver time"
+- `--targets PATH` option row still in the table even though `--targets` was removed when targets moved to DB; removed from options table (the "no longer needed" note below it was already correct)
+
+**`CLAUDE.md` — undocumented known noise:**
+- Every `daily-report` subprocess ends with `PythonFinalizationError: cannot join thread at interpreter shutdown` from `psycopg-pool`'s `ConnectionPool.__del__`. This is harmless but alarming-looking.
+- Added Lesson 11 documenting this as a known psycopg-pool / Python 3.14 incompatibility.
+
+#### 2. Recent Commits (Mar 19 burst) — Already in CLAUDE.md
+All 5 recent commits are bug fixes that already landed in CLAUDE.md in the same session:
+- `01e8bcb` — weighted avg for region turnover rate
+- `f982b01` — T-2 constraint enforcement
+- `5b64b30` — timezone=America/Vancouver on CronTrigger
+- `698bfb5` — correct averaging method per time-period column
+- `1b0d0d8` — derive diff cols from averaged values, not average of diffs
+
+#### 3. Reports for Mar 18 and Mar 19 Missing from output/daily-report/
+The API shows 3 successful `daily-report` runs:
+- `2026-03-17` → saved (oldest file in dir)
+- `2026-03-18` → run succeeded, but file is missing (was deleted — pre-bug-fix output)
+- `2026-03-19` → run succeeded, but file is missing (same reason)
+
+The scheduler will regenerate these when the T-2 clock allows:
+- Mar 18 report will generate at 6 AM Vancouver on Mar 20
+- Mar 19 report will generate at 6 AM Vancouver on Mar 21
+
+No action needed — the missing files are expected (they were pre-fix runs that got cleaned up).
+
+#### 4. Code Quality — Clean
+- All `__init__.py` files present
+- No unused imports in spot-checked active files
+- All pyproject.toml consistent (hatchling, `>=3.13`, src layout)
+- `output/qbi/` has 135 accumulated files — all gitignored, not a concern
+- `transform.py` at 580 lines is the largest module; noted but not splitting working code
+
+### Commits (Run 10)
+
+| Hash | Message |
+|------|---------|
+| `87fe82b` | docs: fix stale CLI option table and add psycopg_pool teardown noise note |
