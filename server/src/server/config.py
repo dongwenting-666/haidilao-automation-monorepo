@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     session_secret: str = ""         # HMAC key for signing session cookies
     super_admin_open_ids: str = ""   # comma-separated Lark open_ids with super-admin access
     lark_oauth_redirect_uri: str = "https://haidilao.wanghongming.xyz/admin/oauth/callback"
+    cookie_secure: str = "true"      # set to "false" for local HTTP dev
+
+    # GitHub webhook
+    github_webhook_secret: str = ""
+
+    # MinIO file storage
+    minio_endpoint: str = "localhost:9000"
+    minio_root_user: str = "haidilao"
+    minio_root_password: str = "haidilao_minio_dev"
+    minio_bucket: str = "tools-uploads"
+    minio_secure: str = "false"
 
     model_config = {"env_prefix": "", "extra": "ignore"}
 
@@ -47,6 +58,14 @@ class Settings(BaseSettings):
     def lark_enabled(self) -> bool:
         """True if Lark credentials are configured."""
         return bool(self.lark_app_id and self.lark_app_secret)
+
+    @property
+    def cookie_secure_bool(self) -> bool:
+        return self.cookie_secure.lower() not in ("false", "0", "no")
+
+    @property
+    def minio_secure_bool(self) -> bool:
+        return self.minio_secure.lower() in ("true", "1", "yes")
 
 
 settings = Settings(_env_file=REPO_ROOT / ".env", _env_file_encoding="utf-8")

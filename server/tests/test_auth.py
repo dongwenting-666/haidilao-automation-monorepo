@@ -122,11 +122,13 @@ class TestCookieFlags:
     def test_cookie_secure_false_when_env_disabled(self, monkeypatch):
         from server.auth import _cookie_secure
         monkeypatch.setenv("COOKIE_SECURE", "false")
+        monkeypatch.setattr("server.config.settings.cookie_secure", "false")
         assert _cookie_secure() is False
 
     def test_cookie_secure_false_for_zero(self, monkeypatch):
         from server.auth import _cookie_secure
         monkeypatch.setenv("COOKIE_SECURE", "0")
+        monkeypatch.setattr("server.config.settings.cookie_secure", "0")
         assert _cookie_secure() is False
 
     def test_set_session_cookie_has_max_age(self, monkeypatch):
@@ -167,11 +169,13 @@ class TestIsWhitelisted:
 
     def test_whitelist_trims_spaces(self, monkeypatch):
         monkeypatch.setenv("ADMIN_WHITELIST", " ou_spaced , ou_user2 ")
+        monkeypatch.setattr("server.config.settings.admin_whitelist", " ou_spaced , ou_user2 ")
         from server.auth import is_whitelisted
         assert is_whitelisted("ou_spaced") is True
 
     def test_whitelist_ignores_empty_tokens(self, monkeypatch):
         monkeypatch.setenv("ADMIN_WHITELIST", "ou_a,,ou_b")
+        monkeypatch.setattr("server.config.settings.admin_whitelist", "ou_a,,ou_b")
         from server.auth import is_whitelisted
         assert is_whitelisted("ou_a") is True
         assert is_whitelisted("") is False
@@ -192,13 +196,13 @@ def _isolated_is_whitelisted(oid: str, monkeypatch) -> bool:
 class TestIsSuperAdmin:
     def test_true_for_id_in_super_admin_env(self, monkeypatch):
         monkeypatch.setenv("SUPER_ADMIN_OPEN_IDS", "ou_boss,ou_cto")
-        monkeypatch.setattr("server.config.settings.super_admin_open_ids", "")
+        monkeypatch.setattr("server.config.settings.super_admin_open_ids", "ou_boss,ou_cto")
         from server.auth import is_super_admin
         assert is_super_admin("ou_boss") is True
 
     def test_false_for_id_not_in_super_admin_env(self, monkeypatch):
         monkeypatch.setenv("SUPER_ADMIN_OPEN_IDS", "ou_boss")
-        monkeypatch.setattr("server.config.settings.super_admin_open_ids", "")
+        monkeypatch.setattr("server.config.settings.super_admin_open_ids", "ou_boss")
         from server.auth import is_super_admin
         assert is_super_admin("ou_peon") is False
 
@@ -206,7 +210,7 @@ class TestIsSuperAdmin:
         monkeypatch.delenv("SUPER_ADMIN_OPEN_IDS", raising=False)
         monkeypatch.setattr("server.config.settings.super_admin_open_ids", "")
         monkeypatch.setenv("ADMIN_WHITELIST", "ou_fallback")
-        monkeypatch.setattr("server.config.settings.admin_whitelist", "")
+        monkeypatch.setattr("server.config.settings.admin_whitelist", "ou_fallback")
         from server.auth import is_super_admin
         assert is_super_admin("ou_fallback") is True
 
@@ -220,9 +224,9 @@ class TestIsSuperAdmin:
 
     def test_super_admin_takes_precedence_over_whitelist(self, monkeypatch):
         monkeypatch.setenv("SUPER_ADMIN_OPEN_IDS", "ou_boss")
-        monkeypatch.setattr("server.config.settings.super_admin_open_ids", "")
+        monkeypatch.setattr("server.config.settings.super_admin_open_ids", "ou_boss")
         monkeypatch.setenv("ADMIN_WHITELIST", "ou_boss,ou_regular")
-        monkeypatch.setattr("server.config.settings.admin_whitelist", "")
+        monkeypatch.setattr("server.config.settings.admin_whitelist", "ou_boss,ou_regular")
         from server.auth import is_super_admin
         # Only ou_boss is super admin; ou_regular is whitelisted but not super admin
         assert is_super_admin("ou_boss") is True

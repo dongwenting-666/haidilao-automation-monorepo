@@ -32,7 +32,8 @@ agent_router = APIRouter(prefix="/api/tools", tags=["tools-agent"])
 
 
 def _get_bucket() -> str:
-    return os.environ.get("MINIO_BUCKET", "tools-uploads")
+    from server.config import settings
+    return settings.minio_bucket
 
 
 def _get_minio_client():
@@ -42,10 +43,11 @@ def _get_minio_client():
     except ImportError:
         raise HTTPException(status_code=503, detail="minio package not installed")
 
-    endpoint = os.environ.get("MINIO_ENDPOINT", "localhost:9000")
-    access_key = os.environ.get("MINIO_ROOT_USER", "haidilao")
-    secret_key = os.environ.get("MINIO_ROOT_PASSWORD", "haidilao_minio_dev")
-    secure = os.environ.get("MINIO_SECURE", "false").lower() in ("true", "1", "yes")
+    from server.config import settings
+    endpoint = settings.minio_endpoint
+    access_key = settings.minio_root_user
+    secret_key = settings.minio_root_password
+    secure = settings.minio_secure_bool
 
     try:
         client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)

@@ -34,7 +34,8 @@ def _get_webhook_secret() -> str:
     os.environ holds when the module first loads (before launchd env vars are
     visible under some startup orderings). Lazy reads always see the live value.
     """
-    return os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+    from server.config import settings
+    return settings.github_webhook_secret
 
 # Events we care about
 _RELEVANT_ACTIONS = {

@@ -139,10 +139,8 @@ def _db_warning() -> str:
 
 
 def _get_redirect_uri() -> str:
-    return os.environ.get(
-        "LARK_OAUTH_REDIRECT_URI",
-        "https://haidilao.wanghongming.xyz/admin/oauth/callback",
-    )
+    from server.config import settings
+    return settings.lark_oauth_redirect_uri
 
 
 # ── GET /admin/login ──────────────────────────────────────────────────────────

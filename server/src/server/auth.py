@@ -34,7 +34,7 @@ _fallback_secret: str = ""
 def _get_signer() -> TimestampSigner:
     global _fallback_secret
     from server.config import settings
-    secret = settings.session_secret or os.environ.get("SESSION_SECRET", "")
+    secret = settings.session_secret
     if not secret:
         if not _fallback_secret:
             _fallback_secret = secrets.token_hex(32)
@@ -64,11 +64,11 @@ def get_session(request: Request) -> dict | None:
 def _cookie_secure() -> bool:
     """Return True if cookies should be marked Secure (HTTPS-only).
 
-    Set COOKIE_SECURE=false in .env or environment to disable for local
-    development. Defaults to True (production-safe).
+    Set COOKIE_SECURE=false in .env to disable for local HTTP dev.
+    Defaults to True (production-safe).
     """
-    val = os.environ.get("COOKIE_SECURE", "true").lower()
-    return val not in ("false", "0", "no")
+    from server.config import settings
+    return settings.cookie_secure_bool
 
 
 def set_session_cookie(response, open_id: str, name: str) -> None:
@@ -114,11 +114,9 @@ def is_whitelisted(open_id: str) -> bool:
     except Exception:
         pass
 
-    # Env var fallback (used on first login before DB record exists)
-    whitelist_raw = os.environ.get("ADMIN_WHITELIST", "").strip()
-    if not whitelist_raw:
-        from server.config import settings
-        whitelist_raw = settings.admin_whitelist.strip()
+    # Settings fallback (used on first login before DB record exists)
+    from server.config import settings
+    whitelist_raw = settings.admin_whitelist.strip()
     if not whitelist_raw:
         return False
     allowed = {oid.strip() for oid in whitelist_raw.split(",") if oid.strip()}
@@ -135,13 +133,7 @@ def is_super_admin(open_id: str) -> bool:
     4. Pydantic settings.admin_whitelist (fallback for single-admin setups)
     """
     from server.config import settings
-    raw = os.environ.get("SUPER_ADMIN_OPEN_IDS", "").strip()
-    if not raw:
-        raw = settings.super_admin_open_ids.strip()
-    if not raw:
-        raw = os.environ.get("ADMIN_WHITELIST", "").strip()
-    if not raw:
-        raw = settings.admin_whitelist.strip()
+    raw = settings.super_admin_open_ids.strip() or settings.admin_whitelist.strip()
     if not raw:
         return False
     allowed = {oid.strip() for oid in raw.split(",") if oid.strip()}
@@ -175,9 +167,8 @@ _LARK_USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info"
 
 
 def _get_lark_credentials() -> tuple[str, str]:
-    app_id = os.environ.get("LARK_APP_ID", "")
-    app_secret = os.environ.get("LARK_APP_SECRET", "")
-    return app_id, app_secret
+    from server.config import settings
+    return settings.lark_app_id, settings.lark_app_secret
 
 
 def get_lark_auth_url(redirect_uri: str, state: str) -> str:
