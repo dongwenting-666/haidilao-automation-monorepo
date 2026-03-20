@@ -1,5 +1,40 @@
 # Repo Maintenance Notes
 
+## 2026-03-20 (Run 20) — Scheduled Maintenance (11:28 AM Vancouver)
+
+### Summary
+Clean pass. All 244 tests pass (17.83s). Repo on `main`, up to date with origin, working tree clean. Server running with 4 in-memory runs, all successful. Daily reports through Mar 18 (Mar 19 absent — T-2 means it generates at 6 AM Mar 21). QBI output at 359 files / 45MB, no stale files (0 files older than 2 days). README.md, CLAUDE.md, and docs/ all accurate. No code changes or commits needed.
+
+### Findings
+
+#### 1. Tests — All Pass ✅
+244 passed, 1 deselected (e2e). Clean run in 17.83s. No regressions.
+
+#### 2. Server Status ✅
+- `com.haidilao.server` running, 4 in-memory runs:
+  - `daily-report` (params: `{"date": "2026-03-18"}`) → success (13:55 UTC)
+  - `store-hours-collect` → success (13:30 UTC)
+  - `treasury-loan-watch` → success (13:00 UTC)
+  - `daily-report` (default T-2) → success (13:00 UTC)
+
+#### 3. Daily Reports Status ✅
+- `output/daily-report/`: 19 files (Feb 10, Mar 1–18)
+- Mar 18 is latest — correct. Mar 19 generates at 6 AM Mar 21 (T-2 constraint).
+
+#### 4. Output Directory Health ✅
+- `output/qbi/`: 359 files / 45MB — 0 stale files (none older than 2 days) ✅
+- `output/ksb1/`: healthy
+- `output/daily-report/`: 19 files through Mar 18
+
+#### 5. Code Quality — Clean ✅
+- No structural changes since Run 19
+- README.md, CLAUDE.md, docs/ all accurate and up to date
+- No TODOs/FIXMEs/HACKs, no unused imports, no missing `__init__.py` files
+
+### No Commits Needed
+
+---
+
 ## 2026-03-20 (Run 19) — Scheduled Maintenance (10:26 AM Vancouver)
 
 ### Summary
