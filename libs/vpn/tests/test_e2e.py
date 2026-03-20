@@ -25,6 +25,7 @@ requires_corplink = pytest.mark.skipif(
 )
 
 
+@pytest.mark.e2e
 @darwin_only
 @requires_corplink
 class TestE2E:

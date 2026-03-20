@@ -13,7 +13,6 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import time
 from pathlib import Path
 
@@ -31,7 +30,7 @@ def _get_webhook_secret() -> str:
     """Return the configured webhook secret, read lazily at request time.
 
     Reading at import time means the module-level value is frozen to whatever
-    os.environ holds when the module first loads (before launchd env vars are
+    the environment holds when the module first loads (before launchd env vars are
     visible under some startup orderings). Lazy reads always see the live value.
     """
     from server.config import settings

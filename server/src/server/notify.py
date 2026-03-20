@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_NOTIFY_CONFIG = Path(__file__).resolve().parents[4] / "notify.toml"
+_NOTIFY_CONFIG = Path(__file__).resolve().parents[2] / "notify.toml"
 
 
 @lru_cache(maxsize=1)

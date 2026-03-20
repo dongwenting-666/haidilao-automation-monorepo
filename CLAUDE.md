@@ -25,21 +25,19 @@
 
 ## Critical Lessons Learned
 
-### 1. `os.environ` vs pydantic-settings
-`pydantic-settings` loads `.env` into the `Settings` object but does **NOT** populate `os.environ`. Any code that reads `os.environ.get("SOME_VAR")` won't see `.env` values unless they're also exported in the shell or set in the LaunchAgent plist.
+### 1. Always read config from `settings`, never `os.environ`
+`pydantic-settings` loads `.env` into the `Settings` object but does **NOT** populate `os.environ`. All server code must read from `settings` — never use `os.environ.get()` directly.
 
-**Rule:** Always read from `settings` first, fall back to `os.environ`. Example:
+**Rule:** Add new config to `Settings` in `config.py`, then read via `settings.field_name`. Example:
 ```python
 from server.config import settings
-value = settings.some_field or os.environ.get("SOME_FIELD", "")
+value = settings.some_field  # loaded from .env by pydantic-settings
 ```
 
-### 2. LaunchAgent plist is the source of truth
-The server runs via launchd, not via your shell. Environment variables must be in **both**:
-- `.env` (for pydantic-settings in `config.py`)
-- `~/Library/LaunchAgents/com.haidilao.server.plist` (for `os.environ` access)
+### 2. `.env` is the single source of truth for secrets
+All server config reads from pydantic `Settings` which loads `.env`. The plist only has `HOME`, `PATH`, `LARK_APP_ID`, `LARK_APP_SECRET` (needed by the crash-alert script before dotenv runs).
 
-When adding new env vars, update both. Restart with `launchctl stop/start`.
+When adding new env vars: add to `.env` only. Add to the plist **only** if the crash-alert script in `server-start.sh` needs it before the Python server starts.
 
 ### 3. CorpLink VPN
 - 450-minute (7.5h) max session timeout — auto-disconnects
@@ -154,7 +152,7 @@ name when the generic name (e.g. `test_e2e.py`) would otherwise collide:
 - `test_vpn_e2e.py`, `test_server_e2e.py`, `test_ksb1_e2e.py` — unambiguous
 - `test_e2e.py` — only safe if it exists in exactly one `tests/` directory
 
-### 9. Lark Chat IDs are Named Aliases — Never Hardcode `oc_xxx`
+### 14. Lark Chat IDs are Named Aliases — Never Hardcode `oc_xxx`
 
 All Lark group chat IDs live in **`server/notify.toml [chats]`** as named aliases. Never put a raw `oc_xxx` string in Python.
 
@@ -169,7 +167,7 @@ chat_id = "oc_78f29489a577f10e36ebf989bccdcc83"
 
 Both `lark_client.notify_config._load_chats()` and `server.notify._load_config()` use `lru_cache(maxsize=1)`. **Changes to `notify.toml` require a server restart** — the cache is never hot-reloaded.
 
-### 10. LaunchAgent Crash Alerting
+### 15. LaunchAgent Crash Alerting
 
 The server is launched via `scripts/server-start.sh`, not `uv` directly. On any non-zero exit:
 1. Sends a 🔴 Lark text alert to the `hongming` chat
@@ -177,7 +175,7 @@ The server is launched via `scripts/server-start.sh`, not `uv` directly. On any 
 
 Clean exit (code 0, e.g. `launchctl stop`) = no alert. `KeepAlive.SuccessfulExit = false` means launchd only restarts on crash, not on clean shutdown. `ThrottleInterval = 30` prevents rapid crash loops.
 
-### 11. plist env vars — minimal set
+### 16. plist env vars — minimal set
 
 The plist only contains: `HOME`, `PATH`, `LARK_APP_ID`, `LARK_APP_SECRET`. Everything else loads from `.env` via python-dotenv at server startup. `LARK_APP_ID`/`SECRET` must be in the plist because the crash-alert script in `server-start.sh` needs them *before* dotenv has run.
 

@@ -70,10 +70,11 @@ tail -f server.log
 curl http://localhost:8000/api/runs
 ```
 
-> **⚠️ Important:** The LaunchAgent plist at `~/Library/LaunchAgents/com.haidilao.server.plist`
-> sets its own `EnvironmentVariables`. When adding new env vars, update **both** `.env` and
-> the plist, then restart via `launchctl`. The plist env vars take precedence over `.env`
-> for values that `auth.py` reads via `os.environ`.
+> **`.env` is the single source of truth** for all server configuration. The LaunchAgent plist
+> only contains `HOME`, `PATH`, `LARK_APP_ID`, and `LARK_APP_SECRET` (needed by the crash-alert
+> script before python-dotenv loads). When adding new env vars, add to `.env` only.
+> The server launches via `scripts/server-start.sh` which provides crash alerting and
+> auto-recovery notifications.
 
 ## Server
 
