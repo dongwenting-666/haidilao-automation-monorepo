@@ -117,7 +117,7 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
     sub_headers = {
         3: "今年", 4: "去年", 5: "本月目标", 6: "目标差异", 7: "同比差异",
         8: "翻台率（考核）", 9: "桌数（考核）",
-        10: "翻台率", 11: "桌数", 12: "翻台率同比差异",
+        10: "翻台率(考核)", 11: "营业桌数(考核)", 12: "翻台率同比差异",
         13: "今年", 14: "去年", 15: "同比差异",
     }
     for col, label in sub_headers.items():

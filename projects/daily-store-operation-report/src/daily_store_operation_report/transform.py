@@ -397,6 +397,21 @@ class RawData:
     tp_turnover_yoy_weekday: dict[str, dict[str, float]]
     tp_mtd_tables_cur: dict[str, dict[str, float]]
     tp_mtd_tables_yoy: dict[str, dict[str, float]]
+    # Seats per store (constant, taken from any row)
+    seats: dict[str, int]
+
+
+def _seats_by_store(rows: list[dict]) -> dict[str, int]:
+    """Extract seat count per store (takes the first non-zero value found)."""
+    from daily_store_operation_report.constants import COL_SEATS
+    result: dict[str, int] = {}
+    for row in rows:
+        store = row.get(COL_STORE, "")
+        if store and store not in result:
+            val = row.get(COL_SEATS, 0) or 0
+            if val:
+                result[store] = int(val)
+    return result
 
 
 def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
@@ -448,6 +463,7 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         tp_turnover_yoy_weekday=_last_day_time_period(yoy_tp_rows_all, yoy_weekday_str, COL_TURNOVER),
         tp_mtd_tables_cur=_sum_time_period(cur_tp_rows, COL_TABLES_ASSESSED),
         tp_mtd_tables_yoy=_sum_time_period(yoy_tp_rows, COL_TABLES_ASSESSED),
+        seats=_seats_by_store(cur_rows),
     )
 
 
@@ -469,6 +485,7 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.today_per_capita = div_or_zero(rev_today, cust_today)
     m.today_per_table = div_or_zero(rev_today, m.today_raw_tables)
     m.today_turnover_rate = raw.today_turnover.get(store, 0)
+    m.seats = raw.seats.get(store, 0)
 
     # MTD current
     mtd_r = raw.mtd_revenue.get(store, 0)

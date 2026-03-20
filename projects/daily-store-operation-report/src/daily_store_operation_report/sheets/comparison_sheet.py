@@ -244,10 +244,14 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         ws.cell(row=25, column=3 + i, value=store)
         ws.cell(row=26, column=3 + i, value=tr)
 
-    # K25:K28 merged — region average turnover rate (exclude stores with no data)
+    # K25:K28 merged — region weighted-average turnover rate
+    # Weighted average = sum(mtd_tables) / sum(seats × days)
+    # This matches the QBI dashboard's 当月累计平均翻台率 calculation
     ws.merge_cells("K25:K28")
-    nonzero_rates = [data.stores[s].mtd_turnover_rate for s in stores if data.stores[s].mtd_tables > 0]
-    region_avg_tr = sum(nonzero_rates) / len(nonzero_rates) if nonzero_rates else 0
+    region_mtd_tables_total = sum(data.stores[s].mtd_tables for s in stores)
+    region_seats_total = sum(data.stores[s].seats for s in stores if data.stores[s].seats > 0)
+    num_days = dates.day_of_month
+    region_avg_tr = div_or_zero(region_mtd_tables_total, region_seats_total * num_days) if region_seats_total else 0
     ws["K25"] = region_avg_tr
     ws["K25"].font = BOLD_LARGE
     ws["K25"].alignment = CENTER
