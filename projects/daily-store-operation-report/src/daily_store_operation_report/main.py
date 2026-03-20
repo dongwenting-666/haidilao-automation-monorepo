@@ -28,7 +28,10 @@ from vpn.connect import ensure_vpn
 
 logger = logging.getLogger(__name__)
 
-_ALERT_CHAT_ID = "oc_78f29489a577f10e36ebf989bccdcc83"
+def _alert_chat_id() -> str:
+    """Resolve the alert chat ID from notify.toml [chats] at runtime."""
+    from lark_client.notify_config import chat_id_for
+    return chat_id_for("hongming") or "oc_78f29489a577f10e36ebf989bccdcc83"
 
 
 @functools.cache
@@ -147,17 +150,18 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
 
 
 def _lark_alert(message: str) -> None:
-    """Send a Lark text alert to the config group. Best-effort — never raises."""
+    """Send a Lark text alert to the 'hongming' chat. Best-effort — never raises."""
     try:
         app_id = os.environ.get("LARK_APP_ID", "")
         app_secret = os.environ.get("LARK_APP_SECRET", "")
         if not app_id or not app_secret:
             logger.warning("LARK_APP_ID/SECRET not set — skipping Lark alert")
             return
+        chat_id = _alert_chat_id()
         from lark_client import LarkClient
         with LarkClient(app_id=app_id, app_secret=app_secret) as client:
-            client.send_text(message, chat_id=_ALERT_CHAT_ID)
-        logger.info("Lark alert sent to %s", _ALERT_CHAT_ID)
+            client.send_text(message, chat_id=chat_id)
+        logger.info("Lark alert sent to chat '%s' (%s)", "hongming", chat_id)
     except Exception:
         logger.exception("Failed to send Lark alert")
 

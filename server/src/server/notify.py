@@ -1,12 +1,19 @@
 """Lark notification helpers for the automation server.
 
-Notification targets are configured per-command in ``server/notify.toml``:
+Notification targets are configured per-command in ``server/notify.toml``.
+
+Chat IDs are defined once as named aliases in the ``[chats]`` section and
+referenced by name in per-command entries::
+
+    [chats]
+    hongming    = "oc_78f29489a577f10e36ebf989bccdcc83"
+    store_hours = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"
 
     [daily-report]
-    chat_id = "oc_xxxxxxxxxxxxxxxx"
+    chat = "hongming"          # resolved via [chats]
 
     [ksb1]
-    user_id = "ou_xxxxxxxxxxxxxxxx"
+    user_id = "ou_xxxxxxxx"   # DM fallback
 
 Lark credentials (LARK_APP_ID, LARK_APP_SECRET) must be set in .env.
 If either the credentials or a command's target are not configured, that
@@ -16,6 +23,7 @@ Usage:
     from server.notify import notify_run_complete, notify_text
     notify_run_complete(run)              # called automatically after every run
     notify_text("daily-report", "Hello") # send a one-off message
+    chat_id_for("hongming")              # resolve a named alias directly
 """
 
 from __future__ import annotations
@@ -35,12 +43,11 @@ _NOTIFY_CONFIG = Path(__file__).resolve().parents[4] / "notify.toml"
 
 
 @lru_cache(maxsize=1)
-def _load_targets() -> dict[str, dict[str, str]]:
+def _load_config() -> dict:
     # NOTE: results are cached for the lifetime of the process.
     # Changes to notify.toml require a server restart to take effect.
-    """Load and cache the notify.toml targets.
+    """Load and cache the full notify.toml.
 
-    Returns a dict mapping command name → {chat_id/user_id: value}.
     Returns empty dict if the file doesn't exist or can't be parsed.
     """
     if not _NOTIFY_CONFIG.exists():
@@ -54,10 +61,31 @@ def _load_targets() -> dict[str, dict[str, str]]:
         return {}
 
 
+def chat_id_for(alias: str) -> str | None:
+    """Resolve a named chat alias from the ``[chats]`` section of notify.toml.
+
+    Delegates to ``lark_client.notify_config`` which owns the canonical
+    implementation and caches results for the process lifetime.
+    """
+    from lark_client.notify_config import chat_id_for as _chat_id_for
+    return _chat_id_for(alias)
+
+
 def _target_for(command: str) -> tuple[str | None, str | None]:
     """Return (chat_id, user_id) for a command, or (None, None) if not configured."""
-    targets = _load_targets()
-    entry = targets.get(command, {})
+    config = _load_config()
+    entry = config.get(command, {})
+
+    # Prefer named alias → raw chat_id fallback → user_id
+    chat_alias = entry.get("chat")
+    if chat_alias:
+        chat_id = chat_id_for(chat_alias)
+        if chat_id is None:
+            log.warning(
+                "notify.toml [%s]: chat alias %r not found in [chats]", command, chat_alias
+            )
+        return chat_id, None
+
     chat_id = entry.get("chat_id") or None
     user_id = entry.get("user_id") or None
     if chat_id and user_id:

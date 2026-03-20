@@ -1,23 +1,32 @@
 # Lark notification targets per command.
 #
-# Each key is a command name (matches BaseCommand.name).
-# Provide either chat_id (group open_chat_id) or user_id (open_id), not both.
+# ── Named chat aliases ─────────────────────────────────────────────────────
+# Define all Lark group chat IDs here once, then reference them by name
+# in the per-command sections below.
 #
-# chat_id  — send to a group chat
-# user_id  — send as a direct message to a user
+[chats]
+hongming     = "oc_78f29489a577f10e36ebf989bccdcc83"   # server alerts / error monitoring
+store_hours  = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"   # store-hours-collect group
+
+# ── Per-command targets ────────────────────────────────────────────────────
+# Each key is a command name (matches BaseCommand.name).
+# Provide either:
+#   chat = "<alias>"        — resolved via [chats] above (preferred)
+#   chat_id = "<raw_id>"   — direct open_chat_id (fallback)
+#   user_id = "<open_id>"  — DM to a specific user
 #
 # If a command is not listed here, notifications are silently skipped.
 # Set LARK_APP_ID and LARK_APP_SECRET in .env to enable Lark integration.
 
 [daily-report]
-chat_id = "oc_78f29489a577f10e36ebf989bccdcc83"
+chat = "hongming"
 
 [ksb1]
-# chat_id = "oc_xxxxxxxxxxxxxxxxxxxxxxxx"
+# chat = "hongming"
 # user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
 
 [treasury-loan-watch]
-chat_id = "oc_78f29489a577f10e36ebf989bccdcc83"
+chat = "hongming"
 
 [store-hours-collect]
-chat_id = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"
+chat = "store_hours"

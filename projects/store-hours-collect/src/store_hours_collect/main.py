@@ -13,7 +13,7 @@ Folder:   https://haidilao.feishu.cn/drive/folder/AVt8fGZLHl5PzJd2gw3cNa10ntd
 
 Environment variables:
     LARK_APP_ID / LARK_APP_SECRET   Feishu bot credentials
-    HOURS_NOTIFY_CHAT_ID            Lark group chat for notifications
+    HOURS_NOTIFY_CHAT_ID            (optional) override chat ID; defaults to notify.toml [chats] 'store_hours'
     HOURS_TEMPLATE_TOKEN            Template spreadsheet token (default provided)
     HOURS_FOLDER_TOKEN              Target folder token (default provided)
 """
@@ -389,15 +389,17 @@ def main() -> None:
 
     app_id = os.environ.get("LARK_APP_ID", "")
     app_secret = os.environ.get("LARK_APP_SECRET", "")
-    chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID", "")
     template_token = os.environ.get("HOURS_TEMPLATE_TOKEN", TEMPLATE_TOKEN)
     folder_token = os.environ.get("HOURS_FOLDER_TOKEN", FOLDER_TOKEN)
+
+    from lark_client import chat_id_for
+    chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or chat_id_for("store_hours") or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not chat_id:
-        logger.error("HOURS_NOTIFY_CHAT_ID must be set")
+        logger.error("HOURS_NOTIFY_CHAT_ID not set and 'store_hours' alias missing from notify.toml")
         sys.exit(1)
 
     from lark_client import LarkClient

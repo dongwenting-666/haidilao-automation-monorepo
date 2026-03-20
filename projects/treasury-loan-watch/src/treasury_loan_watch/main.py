@@ -11,7 +11,7 @@ Environment variables (via .env or LaunchAgent):
     LARK_APP_SECRET         Feishu bot app secret
     TREASURY_SHEET_TOKEN    Spreadsheet token (default: T8NosM6aRhj8v0t6JA8cugS9nYb)
     TREASURY_SHEET_ID       Sheet tab ID     (default: 16yYcs)
-    TREASURY_NOTIFY_CHAT_ID Lark group chat open_chat_id to notify
+    TREASURY_NOTIFY_CHAT_ID (optional) override chat ID; defaults to notify.toml [chats] 'hongming'
 """
 
 from __future__ import annotations
@@ -237,15 +237,17 @@ def main() -> None:
 
     app_id = os.environ.get("LARK_APP_ID", "")
     app_secret = os.environ.get("LARK_APP_SECRET", "")
-    chat_id = os.environ.get("TREASURY_NOTIFY_CHAT_ID", "")
     sheet_token = os.environ.get("TREASURY_SHEET_TOKEN", SHEET_TOKEN)
     sheet_id = os.environ.get("TREASURY_SHEET_ID", SHEET_TAB_ID)
+
+    from lark_client import chat_id_for
+    chat_id = os.environ.get("TREASURY_NOTIFY_CHAT_ID") or chat_id_for("hongming") or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not chat_id:
-        logger.error("TREASURY_NOTIFY_CHAT_ID must be set")
+        logger.error("TREASURY_NOTIFY_CHAT_ID not set and 'hongming' alias missing from notify.toml")
         sys.exit(1)
 
     # Get Lark tenant token for sheet API access
