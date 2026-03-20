@@ -366,3 +366,55 @@ No action needed — the missing files are expected (they were pre-fix runs that
 | Hash | Message |
 |------|---------|
 | `87fe82b` | docs: fix stale CLI option table and add psycopg_pool teardown noise note |
+
+---
+
+## 2026-03-20 (Run 11) — Scheduled Maintenance (11:59 PM Vancouver)
+
+### Summary
+Light maintenance pass. No code changes. Three doc fixes and CLAUDE.md lesson renumbering. Repo state is clean and healthy.
+
+### Findings
+
+#### 1. Server Running ✅
+- LaunchAgent `com.haidilao.server` running (PID 84412)
+- 4 recent runs visible (in-memory, since last restart): 3× daily-report, 1× daily-report — all `success`
+
+#### 2. Daily Reports Status
+- **Mar 1–17**: All present in `output/daily-report/` ✅
+- **Mar 18 and Mar 19**: Not on disk — these were generated before the T-2 constraint was added (commit `f982b01` landed 10:18pm PT Mar 19), then the server was restarted. Files were served at some point but are no longer present.
+  - Mar 18 will regenerate automatically at 6am Vancouver Mar 20 (T-2 will allow it)
+  - Mar 19 will regenerate automatically at 6am Vancouver Mar 21
+  - **No action needed** — this is expected behaviour.
+
+#### 3. Documentation Fixes ✅
+
+**`docs/server.md`** — Missing treasury check endpoint:
+- Added `GET /api/reports/treasury/check/{date}` to the Reports endpoint table (was present in code, absent in docs)
+
+**`docs/daily-store-operation-report.md`** — Stale CLI example filenames:
+- Example explicit file paths used old date-range filename format (`海外门店经营日报数据_20260201_20260210.xlsx`)
+- Updated to current download-timestamp format (`海外门店经营日报数据_20260319_2001.xlsx`)
+- Also corrected example date from `2026-02-10` to `2026-03-17` for consistency
+
+**`CLAUDE.md`** — Lesson number sequence was broken:
+- Lessons were numbered: 1,2,3,4,5,7,8,10,9,6,7,11 (duplicate 7, gap at 6, out of order)
+- Renumbered to sequential 1–12 in document order
+
+#### 4. Code Quality — Clean
+- No unused imports (only false positives from TYPE_CHECKING guards and `__init__.py` re-exports)
+- No missing `__init__.py` files
+- All pyproject.toml consistent (requires-python = ">=3.13", hatchling, src layout)
+- `output/qbi/`: 135 files, all gitignored ✅
+- `output/daily-report/`: 17 files (Mar 1–17) ✅
+- `output/ksb1/`: 2026-02 and 2026-03 KSB1 reports present ✅
+
+#### 5. Modularity — No concerns
+- Clean lib/project separation maintained
+- No circular imports, no large modules needing splitting
+
+### Commits (Run 11)
+
+| Hash | Message |
+|------|---------|
+| TBD | docs: fix treasury endpoint, example filenames, and CLAUDE.md lesson numbering |

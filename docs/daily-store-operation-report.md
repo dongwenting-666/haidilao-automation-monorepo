@@ -13,14 +13,14 @@ uv run --project projects/daily-store-operation-report \
 uv run --project projects/daily-store-operation-report \
   python -m daily_store_operation_report.main 2026-02-10 --skip-download
 
-# Explicit file paths (most reliable)
+# Explicit file paths (most reliable — filenames use download timestamp, not date range)
 uv run --project projects/daily-store-operation-report \
-  python -m daily_store_operation_report.main 2026-02-10 \
-  --cur-daily output/qbi/海外门店经营日报数据_20260201_20260210.xlsx \
-  --prev-daily output/qbi/海外门店经营日报数据_20260101_20260110.xlsx \
-  --yoy-daily output/qbi/海外门店经营日报数据_20250201_20250210.xlsx \
-  --cur-tp output/qbi/海外分时段报表_20260201_20260210.xlsx \
-  --yoy-tp output/qbi/海外分时段报表_20250201_20250210.xlsx
+  python -m daily_store_operation_report.main 2026-03-17 \
+  --cur-daily output/qbi/海外门店经营日报数据_20260319_2001.xlsx \
+  --prev-daily output/qbi/海外门店经营日报数据_20260319_2002.xlsx \
+  --yoy-daily output/qbi/海外门店经营日报数据_20260319_2003.xlsx \
+  --cur-tp output/qbi/海外分时段报表_20260319_2004.xlsx \
+  --yoy-tp output/qbi/海外分时段报表_20260319_2005.xlsx
 ```
 
 ### Options

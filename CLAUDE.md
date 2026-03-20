@@ -52,7 +52,7 @@ The Quick BI export dialog occasionally fails to render. `_click_export_and_wait
 ### 5. Nginx Upload Temp Dir
 Nginx workers run as `nobody`. The `client_body_temp` directory must be writable. On macOS with Homebrew nginx, the default path under `/opt/homebrew/var/run/nginx/` can have permission issues. Fixed by setting `client_body_temp_path /tmp/nginx_client_body_temp` in the server block.
 
-### 7. QBI T-2 Data Reliability
+### 6. QBI T-2 Data Reliability
 QBI data for a given date is only finalized and reliable **two days later (T-2)**. Data for T-1 or today (T) may be incomplete or still updating. The daily report enforces this:
 - `main.py` computes `vancouver_today` with `ZoneInfo("America/Vancouver")` — this is the reference clock
 - Default date is `vancouver_today - timedelta(days=2)` (T-2)
@@ -61,7 +61,7 @@ QBI data for a given date is only finalized and reliable **two days later (T-2)*
 
 There is no `--force` flag to bypass T-2. If you need to generate a report for a more recent date for testing, temporarily change the date constraint in `main.py` (and revert before committing).
 
-### 8. Weighted vs Simple Average for Region Turnover Rate
+### 7. Weighted vs Simple Average for Region Turnover Rate
 
 **Comparison sheets (对比上月表 / 对比上年表):** The region-level cumulative monthly turnover rate is a **seat-weighted average** — NOT a simple mean:
 
@@ -83,7 +83,7 @@ This matches QBI's "当月累计平均翻台率" calculation.
 
 General rule: **difference = f(avg, avg), not avg(difference)**.
 
-### 10. QBI File Session Management (Multiple Downloads in Same Dir)
+### 8. QBI File Session Management (Multiple Downloads in Same Dir)
 
 When running with `--skip-download`, the resolver (`_resolve_data_files`) sorts QBI files by the timestamp embedded in their filename (e.g. `20260319_2001`). If multiple download sessions have files in the same `output/qbi/` directory, it takes the **3 most-recent daily files** and **2 most-recent time-period files**. This is fragile when sessions differ by only a few minutes or when there are stale leftover files.
 
@@ -109,14 +109,14 @@ All 5 explicit flags are required together (the parser enforces this). The times
 
 The all-zero check in stage 3 is what catches the file-sort bug: if `cur_daily`, `prev_daily`, and `yoy_daily` are in the wrong order, the YoY rows get filtered out and appear as all-zero.
 
-### 6. Module-level `os.environ` reads are frozen at import time
+### 10. Module-level `os.environ` reads are frozen at import time
 If a module does `SECRET = os.environ.get("SOME_SECRET", "")` at the top level, the
 value is captured once when Python imports the module — before launchd env vars are
 necessarily visible. Always read env vars lazily (inside a function) or via `settings`.
 Example: `github_webhook.py` used to have `WEBHOOK_SECRET = os.environ.get(...)` at
 module level; it now calls `_get_webhook_secret()` at request time.
 
-### 7. `uv` Build Caching
+### 11. `uv` Build Caching
 `uv run --project server` caches the editable install. After changing server code, run `uv sync --project server --reinstall-package server` or the old code may still be loaded. The LaunchAgent restart handles this automatically since it does a fresh `uv run`.
 
 ## Server Restart Procedure
@@ -129,7 +129,7 @@ launchctl stop com.haidilao.server && launchctl start com.haidilao.server
 kill $(pgrep -f 'python -m server')  # DON'T — launchd KeepAlive respawns it
 ```
 
-### 11. Known Noise: `PythonFinalizationError` in Run Logs
+### 12. Known Noise: `PythonFinalizationError` in Run Logs
 
 Every `daily-report` subprocess run ends with a harmless traceback:
 

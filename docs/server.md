@@ -59,6 +59,7 @@ The server runs as `uv run --project server python -m server` from the monorepo 
 | `GET` | `/api/reports/daily/{date}/status` | Check status of a daily report run |
 | `GET` | `/api/reports/ksb1/{year}/{month}` | Download KSB1 report; returns 200 (file) or 202 (queued) |
 | `GET` | `/api/reports/ksb1/{year}/{month}/status` | Check status of a KSB1 report run |
+| `GET` | `/api/reports/treasury/check/{date}` | Manually trigger treasury-loan-watch for a specific date (YYYY-MM-DD) |
 | `GET` | `/api/reports/store-hours/check/{date}` | Manually trigger store-hours-collect for a specific date (YYYY-MM-DD) |
 
 ### Files
