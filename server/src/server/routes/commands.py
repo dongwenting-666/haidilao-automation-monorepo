@@ -1,10 +1,11 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from server.commands import get_command, list_commands
 from server.routes.runs import create_run
+from server.run_guard import require_run_token
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
@@ -21,7 +22,7 @@ async def list_all_commands() -> list[dict[str, str]]:
     ]
 
 
-@router.post("/{name}/run")
+@router.post("/{name}/run", dependencies=[Depends(require_run_token)])
 async def run_command(name: str, body: RunRequest | None = None) -> dict[str, str]:
     cmd = get_command(name)
     if cmd is None:

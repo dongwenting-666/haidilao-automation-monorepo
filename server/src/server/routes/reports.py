@@ -18,8 +18,10 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, JSONResponse
+
+from server.run_guard import require_run_token
 
 from server.config import settings
 from server.routes.runs import RunStatus, _runs, create_run
@@ -94,7 +96,7 @@ def _daily_report_path(report_date: date) -> Path:
     return _DAILY_OUTPUT / f"database_report_{report_date.year}_{report_date.month:02d}_{report_date.day:02d}.xlsx"
 
 
-@router.get("/daily/{report_date}")
+@router.get("/daily/{report_date}", dependencies=[Depends(require_run_token)])
 async def get_daily_report(report_date: date, no_cache: bool = False):
     """Download the daily store operation report for *report_date* (YYYY-MM-DD).
 
@@ -140,7 +142,7 @@ def _ksb1_report_path(year: int, month: int) -> Path | None:
 # Treasury loan watch (test/manual trigger)
 # ---------------------------------------------------------------------------
 
-@router.get("/treasury/check/{check_date}")
+@router.get("/treasury/check/{check_date}", dependencies=[Depends(require_run_token)])
 async def check_treasury_loans(check_date: date):
     """Trigger a treasury loan maturity check for a specific date.
 
@@ -162,7 +164,7 @@ async def check_treasury_loans(check_date: date):
 # Store working-hour data collection (manual trigger)
 # ---------------------------------------------------------------------------
 
-@router.get("/store-hours/check/{check_date}")
+@router.get("/store-hours/check/{check_date}", dependencies=[Depends(require_run_token)])
 async def check_store_hours(check_date: date):
     """Trigger store working-hour data collection for a specific date.
 
@@ -175,7 +177,7 @@ async def check_store_hours(check_date: date):
     )
 
 
-@router.get("/ksb1/{year}/{month}")
+@router.get("/ksb1/{year}/{month}", dependencies=[Depends(require_run_token)])
 async def get_ksb1_report(year: int, month: int):
     """Download the KSB1 accounting check report for *year*/*month*.
 

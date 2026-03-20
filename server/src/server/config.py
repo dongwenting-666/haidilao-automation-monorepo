@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # GitHub webhook
     github_webhook_secret: str = ""
 
+    # Run guard — required to trigger automation runs via HTTP.
+    # Internal scheduler calls create_run() directly and bypasses this.
+    # Set to a random secret; any external caller must pass X-Run-Token header.
+    run_token: str = ""
+
     # MinIO file storage
     minio_endpoint: str = "localhost:9000"
     minio_root_user: str = "haidilao"
