@@ -21,6 +21,7 @@ from daily_store_operation_report.constants import (
     COL_DATE,
     COL_DISCOUNT,
     COL_REVENUE,
+    COL_SEATS,
     COL_STORE,
     COL_TABLES_ASSESSED,
     COL_TABLES_RAW,
@@ -403,7 +404,6 @@ class RawData:
 
 def _seats_by_store(rows: list[dict]) -> dict[str, int]:
     """Extract seat count per store (takes the first non-zero value found)."""
-    from daily_store_operation_report.constants import COL_SEATS
     result: dict[str, int] = {}
     for row in rows:
         store = row.get(COL_STORE, "")

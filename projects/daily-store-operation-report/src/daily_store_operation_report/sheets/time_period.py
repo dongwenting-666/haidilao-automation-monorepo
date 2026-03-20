@@ -29,13 +29,6 @@ from daily_store_operation_report.transform import ReportData, StoreMetrics
 
 _NCOLS = 15  # A..O
 
-# Columns that represent turnover rates or rate diffs (averaged across stores).
-# Stores with no data (all-zero subtotals) are excluded from the average
-# to avoid diluting results with new stores that lack historical data.
-# Col 3=今年翻台率, 4=去年翻台率, 5=本月目标, 6=目标差异, 7=同比差异,
-# Col 8=当日翻台率, 10=去年同周同日翻台率, 12=翻台率同比差异
-_AVG_COLS = {3, 4, 5, 6, 7, 8, 10, 12}
-
 
 def _store_slot_totals(m: StoreMetrics) -> dict[int, float]:
     """Sum all time-slot values into per-column totals for a single store.
@@ -225,11 +218,17 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
 
     # Columns that use weighted average (current period TR: cols 3, 5, 8)
     # vs simple average excluding zeros (YoY/comparison TR: cols 4, 10)
-    # vs difference cols that are computed from other cols (6, 7, 12)
+    # vs sum cols (tables/桌数: cols 9, 11, 13, 14, 15)
+    # Difference cols (6=目标差异, 7=同比差异, 12=翻台率同比差异) are derived
+    # from already-averaged values AFTER the main loop — not averaged directly.
     _WEIGHTED_AVG_COLS = {3, 5, 8}  # current-period TR → weighted by seats
     _SIMPLE_AVG_COLS = {4, 10}       # YoY TR → simple avg excluding zeros (stores may not exist in prior year)
+    _DIFF_COLS = {6, 7, 12}          # derived after averaging — col6=col3-col5, col7=col3-col4, col12=col8-col10
 
+    region_vals: dict[int, float] = {}
     for col_idx in range(3, _NCOLS + 1):
+        if col_idx in _DIFF_COLS:
+            continue  # computed after the loop
         values = [st[col_idx] for st in store_subtotals]
         total = sum(values)
         if col_idx in _WEIGHTED_AVG_COLS:
@@ -244,12 +243,16 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
         elif col_idx in _SIMPLE_AVG_COLS:
             nonzero = sum(1 for v in values if v != 0)
             total = total / (nonzero or 1)
-        elif col_idx in _AVG_COLS:
-            # Other avg cols (6=目标差异, 7=同比差异, 12=翻台率同比差异)
-            # These are differences — compute from the already-averaged values
-            nonzero = sum(1 for v in values if v != 0)
-            total = total / (nonzero or 1)
-        ws.cell(row=r, column=col_idx, value=total)
+        # else: sum (桌数 columns)
+        region_vals[col_idx] = total
+
+    # Derive difference columns from already-averaged region values
+    region_vals[6] = region_vals.get(3, 0) - region_vals.get(5, 0)
+    region_vals[7] = region_vals.get(3, 0) - region_vals.get(4, 0)
+    region_vals[12] = region_vals.get(8, 0) - region_vals.get(10, 0)
+
+    for col_idx, val in region_vals.items():
+        ws.cell(row=r, column=col_idx, value=val)
 
     # Navy fill + white bold
     for col in range(1, _NCOLS + 1):

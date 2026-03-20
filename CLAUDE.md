@@ -61,8 +61,9 @@ QBI data for a given date is only finalized and reliable **two days later (T-2)*
 
 There is no `--force` flag to bypass T-2. If you need to generate a report for a more recent date for testing, temporarily change the date constraint in `main.py` (and revert before committing).
 
-### 8. Weighted Average Region Turnover Rate Formula
-The region-level cumulative monthly turnover rate on the comparison sheets is a **weighted average** — NOT a simple mean of per-store rates:
+### 8. Weighted vs Simple Average for Region Turnover Rate
+
+**Comparison sheets (对比上月表 / 对比上年表):** The region-level cumulative monthly turnover rate is a **seat-weighted average** — NOT a simple mean:
 
 ```
 region_avg_tr = total_assessed_tables_MTD / (total_seats × days_elapsed_in_month)
@@ -72,7 +73,32 @@ region_avg_tr = total_assessed_tables_MTD / (total_seats × days_elapsed_in_mont
 - `total_seats`: sum of `seats` across all stores (skipping stores with 0 seats)
 - `days_elapsed_in_month`: `dates.day_of_month` (1 on the 1st, 31 on the 31st)
 
-This matches QBI's "当月累计平均翻台率" calculation. Stores with `seats == 0` are excluded from the seats denominator to avoid diluting the average.
+This matches QBI's "当月累计平均翻台率" calculation.
+
+**Time-period sheet (分时段-上报) region row:** Three categories of columns, applied per column:
+- **Seat-weighted avg** (cols 3=今年TR, 5=本月目标, 8=当日TR): `Σ(val × seats) / Σ(seats)` for stores with seats > 0
+- **Simple avg excluding zeros** (cols 4=去年TR, 10=去年同周同日TR): `Σ(val) / count(nonzero)` — zero-excluded because prior-year stores may not exist
+- **Sum** (桌数 cols 9, 11, 13, 14, 15): straight sum across stores
+- **Derived** (cols 6=目标差异, 7=同比差异, 12=翻台率同比差異): computed **after** the averaging loop as `col3 - col5`, `col3 - col4`, `col8 - col10` — NOT averaged directly. Averaging differences independently gives a different (wrong) result than computing the difference of averaged values.
+
+General rule: **difference = f(avg, avg), not avg(difference)**.
+
+### 10. QBI File Session Management (Multiple Downloads in Same Dir)
+
+When running with `--skip-download`, the resolver (`_resolve_data_files`) sorts QBI files by the timestamp embedded in their filename (e.g. `20260319_2001`). If multiple download sessions have files in the same `output/qbi/` directory, it takes the **3 most-recent daily files** and **2 most-recent time-period files**. This is fragile when sessions differ by only a few minutes or when there are stale leftover files.
+
+**Safe pattern — use explicit file flags instead of `--skip-download` + directory:**
+```bash
+uv run --project projects/daily-store-operation-report \
+    python -m daily_store_operation_report.main 2026-03-17 \
+    --cur-daily output/qbi/海外门店经营日报数据_20260319_2001.xlsx \
+    --prev-daily output/qbi/海外门店经营日报数据_20260319_2002.xlsx \
+    --yoy-daily output/qbi/海外门店经营日报数据_20260319_2003.xlsx \
+    --cur-tp output/qbi/海外分时段报表_20260319_2001.xlsx \
+    --yoy-tp output/qbi/海外分时段报表_20260319_2002.xlsx
+```
+
+All 5 explicit flags are required together (the parser enforces this). The timestamp-consistency check (`validate_file_timestamps`) warns if the resolved files span more than 15 minutes — a sign of cross-session mixing. The all-zero validation in stage 3 (`validate_no_all_zero_columns`) is the catch-all if the wrong files are used.
 
 ### 9. Multi-stage Validation Pipeline
 `validation.py` runs checks at 4 stages:

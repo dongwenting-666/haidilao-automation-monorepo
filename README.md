@@ -125,6 +125,18 @@ uv run --project projects/daily-store-operation-report \
 3. Transform-level: raises an error if all stores have zero MTD data (signals file-ordering bug)
 4. Post-generation self-test: opens the output xlsx and verifies key rows are non-zero and region totals match
 
+**Explicit file flags (safer than `--skip-download`):** When the `output/qbi/` directory has files from multiple download sessions, use explicit paths to avoid cross-session mixing:
+
+```bash
+uv run --project projects/daily-store-operation-report \
+    python -m daily_store_operation_report.main 2026-03-17 \
+    --cur-daily output/qbi/海外门店经营日报数据_20260319_2001.xlsx \
+    --prev-daily output/qbi/海外门店经营日报数据_20260319_2002.xlsx \
+    --yoy-daily output/qbi/海外门店经营日报数据_20260319_2003.xlsx \
+    --cur-tp output/qbi/海外分时段报表_20260319_2001.xlsx \
+    --yoy-tp output/qbi/海外分时段报表_20260319_2002.xlsx
+```
+
 ### KSB1 Accounting Check
 
 Downloads KSB1 data from SAP, generates month-over-month comparison report per store using rule-based analysis. Flags missing cost elements, significant amount changes, and key cost element anomalies.
