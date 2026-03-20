@@ -457,3 +457,67 @@ Light maintenance pass. No code changes. Three doc fixes and CLAUDE.md lesson re
 | Hash | Message |
 |------|---------|
 | a25bad0 | docs: fix treasury endpoint, example filenames, and CLAUDE.md lesson numbering |
+
+---
+
+## 2026-03-20 (Run 13) — Scheduled Maintenance (4:02 AM Vancouver)
+
+### Summary
+Found and fixed a real bug: pytest collection was broken due to duplicate test file basename (`test_e2e.py`) in `libs/vpn/tests/` and `server/tests/`. Fixed by renaming the server version. All 244 tests now pass. Documentation updated for recent security hardening and the test naming rule.
+
+### Recent Activity (last 5 commits before this run)
+- `716b7cb` — fix: mark e2e test to skip by default (SAP GUI)
+- `6cd9b4f` — test: comprehensive test coverage for auth, webhook, dates, transform, validation
+- `cb2fa3b` — fix: remove set -e from security-scan.sh
+- `a2cc273` — security: proxy headers, nginx rate limiting, security-scan.sh
+- `a5ce129` — fix: don't send Lark alert for T-2 rejection
+
+### Findings
+
+#### 1. pytest Collection Broken — FIXED ✅
+`uv run pytest` was failing with:
+```
+ERROR collecting server/tests/test_e2e.py
+imported module 'test_e2e' has this __file__: libs/vpn/tests/test_e2e.py
+```
+Two test files with the same basename in different packages cause pytest to
+abort collection in default `prepend` import mode.
+
+**Fix:** Renamed `server/tests/test_e2e.py` → `server/tests/test_server_e2e.py`.
+All 244 tests pass after the rename.
+
+**Lesson added to CLAUDE.md (Lesson 13):** Use unique basenames for test files
+across the whole monorepo.
+
+#### 2. Documentation Updates ✅
+- `docs/server.md`: Added "Security Hardening" section documenting nginx rate limiting,
+  real-IP proxy headers (`proxy_headers=True`), docker localhost port binding,
+  and `scripts/security-scan.sh` — all from the `a2cc273` commit which wasn't documented.
+- `CLAUDE.md`: Added Lesson 13 on test file naming collision rule.
+
+#### 3. Test Coverage — Healthy ✅
+The `6cd9b4f` commit added 1,130 lines of new tests:
+- `server/tests/test_auth.py` (229 lines) — session signing, whitelist, super admin, cookie flags
+- `server/tests/test_github_webhook.py` (236 lines) — signature verification, trigger file, endpoint integration
+- `projects/daily-store-operation-report/tests/test_dates.py` (156 lines)
+- `projects/daily-store-operation-report/tests/test_transform.py` (293 lines)
+- `projects/daily-store-operation-report/tests/test_validation.py` (176 lines)
+
+Total: 244 tests pass, 1 deselected (e2e marker).
+
+#### 4. Report Status
+- `output/daily-report/`: 19 files (Feb 10, Mar 1–18) ✅
+- Mar 17–18 are latest — Mar 19 will generate at 6 AM today (Mar 20)
+- `output/qbi/`: 240 files, all gitignored ✅
+
+#### 5. Code Quality — Clean
+- No unused imports found in spot-checked files
+- No missing `__init__.py` in src packages
+- All pyproject.toml files consistent
+- No untracked files that should be gitignored
+
+### Commits (Run 13)
+
+| Hash | Message |
+|------|---------|
+| dd22cc7 | fix: rename server/tests/test_e2e.py to avoid pytest module collision |
