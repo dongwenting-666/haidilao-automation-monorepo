@@ -52,7 +52,14 @@ The Quick BI export dialog occasionally fails to render. `_click_export_and_wait
 ### 5. Nginx Upload Temp Dir
 Nginx workers run as `nobody`. The `client_body_temp` directory must be writable. On macOS with Homebrew nginx, the default path under `/opt/homebrew/var/run/nginx/` can have permission issues. Fixed by setting `client_body_temp_path /tmp/nginx_client_body_temp` in the server block.
 
-### 6. `uv` Build Caching
+### 6. Module-level `os.environ` reads are frozen at import time
+If a module does `SECRET = os.environ.get("SOME_SECRET", "")` at the top level, the
+value is captured once when Python imports the module — before launchd env vars are
+necessarily visible. Always read env vars lazily (inside a function) or via `settings`.
+Example: `github_webhook.py` used to have `WEBHOOK_SECRET = os.environ.get(...)` at
+module level; it now calls `_get_webhook_secret()` at request time.
+
+### 7. `uv` Build Caching
 `uv run --project server` caches the editable install. After changing server code, run `uv sync --project server --reinstall-package server` or the old code may still be loaded. The LaunchAgent restart handles this automatically since it does a fresh `uv run`.
 
 ## Server Restart Procedure

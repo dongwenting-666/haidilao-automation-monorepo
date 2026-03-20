@@ -25,7 +25,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["github"])
 
 TRIGGER_FILE = Path("/tmp/github-issue-triggers.json")
-WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+
+
+def _get_webhook_secret() -> str:
+    """Return the configured webhook secret, read lazily at request time.
+
+    Reading at import time means the module-level value is frozen to whatever
+    os.environ holds when the module first loads (before launchd env vars are
+    visible under some startup orderings). Lazy reads always see the live value.
+    """
+    return os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 
 # Events we care about
 _RELEVANT_ACTIONS = {
@@ -70,7 +79,8 @@ async def github_webhook(request: Request):
 
     # Verify signature if secret is configured
     signature = request.headers.get("X-Hub-Signature-256", "")
-    if WEBHOOK_SECRET and not _verify_signature(body, signature, WEBHOOK_SECRET):
+    webhook_secret = _get_webhook_secret()
+    if webhook_secret and not _verify_signature(body, signature, webhook_secret):
         logger.warning("GitHub webhook: invalid signature")
         return JSONResponse({"error": "Invalid signature"}, status_code=401)
 
