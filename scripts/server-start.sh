@@ -106,7 +106,7 @@ send_recovery_notice() {
 服务器已重启并通过健康检查。OpenClaw 正在调查崩溃原因并将在 TUI 中报告。"
 
     # 2. Wake agent in isolated session — instruct it to investigate and report on TUI
-    local recovery_message="✅ RECOVERY: Haidilao automation server has recovered at $timestamp after crash ($crash_info). Please: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) write a short plain-language report (2-4 sentences: what crashed, why, current status, any action needed), (3) send it to Hongming on Lark by running: cd $REPO_ROOT && uv run --project server python scripts/lark-notify.py hongming \"YOUR REPORT HERE\", (4) post the same report here on TUI as well. If you need Hongming's input to resolve something, say so explicitly on TUI."
+    local recovery_message="✅ RECOVERY: Haidilao automation server has recovered at $timestamp after crash ($crash_info). IMPORTANT RULES: (1) Do NOT trigger any runs, commands, or automation. Do NOT call any API endpoints. Read-only investigation only. (2) Run ONLY this command to read the logs: exec command='tail -100 $REPO_ROOT/server.log' — nothing else. (3) Write a 2-4 sentence plain-language report: what caused the crash, current status, any action needed. (4) Send the report to Lark by running: exec command='cd $REPO_ROOT && uv run --project server python scripts/lark-notify.py hongming \"YOUR REPORT\"' — substitute your actual report. (5) Post the same report here on TUI. If you need Hongming's input, say so on TUI."
 
     /opt/homebrew/bin/openclaw cron add \
         --name "server-recovery-$(date +%s)" \
@@ -147,7 +147,7 @@ launchd 正在自动重启服务器（30秒后）。
 服务器恢复后将发送通知，OpenClaw 将在 TUI 中报告调查结果。"
 
     # 2. Wake OpenClaw agent to investigate (reports back on TUI)
-    local alert_message="🔴 SYSTEM ALERT: Haidilao automation server crashed at $timestamp (exit code $exit_code). Your job: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) prepare a short diagnosis (what broke and why). Do NOT send the full report yet — a recovery notice will fire once the server restarts healthy, at which point you will send the report to both Lark and TUI."
+    local alert_message="🔴 SYSTEM ALERT: Haidilao automation server crashed at $timestamp (exit code $exit_code). IMPORTANT: Do NOT trigger any runs, automation, or API calls. ONLY run: exec command='tail -100 $REPO_ROOT/server.log' to read the logs. Identify the crash cause. A second alert will fire after recovery — that is when you send the report to Lark and TUI."
 
     /opt/homebrew/bin/openclaw cron add \
         --name "server-crash-$(date +%s)" \
