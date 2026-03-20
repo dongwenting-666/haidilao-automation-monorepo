@@ -417,4 +417,4 @@ Light maintenance pass. No code changes. Three doc fixes and CLAUDE.md lesson re
 
 | Hash | Message |
 |------|---------|
-| TBD | docs: fix treasury endpoint, example filenames, and CLAUDE.md lesson numbering |
+| a25bad0 | docs: fix treasury endpoint, example filenames, and CLAUDE.md lesson numbering |
