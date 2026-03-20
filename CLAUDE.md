@@ -140,6 +140,20 @@ PythonFinalizationError: cannot join thread at interpreter shutdown
 
 This is a known `psycopg-pool` / Python 3.14 incompatibility: the pool's `__del__` tries to join a thread during interpreter shutdown, which Python 3.14 disallows. It does **not** affect run results — runs show `status: success` and the report file is saved correctly. No action needed unless psycopg-pool releases a fix.
 
+### 13. Test File Naming — Avoid Duplicate Basenames
+
+Without `__init__.py` in test directories, pytest (in default `prepend` import mode) identifies test
+modules by their bare filename. Two test files with the same basename in different packages will
+collide. Example: `libs/vpn/tests/test_e2e.py` and `server/tests/test_e2e.py` both resolve to the
+module name `test_e2e`, causing pytest to abort collection.
+
+**Fix applied:** `server/tests/test_e2e.py` was renamed to `server/tests/test_server_e2e.py`.
+
+**Rule:** Use unique basenames for test files across the whole monorepo. Prefix with the package
+name when the generic name (e.g. `test_e2e.py`) would otherwise collide:
+- `test_vpn_e2e.py`, `test_server_e2e.py`, `test_ksb1_e2e.py` — unambiguous
+- `test_e2e.py` — only safe if it exists in exactly one `tests/` directory
+
 ## Code Style
 
 - Python 3.13+, type hints everywhere

@@ -198,6 +198,55 @@ Migrations run automatically at startup via `maybe_run_migrations()`.
 
 ---
 
+## Security Hardening
+
+Deployed on Mar 20, 2026. None of these changes are in the repo (nginx config is managed externally), except for `scripts/security-scan.sh` and the uvicorn proxy header settings.
+
+### Nginx Rate Limiting & Blocking
+
+```
+# Rate limit zones (defined in nginx.conf)
+limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=api:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=upload:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=general:10m rate=60r/m;
+```
+
+Blocked paths: `.env`, `.git`, `wp-*`, `phpMyAdmin`, `vendor/phpunit`, Spring Actuator, installer SDKs, container endpoint probes.
+
+Security response headers: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`.
+
+Log rotation: daily, 30-day retention, compressed, for both nginx and server logs (via newsyslog).
+
+### Real Client IPs via Proxy Headers
+
+Uvicorn is started with `proxy_headers=True` and `forwarded_allow_ips="127.0.0.1"`, so `X-Forwarded-For` / `X-Real-IP` headers set by nginx are trusted. Real client IPs appear in server and access logs instead of `127.0.0.1`.
+
+### Security Scan Script
+
+`scripts/security-scan.sh` scans the nginx access log for the previous hour and alerts on:
+- IPs with >10 `401`/`403` responses (auth probing)
+- Path traversal attempts (`../`, encoded variants) exceeding threshold
+- IPs generating >20 404s (directory scanning)
+- Known scanner user agents (sqlmap, nikto, gobuster, etc.)
+
+Add to cron to run hourly:
+```
+0 * * * * /path/to/scripts/security-scan.sh >> /tmp/security-scan.log 2>&1
+```
+
+### Docker Service Port Binding
+
+All docker-compose services bind to `127.0.0.1` only (not `0.0.0.0`):
+- PostgreSQL: `127.0.0.1:5432`
+- pgAdmin: `127.0.0.1:5050`
+- MinIO API: `127.0.0.1:9000`
+- MinIO console: `127.0.0.1:9001`
+
+This prevents these services from being exposed on external network interfaces.
+
+---
+
 ## Scheduler
 
 Registered cron jobs:
