@@ -1,5 +1,44 @@
 # Repo Maintenance Notes
 
+## 2026-03-20 (Run 12) — Scheduled Maintenance (2:59 AM Vancouver)
+
+### Summary
+Very clean pass. No code changes, no doc gaps. All 4 previously identified "unused import" false positives confirmed again (TYPE_CHECKING guards, `__init__.py` re-exports). Mar 18 daily report is present; Mar 19 was correctly rejected by the T-2 constraint. QBI output/ is 18MB across 140 files (Mar 18–20 only). No commits needed.
+
+### Findings
+
+#### 1. Daily Reports Status ✅
+- **Mar 1–18**: All present in `output/daily-report/` ✅
+- **Mar 19**: Run `3bb1a0ae` at 09:07 UTC correctly rejected with T-2 constraint — today (Vancouver) is Mar 20, earliest valid date is Mar 18. Lark alert sent. This is expected, correct behaviour.
+- **Mar 19 report** will auto-generate at 6 AM Vancouver on Mar 21.
+
+#### 2. Code Quality — Clean
+- Zero syntax errors across all `.py` files
+- No `TODO`/`FIXME`/`HACK` in project code (only in .venv dependencies, as expected)
+- No unused imports in spot-checked active files
+- All false-positives from AST scanner confirmed (TYPE_CHECKING, `__init__.py` re-exports, conditional platform imports)
+
+#### 3. Repo Structure — No Changes
+- No new projects, libs, or tools added since last run
+- README.md and CLAUDE.md fully accurate
+- docs/ all up to date
+- `git status`: clean (working tree clean, up to date with origin/main)
+
+#### 4. Output Directory Health
+- `output/daily-report/`: 18 files (Mar 1–18) ✅
+- `output/qbi/`: 140 files / 18MB (Mar 18–20 only, all ≤2 days old) ✅
+- `output/ksb1/`: 2.3MB ✅
+
+#### 5. Server Running ✅
+- LaunchAgent `com.haidilao.server` active; 6 runs in memory (all `daily-report`)
+- 5 successes (Mar 17/18 reports); 1 expected T-2 rejection (Mar 19)
+- No new API endpoints, no structural server changes
+
+### No Commits Needed
+Repo is clean and fully up to date.
+
+---
+
 ## 2026-03-19 (Run 9) — Scheduled Maintenance (8:55 PM)
 
 ### Summary
