@@ -28,7 +28,10 @@ def get_db() -> "Database | None":
         return _db
     _db_attempted = True
 
-    url = os.environ.get("DATABASE_URL")
+    # Read from pydantic Settings first (covers .env via pydantic-settings),
+    # fall back to os.environ for backwards compatibility.
+    from server.config import settings
+    url = settings.database_url or os.environ.get("DATABASE_URL") or ""
     if not url:
         logger.debug("DATABASE_URL not set — DB layer disabled")
         return None

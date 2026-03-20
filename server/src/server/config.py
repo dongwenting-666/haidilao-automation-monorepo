@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     daily_report_cron: str = "0 6 * * *"
     output_dir: Path = REPO_ROOT / "output"
 
+    # Database — optional; DB features degrade gracefully when not set.
+    database_url: str = ""
+
     # Lark (Feishu) bot credentials — set in .env to enable notifications.
     # Notification targets are configured per-command in server/notify.toml.
     lark_app_id: str = ""
