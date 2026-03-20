@@ -19,7 +19,7 @@ The `server/` directory contains a FastAPI app that exposes automation results v
   - `GET /api/reports/daily/{date}` — daily store operation report
   - `GET /api/reports/ksb1/{year}/{month}` — KSB1 accounting check report
   - `GET /api/runs/{run_id}` — automation run status/result
-  - `GET /api/commands` — list commands; `POST /api/commands/{name}/run` — trigger
+  - `GET /api/commands` — list commands; `POST /api/commands/{name}/run` — trigger a run by command name
   - `GET /api/files/` — list output files; `GET /api/files/{path}` — download
   - `POST /api/github/webhook` — GitHub issue/comment events; writes to `/tmp/github-issue-triggers.json`
 - **Admin UI**: `/admin` — targets, competitors, users (Lark OAuth login required)

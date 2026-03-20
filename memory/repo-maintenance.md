@@ -1,5 +1,47 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 6) — Scheduled Maintenance
+
+### Summary
+Very light pass. Two recent bug-fix commits (`94568f7` SESSION_SECRET cache fix, `0d5ec0e` pydantic settings fallback) are well-implemented and already accurately documented. One unused `time` import removed from `test_e2e.py`. One CLAUDE.md wording clarification. Missing daily reports (Mar 18–19) persist — server.log was truncated (only 15 lines), no scheduler history available to diagnose.
+
+### Fixes Applied
+
+#### 1. Removed unused `time` import from `libs/vpn/tests/test_e2e.py` ✅
+- `import time` was present but never used (no `time.sleep()` or `time.time()` calls)
+- Likely leftover from an earlier draft of the test
+- Syntax-verified after removal
+- **Commit:** `1505537`
+
+#### 2. Clarified CLAUDE.md commands section ✅
+- `POST /api/commands/{name}/run` description was terse; expanded to "trigger a run by command name"
+- Minor wording improvement; no functionality change
+
+### Code Review: Recent Commits (`94568f7`, `0d5ec0e`)
+
+Both commits correctly fix a real bug (session cookies being invalidated on every request when `SESSION_SECRET` is unset):
+- `94568f7`: Added module-level `_fallback_secret` cache so `_get_signer()` returns the same key within a process lifetime; also fixed XSS via `data-*` attributes and RFC 5987 Content-Disposition
+- `0d5ec0e`: Extended the pydantic settings fallback path for `SESSION_SECRET` (same pattern as the `ADMIN_WHITELIST` fix from run 4)
+
+Both are clean and well-scoped. No doc updates needed beyond what run 5 already applied.
+
+### No Other Issues Found
+
+- **Structure vs README/CLAUDE.md:** Fully aligned.
+- **Python syntax:** All files parse OK. Zero real unused imports (lib `__init__.py` exports are intentional).
+- **`POST /api/runs` in CLAUDE.md:** Confirmed absent — this was never a real endpoint; `POST /api/commands/{name}/run` is the correct trigger path.
+- **git status:** Working tree clean.
+- **server.log:** Only 15 lines — log was truncated at server restart. No scheduler history available to diagnose missing Mar 18–19 reports.
+- **output/daily-report/:** Still missing Mar 18 and Mar 19.
+
+### Ongoing Recommendations
+
+1. **Missing daily reports (Mar 18–Mar 19):** Logs not available (server.log truncated). Check `/api/runs` at https://haidilao.wanghongming.xyz/api/runs for any failed run IDs. May need manual trigger via `GET /api/reports/daily/2026-03-18`.
+2. **Server log rotation:** Consider adding `--log-level` output to a separate rotating log file (or use `logging.handlers.RotatingFileHandler`) so historical scheduler output isn't lost on restart.
+3. **`github_webhook.py`:** Still harmless — keep or remove in a future cleanup pass.
+
+---
+
 ## 2026-03-19 (Run 5) — Scheduled Maintenance
 
 ### Summary
