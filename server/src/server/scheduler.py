@@ -29,13 +29,13 @@ async def _run_daily_report() -> None:
 async def _run_treasury_loan_watch() -> None:
     """Trigger treasury-loan-watch command via the run system."""
     from server.routes.runs import create_run
-    create_run("treasury-loan-watch", {})
+    create_run("treasury-loan-watch", {}, notify_chat="hongming")
 
 
 async def _run_store_hours_collect() -> None:
     """Trigger store-hours-collect command via the run system."""
     from server.routes.runs import create_run
-    create_run("store-hours-collect", {})
+    create_run("store-hours-collect", {}, notify_chat="store_hours")
 
 
 def setup_default_jobs() -> None:

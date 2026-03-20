@@ -110,10 +110,22 @@ class TestFindReportFromRun:
 class TestNotifyRun:
     def test_calls_notify_run_complete(self, make_run):
         run = make_run(command="ksb1")
+        run.notify_chat = "hongming"  # must be set to get notifications
         with patch("server.notify.notify_run_complete") as mock:
             from server.routes.runs import _notify_run
             _notify_run(run)
             mock.assert_called_once_with(run)
+
+    def test_empty_notify_chat_skips_all_notifications(self, make_run):
+        """No notify_chat = completely silent — no card, no file."""
+        run = make_run(command="daily-report", status="success")
+        run.notify_chat = ""
+        with patch("server.notify.notify_run_complete") as mock_card, \
+             patch("server.notify.notify_daily_report_file") as mock_file:
+            from server.routes.runs import _notify_run
+            _notify_run(run)
+            mock_card.assert_not_called()
+            mock_file.assert_not_called()
 
     def test_with_notify_chat_sends_file_to_target(self, daily_dir, make_run):
         report = daily_dir / "database_report_2026_03_18.xlsx"
@@ -181,6 +193,7 @@ class TestNotifyRun:
 
     def test_notify_exception_swallowed(self, make_run):
         run = make_run(command="daily-report")
+        run.notify_chat = "hongming"
         with patch("server.notify.notify_run_complete", side_effect=Exception("boom")):
             from server.routes.runs import _notify_run
             _notify_run(run)  # should not raise
@@ -193,6 +206,7 @@ class TestNotifyRun:
             status="success",
             logs=f"Report saved to {report}",
         )
+        run.notify_chat = "production_accounting_report_chat"
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file", side_effect=Exception("boom")):
             from server.routes.runs import _notify_run
@@ -200,6 +214,7 @@ class TestNotifyRun:
 
     def test_no_report_found_skips_file_send(self, daily_dir, make_run):
         run = make_run(command="daily-report", status="success")
+        run.notify_chat = "production_accounting_report_chat"
         # Empty daily_dir — no files to find
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:

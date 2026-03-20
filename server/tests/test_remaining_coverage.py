@@ -72,14 +72,14 @@ class TestSchedulerFunctions:
         with patch("server.routes.runs.create_run") as mock:
             from server.scheduler import _run_treasury_loan_watch
             await _run_treasury_loan_watch()
-            mock.assert_called_once_with("treasury-loan-watch", {})
+            mock.assert_called_once_with("treasury-loan-watch", {}, notify_chat="hongming")
 
     @pytest.mark.asyncio
     async def test_run_store_hours_collect(self):
         with patch("server.routes.runs.create_run") as mock:
             from server.scheduler import _run_store_hours_collect
             await _run_store_hours_collect()
-            mock.assert_called_once_with("store-hours-collect", {})
+            mock.assert_called_once_with("store-hours-collect", {}, notify_chat="store_hours")
 
 
 # ---------------------------------------------------------------------------

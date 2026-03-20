@@ -118,16 +118,23 @@ async def execute_run(run: Run) -> None:
 
 
 def _notify_run(run: Run) -> None:
-    """Send a Lark notification for a completed run (called in a thread)."""
+    """Send Lark notifications for a completed run (called in a thread).
+
+    All notifications are gated on ``run.notify_chat``:
+    - Empty notify_chat → no notifications at all (manual/test runs stay silent)
+    - Non-empty → send run-complete card + file delivery (if applicable)
+    """
+    if not run.notify_chat:
+        return  # no chat target = silent run (manual/test/rogue agent)
+
     try:
         from server.notify import notify_run_complete
         notify_run_complete(run)
     except Exception:
         pass  # notification failures must never affect the run result
 
-    # If notify_chat is set and the run succeeded, deliver the output file
-    # to the specified chat. Empty notify_chat = skip file delivery entirely.
-    if run.command == "daily-report" and run.status.value == "success" and run.notify_chat:
+    # If the daily-report succeeded, deliver the xlsx to the target chat.
+    if run.command == "daily-report" and run.status.value == "success":
         try:
             from server.notify import notify_daily_report_file
             report_path = _find_report_from_run(run)
