@@ -16,16 +16,16 @@ from daily_store_operation_report.transform import ReportData
 
 
 def _format_numbers(wb: Workbook) -> None:
-    """Round all float cells to 2 decimals and apply '0.00' format.
+    """Apply '0.00' display format to all float cells.
 
-    Integer cells (e.g. customer counts) are left as-is so they
-    display without decimal places.
+    Cells retain full precision internally; only the Excel display
+    format is set to 2 decimal places.  Integer cells (e.g. customer
+    counts) are left as-is so they display without decimal places.
     """
     for ws in wb.worksheets:
         for row in ws.iter_rows():
             for cell in row:
                 if isinstance(cell.value, float):
-                    cell.value = round(cell.value, 2)
                     cell.number_format = "0.00"
 
 
