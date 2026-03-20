@@ -39,6 +39,7 @@ The client auto-refreshes its tenant access token (2-hour TTL, refreshed 5 min e
 | `send_text(text, *, chat_id=None, user_id=None)` | Send plain-text message to a group chat or user |
 | `send_card(title, content, *, chat_id=None, user_id=None, color="blue")` | Send an interactive card message (Markdown body) |
 | `reply_text(message_id, text)` | Reply to an existing message |
+| `send_file(path_or_bytes, filename, *, chat_id=None, user_id=None, file_type="xlsx")` | Upload a file to Lark IM and send as a file message |
 | `download_file(file_token)` | Download a Drive file → `bytes` |
 | `upload_file(folder_token, filename, data, mime_type=...)` | Upload bytes to a Drive folder |
 | `list_folder(folder_token)` | List files in a Drive folder → `list[dict]` |
@@ -63,24 +64,38 @@ Both inherit from `LarkError`.
 
 ## notify.toml — Automatic Run Notifications
 
-The server sends Lark notifications on run completion. Targets are configured in `server/notify.toml`:
+The server sends Lark notifications on run completion. Targets are configured in `server/notify.toml`.
+
+Chat IDs are defined **once** in `[chats]` and referenced by name — never hardcode raw IDs in per-command entries:
 
 ```toml
 # server/notify.toml
-# Each key is a command name (matches BaseCommand.name).
-# Provide either chat_id (group) or user_id (DM), not both.
+
+[chats]
+hongming     = "oc_78f29489a577f10e36ebf989bccdcc83"   # server alerts / error monitoring
+store_hours  = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"   # store-hours-collect group
+production_accounting_report_chat = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
 
 [daily-report]
-chat_id = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
+chat = "hongming"         # resolved via [chats]
+
+[store-hours-collect]
+chat = "store_hours"
 
 [ksb1]
-# chat_id = "oc_xxxxxxxxxxxxxxxxxxxxxxxx"
-# user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
+# chat = "hongming"
 ```
 
+- `chat = "<alias>"` — preferred; resolved via `[chats]`
+- `chat_id = "<raw_id>"` — fallback for direct IDs
+- `user_id = "<open_id>"` — DM to a specific user
 - Changes to `notify.toml` require a server restart (config is `lru_cache`'d).
 - If `LARK_APP_ID` / `LARK_APP_SECRET` are not set, all notifications are silent no-ops.
 - If a command has no entry in `notify.toml`, notification is silently skipped.
+
+### Daily Report — XLSX File Delivery
+
+After each successful `daily-report` run, the generated `.xlsx` file is also sent to the `production_accounting_report_chat` chat via `notify_daily_report_file()`. This is in addition to the standard completion card sent to the `daily-report` target chat.
 
 ### Notification format
 
@@ -127,12 +142,49 @@ Default `LARK_OAUTH_REDIRECT_URI`: `https://haidilao.wanghongming.xyz/admin/oaut
 
 ---
 
+---
+
+## `chat_id_for(alias)` — Named Chat Alias Resolution
+
+All Lark group chat IDs in this monorepo are defined **once** in `server/notify.toml [chats]` and referenced everywhere by name. Never put a raw `oc_xxx` ID in Python code.
+
+```python
+from lark_client import chat_id_for
+
+chat_id = chat_id_for("hongming")                        # → "oc_78f29489..."
+chat_id = chat_id_for("production_accounting_report_chat")  # → "oc_ff2a74b2..."
+chat_id = chat_id_for("nonexistent")                     # → None
+```
+
+**Implementation:** `lark_client.notify_config` — reads `server/notify.toml` via `_find_repo_root()`, extracts `[chats]` table, and caches it with `lru_cache(maxsize=1)` for the process lifetime.
+
+**Restart required:** changes to `notify.toml [chats]` only take effect after a process restart (cache is never invalidated at runtime).
+
+**Used by:**
+- `server/notify.py` — `_target_for()` resolves per-command `chat = "alias"` entries
+- `daily-store-operation-report/main.py` — `_alert_chat_id()` resolves crash/self-test alert target
+- `treasury-loan-watch/main.py` — fallback when `TREASURY_NOTIFY_CHAT_ID` env var is not set
+- `store-hours-collect/main.py` — fallback when `HOURS_NOTIFY_CHAT_ID` env var is not set
+
+### Bot permissions required for `send_file`
+
+`send_file()` uses the Lark IM file upload API (`/im/v1/files`), which requires an additional bot scope:
+
+| Permission | Scope key | Purpose |
+|---|---|---|
+| IM file upload | `im:resource` | Required for `send_file()` |
+
+Grant at: **open.feishu.cn → App → Permissions → im:resource**
+
+---
+
 ## Module Layout
 
 ```
 libs/lark-client/
 └── src/lark_client/
-    ├── __init__.py    # re-exports LarkClient, LarkError hierarchy
-    ├── client.py      # LarkClient implementation
-    └── errors.py      # LarkError, LarkAuthError, LarkAPIError
+    ├── __init__.py       # re-exports LarkClient, LarkError hierarchy, chat_id_for
+    ├── client.py         # LarkClient implementation
+    ├── errors.py         # LarkError, LarkAuthError, LarkAPIError
+    └── notify_config.py  # chat_id_for() — reads server/notify.toml [chats]
 ```

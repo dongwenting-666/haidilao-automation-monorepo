@@ -154,6 +154,35 @@ name when the generic name (e.g. `test_e2e.py`) would otherwise collide:
 - `test_vpn_e2e.py`, `test_server_e2e.py`, `test_ksb1_e2e.py` — unambiguous
 - `test_e2e.py` — only safe if it exists in exactly one `tests/` directory
 
+### 9. Lark Chat IDs are Named Aliases — Never Hardcode `oc_xxx`
+
+All Lark group chat IDs live in **`server/notify.toml [chats]`** as named aliases. Never put a raw `oc_xxx` string in Python.
+
+```python
+# ✅ correct
+from lark_client import chat_id_for
+chat_id = chat_id_for("hongming")
+
+# ❌ wrong
+chat_id = "oc_78f29489a577f10e36ebf989bccdcc83"
+```
+
+Both `lark_client.notify_config._load_chats()` and `server.notify._load_config()` use `lru_cache(maxsize=1)`. **Changes to `notify.toml` require a server restart** — the cache is never hot-reloaded.
+
+### 10. LaunchAgent Crash Alerting
+
+The server is launched via `scripts/server-start.sh`, not `uv` directly. On any non-zero exit:
+1. Sends a 🔴 Lark text alert to the `hongming` chat
+2. Schedules an OpenClaw isolated agentTurn (`openclaw cron add --at 1m --session isolated`) so the agent wakes, investigates, and reports to Hongming on Telegram
+
+Clean exit (code 0, e.g. `launchctl stop`) = no alert. `KeepAlive.SuccessfulExit = false` means launchd only restarts on crash, not on clean shutdown. `ThrottleInterval = 30` prevents rapid crash loops.
+
+### 11. plist env vars — minimal set
+
+The plist only contains: `HOME`, `PATH`, `LARK_APP_ID`, `LARK_APP_SECRET`. Everything else loads from `.env` via python-dotenv at server startup. `LARK_APP_ID`/`SECRET` must be in the plist because the crash-alert script in `server-start.sh` needs them *before* dotenv has run.
+
+When adding a new secret: if the crash script (or any pre-server bootstrap) needs it, add it to **both** `.env` and the plist. Server-only secrets: `.env` only.
+
 ## Code Style
 
 - Python 3.13+, type hints everywhere

@@ -32,7 +32,7 @@ import logging
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from server.routes.runs import Run
@@ -44,9 +44,11 @@ _NOTIFY_CONFIG = Path(__file__).resolve().parents[4] / "notify.toml"
 
 @lru_cache(maxsize=1)
 def _load_config() -> dict:
-    # NOTE: results are cached for the lifetime of the process.
-    # Changes to notify.toml require a server restart to take effect.
-    """Load and cache the full notify.toml.
+    """Load and cache the full notify.toml (per-command entries only; [chats] is
+    handled by ``lark_client.notify_config._load_chats()``).
+
+    Results are cached for the lifetime of the process.
+    **Changes to notify.toml require a server restart to take effect.**
 
     Returns empty dict if the file doesn't exist or can't be parsed.
     """

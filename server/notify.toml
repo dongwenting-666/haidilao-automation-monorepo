@@ -23,6 +23,9 @@ production_accounting_report_chat  = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"   # s
 chat = "hongming"
 
 [ksb1]
+# KSB1 notifications are intentionally disabled: the command runs infrequently
+# (on-demand, not scheduled) and the report is surfaced via the server UI.
+# Uncomment and set a target below when you want completion alerts:
 # chat = "hongming"
 # user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
 

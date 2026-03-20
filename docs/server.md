@@ -31,14 +31,26 @@ FastAPI HTTP server that exposes automation results, triggers runs, and provides
 # Manage with launchctl:
 launchctl start  com.haidilao.server
 launchctl stop   com.haidilao.server
-launchctl list | grep haidilao  # check status
+launchctl list | grep haidilao  # check status; exit code 0 = running
 
 # Or restart by unloading/loading:
 launchctl unload  ~/Library/LaunchAgents/com.haidilao.server.plist
 launchctl load    ~/Library/LaunchAgents/com.haidilao.server.plist
 ```
 
-The server runs as `uv run --project server python -m server` from the monorepo root. Logs go to `server.log` in the repo root.
+The plist launches `scripts/server-start.sh` (not `uv` directly). The wrapper script:
+1. Starts `uv run --project server python -m server` and waits for it to exit.
+2. On **clean exit (code 0)** — logs and exits cleanly. No restart (KeepAlive.SuccessfulExit = false).
+3. On **crash (non-zero exit)** — sends a Lark text alert to the `hongming` chat, then schedules a one-shot OpenClaw `agentTurn` (isolated session) so the agent can investigate and report to Hongming.
+
+**Crash restart behaviour:**
+- `KeepAlive.SuccessfulExit = false` — launchd restarts on crash (non-zero exit), not on clean shutdown.
+- `ThrottleInterval = 30` — minimum 30 seconds between automatic restarts (prevents tight crash loops).
+
+Logs (stdout + stderr) go to `server.log` in the repo root.
+
+**plist environment variables:**
+Only `HOME`, `PATH`, `LARK_APP_ID`, and `LARK_APP_SECRET` are set in the plist. `LARK_APP_ID` / `LARK_APP_SECRET` must be in the plist because the crash-alert script in `server-start.sh` needs them before `python-dotenv` has loaded `.env`. All other secrets (database credentials, QBI credentials, etc.) are loaded from `.env` by the server at startup.
 
 ---
 
@@ -183,6 +195,8 @@ docker compose -f docker/docker-compose.yml up -d
 
 All variables loaded from `.env` in the repo root via `pydantic-settings`.
 
+> **Chat IDs are not env vars.** Lark group chat targets (`oc_xxx`) are defined as named aliases in `server/notify.toml [chats]` and referenced by name in per-command entries. `TREASURY_NOTIFY_CHAT_ID` and `HOURS_NOTIFY_CHAT_ID` are legacy env vars that still work as overrides but are no longer required — the defaults come from `notify.toml`.
+
 ---
 
 ## DB Integration
@@ -259,4 +273,8 @@ Registered cron jobs:
 
 The daily report command checks for missing targets/competitor config via `_check_config()` before running. If config is missing, it sends a Lark alert and aborts.
 
-The treasury-loan-watch command reads maturity dates from a Feishu sheet and sends a Lark card to `TREASURY_NOTIFY_CHAT_ID` if any loans mature on the day of the run.
+After each **successful** `daily-report` run, the generated `.xlsx` is automatically sent to the `production_accounting_report_chat` Lark group (defined in `server/notify.toml [chats]`): a blue card header is posted first, then the file attachment, so it's easy to find in the chat history.
+
+The treasury-loan-watch command reads maturity dates from a Feishu sheet and sends a Lark card to the `hongming` chat (via `server/notify.toml`) if any loans mature on the day of the run.
+
+All notification targets are configured in `server/notify.toml [chats]` — no raw chat IDs in code.

@@ -1,6 +1,6 @@
 """Helpers for resolving named chat aliases from notify.toml.
 
-All projects in this monorepo share a single ``notify.toml`` at the repo root.
+All projects in this monorepo share ``server/notify.toml``.
 The ``[chats]`` section defines human-readable aliases for Lark open_chat_ids::
 
     [chats]
@@ -40,6 +40,9 @@ def _find_repo_root() -> Path:
 @lru_cache(maxsize=1)
 def _load_chats() -> dict[str, str]:
     """Load and cache the ``[chats]`` table from ``server/notify.toml``.
+
+    Results are cached for the lifetime of the process.
+    **Changes to notify.toml require a server restart to take effect.**
 
     Returns empty dict if the file doesn't exist or can't be parsed.
     """
