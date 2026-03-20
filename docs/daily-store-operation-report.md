@@ -27,11 +27,10 @@ uv run --project projects/daily-store-operation-report \
 
 | Flag | Description |
 |------|-------------|
-| `DATE` | Report date in YYYY-MM-DD (default: yesterday) |
+| `DATE` | Report date in YYYY-MM-DD (default: T-2, two days ago in Vancouver time) |
 | `--skip-download` | Use pre-downloaded files from `--data-dir` |
 | `--data-dir PATH` | Directory with QBI exports (default: `output/qbi/`) |
 | `--output-dir PATH` | Output directory (default: `output/daily-report/`) |
-| `--targets PATH` | Path to targets.json (default: bundled) |
 | `--cur-daily` / `--prev-daily` / `--yoy-daily` | Explicit daily report files |
 | `--cur-tp` / `--yoy-tp` | Explicit time-period report files |
 | `--no-headless` | Show browser during QBI download |

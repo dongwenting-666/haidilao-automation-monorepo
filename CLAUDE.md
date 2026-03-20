@@ -129,6 +129,17 @@ launchctl stop com.haidilao.server && launchctl start com.haidilao.server
 kill $(pgrep -f 'python -m server')  # DON'T — launchd KeepAlive respawns it
 ```
 
+### 11. Known Noise: `PythonFinalizationError` in Run Logs
+
+Every `daily-report` subprocess run ends with a harmless traceback:
+
+```
+Exception ignored while calling deallocator <function ConnectionPool.__del__ ...>:
+PythonFinalizationError: cannot join thread at interpreter shutdown
+```
+
+This is a known `psycopg-pool` / Python 3.14 incompatibility: the pool's `__del__` tries to join a thread during interpreter shutdown, which Python 3.14 disallows. It does **not** affect run results — runs show `status: success` and the report file is saved correctly. No action needed unless psycopg-pool releases a fix.
+
 ## Code Style
 
 - Python 3.13+, type hints everywhere
