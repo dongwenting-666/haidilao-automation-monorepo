@@ -28,7 +28,7 @@ from vpn.connect import ensure_vpn
 
 logger = logging.getLogger(__name__)
 
-_ALERT_CHAT_ID = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"
+_ALERT_CHAT_ID = "oc_78f29489a577f10e36ebf989bccdcc83"
 
 
 @functools.cache
