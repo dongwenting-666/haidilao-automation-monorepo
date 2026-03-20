@@ -12,8 +12,10 @@ def test_list_jobs(client):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) >= 1
-    job = data[0]
-    assert job["id"] == "daily-report-cron"
+    # Find the daily-report job by ID (don't assume ordering)
+    daily_jobs = [j for j in data if j["id"] == "daily-report-cron"]
+    assert len(daily_jobs) == 1, f"Expected daily-report-cron in jobs, got: {[j['id'] for j in data]}"
+    job = daily_jobs[0]
     assert job["name"] == "Daily store operation report"
     assert "trigger" in job
 
