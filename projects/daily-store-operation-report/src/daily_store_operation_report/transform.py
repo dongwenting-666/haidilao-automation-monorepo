@@ -342,6 +342,7 @@ class StoreMetrics:
     tp_turnover_cur: dict[str, float] = field(default_factory=dict)
     tp_turnover_yoy: dict[str, float] = field(default_factory=dict)
     tp_turnover_target: dict[str, float] = field(default_factory=dict)
+    tp_turnover_target_total: float = 0  # pre-computed total from DB (avoids slot rounding drift)
     tp_tables_today: dict[str, float] = field(default_factory=dict)
     tp_tables_yoy_weekday: dict[str, float] = field(default_factory=dict)
     tp_turnover_today: dict[str, float] = field(default_factory=dict)
@@ -517,6 +518,7 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.revenue_target = rev_targets.get(store, 0)
     store_tr_target = tr_targets.get(store, {})
     m.tp_turnover_target = {slot: store_tr_target.get(slot, 0) for slot in TIME_SLOTS}
+    m.tp_turnover_target_total = store_tr_target.get("total", 0)
 
     # Time-period data
     m.tp_turnover_cur = raw.tp_turnover_cur.get(store, {})

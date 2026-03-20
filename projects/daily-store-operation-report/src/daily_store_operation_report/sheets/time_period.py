@@ -36,13 +36,16 @@ def _store_slot_totals(m: StoreMetrics) -> dict[int, float]:
     Used for both the per-store subtotal row and the region total row,
     ensuring they stay in sync.
 
-    Turnover rates (c3, c4, c5, c8, c10) are summed across slots because
+    Turnover rates (c3, c4, c8, c10) are summed across slots because
     daily turnover rate = sum of per-slot rates (each slot's rate is
     independent: tables_in_slot / total_seats).
+
+    Column 5 (target) uses the pre-computed total from the DB to avoid
+    rounding drift from summing independently-rounded slot values.
     """
     c3 = sum(m.tp_turnover_cur.get(s, 0) for s in TIME_SLOTS)
     c4 = sum(m.tp_turnover_yoy.get(s, 0) for s in TIME_SLOTS)
-    c5 = sum(m.tp_turnover_target.get(s, 0) for s in TIME_SLOTS)
+    c5 = m.tp_turnover_target_total or sum(m.tp_turnover_target.get(s, 0) for s in TIME_SLOTS)
     c8 = sum(m.tp_turnover_today.get(s, 0) for s in TIME_SLOTS)
     c9 = sum(m.tp_tables_today.get(s, 0) for s in TIME_SLOTS)
     c10 = sum(m.tp_turnover_yoy_weekday.get(s, 0) for s in TIME_SLOTS)
