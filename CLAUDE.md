@@ -18,9 +18,15 @@
 | `server/src/server/db.py` | DB access layer (targets, competitors, admin users) |
 | `server/src/server/routes/tools.py` | MinIO file upload/download + admin UI |
 | `server/src/server/routes/github_webhook.py` | GitHub webhook receiver |
+| `server/src/server/notify.py` | Lark notifications — run-complete cards, daily report file delivery |
+| `server/src/server/routes/runs.py` | Run queue, execution, post-run notification + file send |
+| `server/notify.toml` | Lark chat ID aliases (`[chats]`) + per-command notification targets |
+| `libs/lark-client/src/lark_client/notify_config.py` | `chat_id_for(alias)` — resolves named chat aliases from notify.toml |
 | `libs/qbi-crawler/src/qbi_crawler/dashboard.py` | QBI report navigation + export |
 | `libs/vpn/src/vpn/_darwin.py` | CorpLink VPN reconnect via cliclick |
-| `~/Library/LaunchAgents/com.haidilao.server.plist` | LaunchAgent config (env vars!) |
+| `scripts/server-start.sh` | Server launcher with crash alerting (Lark + OpenClaw agent wake) |
+| `scripts/lark-notify.py` | CLI: send Lark message by alias (`python scripts/lark-notify.py hongming "msg"`) |
+| `~/Library/LaunchAgents/com.haidilao.server.plist` | LaunchAgent config (minimal env: HOME, PATH, LARK creds) |
 | `/opt/homebrew/etc/nginx/sites-enabled/haidilao.conf` | Nginx reverse proxy config |
 
 ## Critical Lessons Learned
