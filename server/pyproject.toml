@@ -29,3 +29,8 @@ packages = ["src/server"]
 [tool.uv.sources]
 lark-client = { workspace = true, editable = true }
 db-client = { workspace = true, editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.0.0",
+]
