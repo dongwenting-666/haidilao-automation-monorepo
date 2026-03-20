@@ -33,10 +33,8 @@ _fallback_secret: str = ""
 
 def _get_signer() -> TimestampSigner:
     global _fallback_secret
-    secret = os.environ.get("SESSION_SECRET", "")
-    if not secret:
-        from server.config import settings
-        secret = settings.session_secret
+    from server.config import settings
+    secret = settings.session_secret or os.environ.get("SESSION_SECRET", "")
     if not secret:
         if not _fallback_secret:
             _fallback_secret = secrets.token_hex(32)
@@ -51,13 +49,15 @@ def _get_signer() -> TimestampSigner:
 def get_session(request: Request) -> dict | None:
     """Decode the admin session cookie. Returns {open_id, name} or None."""
     cookie = request.cookies.get(_COOKIE_NAME)
+
     if not cookie:
         return None
     try:
         signer = _get_signer()
         raw = signer.unsign(cookie, max_age=_SESSION_MAX_AGE)
         return json.loads(raw)
-    except (SignatureExpired, BadSignature, Exception):
+    except (SignatureExpired, BadSignature, Exception) as exc:
+        logger.warning("Session cookie invalid: %s (cookie=%s...)", exc, cookie[:30] if cookie else "")
         return None
 
 

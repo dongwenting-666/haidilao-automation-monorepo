@@ -507,3 +507,10 @@ async def agent_download(key: str, request: Request):
     except Exception as exc:
         logger.exception("Agent download failed for key=%s", key)
         raise HTTPException(status_code=404, detail=str(exc))
+
+@agent_router.get("/debug-session")
+async def debug_session(request: Request):
+    """Temporary debug endpoint - localhost only."""
+    from server.auth import _get_signer
+    signer = _get_signer()
+    return {"secret_prefix": signer.secret_key[:10].decode() if isinstance(signer.secret_key, bytes) else str(signer.secret_key)[:10], "cookies": dict(request.cookies)}
