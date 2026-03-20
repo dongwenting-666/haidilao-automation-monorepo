@@ -17,6 +17,12 @@ from daily_store_operation_report.dates import compute_dates
 from daily_store_operation_report.download import DownloadedFiles, download_all
 from daily_store_operation_report.report import generate_report
 from daily_store_operation_report.transform import compute_metrics
+from daily_store_operation_report.validation import (
+    validate_file_exists_and_readable,
+    validate_file_timestamps,
+    validate_report_output,
+    validate_xlsx_has_sheet,
+)
 from vpn.connect import ensure_vpn
 
 logger = logging.getLogger(__name__)
@@ -77,17 +83,38 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
     For precise control over which files are used, pass explicit paths via
     --cur-daily, --prev-daily, --yoy-daily, --cur-tp, --yoy-tp instead.
     """
-    daily_files = sorted(data_dir.glob("海外门店经营日报数据_*.xlsx"), key=_date_from_filename)
-    tp_files = sorted(data_dir.glob("海外分时段报表_*.xlsx"), key=_date_from_filename)
+    # Compute sort keys so we can log them for transparency
+    daily_unsorted = list(data_dir.glob("海外门店经营日报数据_*.xlsx"))
+    tp_unsorted = list(data_dir.glob("海外分时段报表_*.xlsx"))
+
+    daily_with_keys = [(p, _date_from_filename(p)) for p in daily_unsorted]
+    tp_with_keys = [(p, _date_from_filename(p)) for p in tp_unsorted]
+
+    daily_with_keys.sort(key=lambda x: x[1])
+    tp_with_keys.sort(key=lambda x: x[1])
+
+    daily_files = [p for p, _ in daily_with_keys]
+    tp_files = [p for p, _ in tp_with_keys]
 
     if len(daily_files) < 3:
         raise FileNotFoundError(
-            f"Need at least 3 daily report files in {data_dir}, found {len(daily_files)}"
+            f"Need at least 3 daily report files in {data_dir}, found {len(daily_files)}.\n"
+            f"  Files found: {[p.name for p in daily_files]}"
         )
     if len(tp_files) < 2:
         raise FileNotFoundError(
-            f"Need at least 2 time-period report files in {data_dir}, found {len(tp_files)}"
+            f"Need at least 2 time-period report files in {data_dir}, found {len(tp_files)}.\n"
+            f"  Files found: {[p.name for p in tp_files]}"
         )
+
+    # Log the sort keys so the user can verify the ordering
+    logger.info("Daily files resolved (sorted by sort key):")
+    for p, key in daily_with_keys:
+        logger.info("  sort_key=%-20s  file=%s", key, p.name)
+
+    logger.info("Time-period files resolved (sorted by sort key):")
+    for p, key in tp_with_keys:
+        logger.info("  sort_key=%-20s  file=%s", key, p.name)
 
     files = DownloadedFiles(
         cur_daily=daily_files[-3],
@@ -97,13 +124,24 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
         yoy_time_period=tp_files[-1],
     )
     logger.info(
-        "Resolved data files: cur=%s, prev=%s, yoy=%s, cur_tp=%s, yoy_tp=%s",
+        "Selected data files: cur=%s, prev=%s, yoy=%s, cur_tp=%s, yoy_tp=%s",
         files.cur_daily.name,
         files.prev_daily.name,
         files.yoy_daily.name,
         files.cur_time_period.name,
         files.yoy_time_period.name,
     )
+
+    # Validate that all 5 selected files are from the same download session
+    selected_with_keys = [
+        (files.cur_daily, _date_from_filename(files.cur_daily)),
+        (files.prev_daily, _date_from_filename(files.prev_daily)),
+        (files.yoy_daily, _date_from_filename(files.yoy_daily)),
+        (files.cur_time_period, _date_from_filename(files.cur_time_period)),
+        (files.yoy_time_period, _date_from_filename(files.yoy_time_period)),
+    ]
+    validate_file_timestamps(selected_with_keys)
+
     return files
 
 
@@ -255,12 +293,38 @@ def main() -> None:
             headless=args.headless,
         )
 
+    # Validate all 5 input files before doing any work
+    logger.info("Validating input files...")
+    from daily_store_operation_report.constants import QBI_SHEET_DAILY, QBI_SHEET_TIME_PERIOD
+    file_checks = [
+        (files.cur_daily, "cur_daily", QBI_SHEET_DAILY),
+        (files.prev_daily, "prev_daily", QBI_SHEET_DAILY),
+        (files.yoy_daily, "yoy_daily", QBI_SHEET_DAILY),
+        (files.cur_time_period, "cur_time_period", QBI_SHEET_TIME_PERIOD),
+        (files.yoy_time_period, "yoy_time_period", QBI_SHEET_TIME_PERIOD),
+    ]
+    for path, label, expected_sheet in file_checks:
+        validate_file_exists_and_readable(path, label=label)
+        validate_xlsx_has_sheet(path, expected_sheet)
+    logger.info("Input file validation passed ✓")
+
     logger.info("Computing metrics...")
     report_data = compute_metrics(dates, files)
 
     logger.info("Generating report...")
     output_path = generate_report(report_data, output_dir)
     logger.info("Report saved to %s", output_path)
+
+    # Post-generation self-test
+    logger.info("Running post-generation self-test...")
+    try:
+        validate_report_output(output_path)
+    except ValueError as exc:
+        logger.error("Post-generation validation FAILED: %s", exc)
+        _lark_alert(f"⚠️ 日报自检失败 ({dates.month_key})\n\n{exc}")
+        # Don't abort — the file was saved; let the human inspect it
+    except Exception as exc:
+        logger.warning("Post-generation validation raised unexpected error: %s", exc)
 
 
 if __name__ == "__main__":

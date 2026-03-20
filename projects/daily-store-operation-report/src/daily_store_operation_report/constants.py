@@ -48,6 +48,7 @@ COL_REVENUE = "营业收入(不含税)"
 COL_CUSTOMERS = "就餐人数"
 COL_TURNOVER = "翻台率(考核)"
 COL_DISCOUNT = "优惠总金额(不含税)"
+COL_SEATS = "所有餐位数"
 
 # Weekday names in Chinese
 WEEKDAY_NAMES = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]

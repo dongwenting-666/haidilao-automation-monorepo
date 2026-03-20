@@ -10,6 +10,12 @@ from typing import TypedDict
 
 from excel_utils import load_data_rows
 
+from daily_store_operation_report.validation import (
+    validate_daily_rows,
+    validate_no_all_zero_columns,
+    validate_store_coverage,
+    validate_time_period_rows,
+)
 from daily_store_operation_report.constants import (
     COL_CUSTOMERS,
     COL_DATE,
@@ -53,28 +59,91 @@ def _normalize_date(val: object) -> str:
 
 
 def _load_daily(path: Path) -> list[dict]:
-    """Load rows from the 不含税 sheet of a daily report."""
+    """Load rows from the 不含税 sheet of a daily report.
+
+    Validates columns and row counts after loading.
+    """
     try:
-        return load_data_rows(path, sheet_name=QBI_SHEET_DAILY)
+        rows = load_data_rows(path, sheet_name=QBI_SHEET_DAILY)
+    except KeyError as e:
+        # openpyxl raises KeyError when sheet name doesn't exist
+        import openpyxl as _opx
+        try:
+            _wb = _opx.load_workbook(path, read_only=True, data_only=True)
+            available = _wb.sheetnames
+            _wb.close()
+        except Exception:
+            available = ["(could not open file)"]
+        raise ValueError(
+            f"Sheet {QBI_SHEET_DAILY!r} not found in {path.name}.\n"
+            f"  Available sheets: {available}\n"
+            f"  Is this the correct daily report file?"
+        ) from e
     except Exception as e:
         raise ValueError(f"Failed to load daily report from {path}: {e}") from e
 
+    validate_daily_rows(rows, path)
+    return rows
+
 
 def _load_time_period(path: Path) -> list[dict]:
-    """Load rows from the 不含税 sheet of a time-period report."""
+    """Load rows from the 不含税 sheet of a time-period report.
+
+    Validates columns and row counts after loading.
+    """
     try:
-        return load_data_rows(path, sheet_name=QBI_SHEET_TIME_PERIOD)
+        rows = load_data_rows(path, sheet_name=QBI_SHEET_TIME_PERIOD)
+    except KeyError as e:
+        import openpyxl as _opx
+        try:
+            _wb = _opx.load_workbook(path, read_only=True, data_only=True)
+            available = _wb.sheetnames
+            _wb.close()
+        except Exception:
+            available = ["(could not open file)"]
+        raise ValueError(
+            f"Sheet {QBI_SHEET_TIME_PERIOD!r} not found in {path.name}.\n"
+            f"  Available sheets: {available}\n"
+            f"  Is this the correct time-period report file?"
+        ) from e
     except Exception as e:
         raise ValueError(f"Failed to load time-period report from {path}: {e}") from e
 
+    validate_time_period_rows(rows, path)
+    return rows
+
+
+def _safe_float(val: object, *, context: str = "") -> float:
+    """Coerce *val* to float, returning 0.0 on None/NaN/non-numeric values.
+
+    Logs a debug message when a non-None non-numeric value is silently replaced.
+    """
+    if val is None:
+        return 0.0
+    try:
+        result = float(val)  # type: ignore[arg-type]
+        import math
+        if math.isnan(result) or math.isinf(result):
+            return 0.0
+        return result
+    except (TypeError, ValueError):
+        if context:
+            logger.debug("Non-numeric value in column %s: %r — treating as 0", context, val)
+        return 0.0
+
 
 def _sum_by_store(rows: list[dict], col: str) -> dict[str, float]:
-    """Sum a column grouped by store name."""
+    """Sum a column grouped by store name.
+
+    Handles NaN, None, and non-numeric values gracefully.
+    """
     totals: dict[str, float] = {}
     for row in rows:
-        store = row.get(COL_STORE, "")
-        val = row.get(col, 0) or 0
-        totals[store] = totals.get(store, 0) + float(val)
+        store = str(row.get(COL_STORE) or "").strip()
+        if not store:
+            continue
+        val = _safe_float(row.get(col), context=col)
+        totals[store] = totals.get(store, 0) + val
     return totals
 
 
@@ -83,9 +152,11 @@ def _last_day_by_store(rows: list[dict], report_date_str: str, col: str) -> dict
     totals: dict[str, float] = {}
     for row in rows:
         if _normalize_date(row.get(COL_DATE, "")) == report_date_str:
-            store = row.get(COL_STORE, "")
-            val = row.get(col, 0) or 0
-            totals[store] = totals.get(store, 0) + float(val)
+            store = str(row.get(COL_STORE) or "").strip()
+            if not store:
+                continue
+            val = _safe_float(row.get(col), context=col)
+            totals[store] = totals.get(store, 0) + val
     return totals
 
 
@@ -93,13 +164,13 @@ def _sum_time_period(rows: list[dict], col: str) -> dict[str, dict[str, float]]:
     """Sum a column grouped by (store, time slot). Returns {store: {slot: val}}."""
     result: dict[str, dict[str, float]] = {}
     for row in rows:
-        store = row.get(COL_STORE, "")
-        slot = row.get(COL_TIME_SLOT, "")
-        if slot == "-":
+        store = str(row.get(COL_STORE) or "").strip()
+        slot = str(row.get(COL_TIME_SLOT) or "").strip()
+        if not store or not slot or slot == "-":
             continue
-        val = row.get(col, 0) or 0
+        val = _safe_float(row.get(col), context=col)
         result.setdefault(store, {})
-        result[store][slot] = result[store].get(slot, 0) + float(val)
+        result[store][slot] = result[store].get(slot, 0) + val
     return result
 
 
@@ -108,21 +179,21 @@ def _avg_time_period(rows: list[dict], col: str) -> dict[str, dict[str, float]]:
     sums: dict[str, dict[str, float]] = {}
     counts: dict[str, dict[str, int]] = {}
     for row in rows:
-        store = row.get(COL_STORE, "")
-        slot = row.get(COL_TIME_SLOT, "")
-        if slot == "-":
+        store = str(row.get(COL_STORE) or "").strip()
+        slot = str(row.get(COL_TIME_SLOT) or "").strip()
+        if not store or not slot or slot == "-":
             continue
-        val = row.get(col, 0) or 0
+        val = _safe_float(row.get(col), context=col)
         sums.setdefault(store, {})
         counts.setdefault(store, {})
-        sums[store][slot] = sums[store].get(slot, 0) + float(val)
+        sums[store][slot] = sums[store].get(slot, 0) + val
         counts[store][slot] = counts[store].get(slot, 0) + 1
     result: dict[str, dict[str, float]] = {}
     for store in sums:
         result[store] = {}
         for slot in sums[store]:
             c = counts[store][slot]
-            result[store][slot] = sums[store][slot] / c if c else 0
+            result[store][slot] = sums[store][slot] / c if c else 0.0
     return result
 
 
@@ -132,24 +203,30 @@ def _last_day_time_period(rows: list[dict], date_str: str, col: str) -> dict[str
     for row in rows:
         if _normalize_date(row.get(COL_DATE, "")) != date_str:
             continue
-        store = row.get(COL_STORE, "")
-        slot = row.get(COL_TIME_SLOT, "")
-        if slot == "-":
+        store = str(row.get(COL_STORE) or "").strip()
+        slot = str(row.get(COL_TIME_SLOT) or "").strip()
+        if not store or not slot or slot == "-":
             continue
-        val = row.get(col, 0) or 0
+        val = _safe_float(row.get(col), context=col)
         result.setdefault(store, {})
-        result[store][slot] = result[store].get(slot, 0) + float(val)
+        result[store][slot] = result[store].get(slot, 0) + val
     return result
 
 
 def _avg_turnover_by_store(rows: list[dict], col: str = COL_TURNOVER) -> dict[str, float]:
-    """Pre-aggregate average turnover rate per store (single pass)."""
+    """Pre-aggregate average turnover rate per store (single pass).
+
+    Only stores with at least one non-zero row are included to avoid
+    diluting averages for stores with partial data.
+    """
     sums: dict[str, float] = {}
     counts: dict[str, int] = {}
     for row in rows:
-        store = row.get(COL_STORE, "")
-        val = row.get(col, 0) or 0
-        sums[store] = sums.get(store, 0) + float(val)
+        store = str(row.get(COL_STORE) or "").strip()
+        if not store:
+            continue
+        val = _safe_float(row.get(col), context=col)
+        sums[store] = sums.get(store, 0) + val
         counts[store] = counts.get(store, 0) + 1
     return {s: sums[s] / counts[s] for s in sums if counts[s]}
 
@@ -232,6 +309,7 @@ class StoreMetrics:
     today_customers: int = 0
     today_per_table: float = 0
     today_turnover_rate: float = 0
+    seats: int = 0  # 所有餐位数 (total seat count, constant per store)
 
     # MTD current month
     mtd_tables: float = 0
@@ -446,12 +524,40 @@ def compute_metrics(
     Use the admin UI at /admin to configure them.
     """
     from server.db import get_competitor_for_report, get_targets_for_report
-    raw = _load_all_raw_data(dates, files)
-    targets: Targets = get_targets_for_report(dates.month_key)
-    competitor = get_competitor_for_report()
+
+    try:
+        raw = _load_all_raw_data(dates, files)
+    except ValueError as e:
+        raise ValueError(f"Data loading failed: {e}") from e
+    except Exception as e:
+        raise RuntimeError(
+            f"Unexpected error while loading QBI data: {type(e).__name__}: {e}\n"
+            "Check that all 5 QBI files are valid and not corrupted."
+        ) from e
+
+    try:
+        targets: Targets = get_targets_for_report(dates.month_key)
+    except Exception as e:
+        logger.warning("Failed to load targets for %s: %s — using empty targets", dates.month_key, e)
+        targets = {"revenue": {}, "turnover_rate": {}}
+
+    try:
+        competitor = get_competitor_for_report()
+    except Exception as e:
+        logger.warning("Failed to load competitor config: %s — competitor sheet will be empty", e)
+        competitor = {}
 
     data = ReportData(dates=dates, competitor=competitor)
     for store in STORES:
-        data.stores[store] = _build_store_metrics(store, raw, targets)
+        try:
+            data.stores[store] = _build_store_metrics(store, raw, targets)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to build metrics for store {store!r}: {type(e).__name__}: {e}"
+            ) from e
+
+    # Validate that computed metrics look sane
+    validate_store_coverage(data.stores, label="post-transform")
+    validate_no_all_zero_columns(data.stores)
 
     return data
