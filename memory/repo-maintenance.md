@@ -1,5 +1,31 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 8) — Scheduled Maintenance (7:47 PM)
+
+### Summary
+Clean pass. Three uncommitted changes from recent sessions were staged, committed, and pushed as a single tidy commit (`41b5d46`). Mar 19 daily report was missing — triggered it via API; it's now running (run ID `87aa11a8`). output/qbi/ is 132 files / 16MB but all are from last 7 days (oldest Mar 17), so no cleanup needed. All AST "unused imports" are false positives (re-exports, `from __future__ import annotations`, conditional platform imports). No structural changes.
+
+### Fixes Applied
+
+#### 1. Committed and pushed pending changes ✅
+Committed as `41b5d46`:
+- **github_webhook.py:** replaced module-level `WEBHOOK_SECRET = os.environ.get(...)` with lazy `_get_webhook_secret()` — fixes env-var frozen-at-import-time bug under launchd
+- **tools.py:** removed `/api/tools/agent/debug-session` debug endpoint (was leaking session secret prefix; no longer needed)
+- **CLAUDE.md:** documented lesson 6 (module-level os.environ reads frozen at import time), renumbered old lesson 6→7
+
+#### 2. Triggered missing Mar 19 daily report ✅
+- Report for 2026-03-19 was absent from `output/daily-report/`
+- Triggered via `GET /api/reports/daily/2026-03-19` → run ID `87aa11a8`, status: running as of end of this run
+
+### No Other Issues Found
+- README.md: accurate, no structural changes
+- docs/: all pages current; no mention of removed debug endpoint needed
+- output/qbi/: 132 files / 16MB, all ≤7 days old — healthy
+- output/daily-report/: 18 files through Mar 18 (Mar 19 in progress)
+- git status: clean after commit
+
+---
+
 ## 2026-03-19 (Run 7) — Scheduled Maintenance (6:45 PM)
 
 ### Summary
