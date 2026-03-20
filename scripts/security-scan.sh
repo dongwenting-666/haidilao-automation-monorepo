@@ -3,7 +3,7 @@
 # Usage: ./scripts/security-scan.sh
 # Add to cron: 0 * * * * /Users/hongming-claw/haidilao-automation-monorepo/scripts/security-scan.sh >> /tmp/security-scan.log 2>&1
 
-set -euo pipefail
+set -uo pipefail
 
 ACCESS_LOG="/opt/homebrew/var/log/nginx/access.log"
 THRESHOLD_AUTH_ERRORS=10     # IPs with >10 401/403 responses in the last hour
