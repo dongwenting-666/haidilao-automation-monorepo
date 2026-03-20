@@ -1,5 +1,48 @@
 # Repo Maintenance Notes
 
+## 2026-03-20 (Run 16) — Scheduled Maintenance (7:16 AM Vancouver)
+
+### Summary
+Clean pass. All 244 tests pass. Pruned 51 stale Mar 18 QBI raw downloads (oldest stale files). Daily reports complete through Mar 18 (Mar 19 correctly absent — T-2 constraint means it generates tomorrow at 6 AM). Server running with 4 in-memory runs, all successful. Mar 20 QBI output accumulation is notably high (226 files from today's multiple maintenance runs). No code changes needed.
+
+### Findings
+
+#### 1. Tests — All Pass ✅
+244 passed, 1 deselected (e2e). No regressions. Clean run in 26s.
+
+#### 2. Pruned Stale QBI Files ✅
+- Deleted 51 Mar 18 QBI raw downloads (>2 days old)
+- `output/qbi/` reduced from 361 files / 45MB → 310 files / 39MB
+- Mar 19: 84 files remain (will be prunable tomorrow)
+- Mar 20: 226 files from today's active download sessions
+
+#### 3. Daily Reports Status
+- `output/daily-report/`: 19 files (Feb 10, Mar 1–18) ✅
+- Mar 18 is the latest (generated today at 6:57 AM and 6:00 AM — two successful runs, latest overwrites)
+- Mar 19 absent — **expected**: T-2 for Mar 19 is Mar 21; will auto-generate at 6 AM tomorrow
+- Note: Two `daily-report` runs today — one default T-2 at 13:00 UTC (params: `{}`), one explicit `{"date": "2026-03-18"}` at 13:55 UTC. Both succeeded.
+
+#### 4. Server Status
+- LaunchAgent `com.haidilao.server` running (PID 19446)
+- 4 in-memory runs:
+  - `daily-report` (params: `{"date": "2026-03-18"}`) → success (13:55 UTC)
+  - `store-hours-collect` → success (13:30 UTC)
+  - `treasury-loan-watch` → success (13:00 UTC)
+  - `daily-report` (default T-2) → success (13:00 UTC)
+
+#### 5. Code Quality — Clean
+- No TODOs/FIXMEs/HACKs in project code
+- No unused imports (prior confirmed false-positives: TYPE_CHECKING guards, `__init__.py` re-exports)
+- README.md, CLAUDE.md, docs/ all accurate — no structural changes since Run 15
+
+#### 6. Output/ Accumulation Note
+Mar 20 QBI output is 226 files — high because maintenance runs (this and previous runs today) each triggered QBI downloads. This is expected behaviour when maintenance overlaps with high-frequency runs. No action needed.
+
+### No Commits Needed
+Only output/ file pruning performed; output/ is gitignored.
+
+---
+
 ## 2026-03-20 (Run 15) — Scheduled Maintenance (6:12 AM Vancouver)
 
 ### Summary
