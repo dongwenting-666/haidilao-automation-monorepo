@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS store_targets (
     id          SERIAL PRIMARY KEY,
     month_key   VARCHAR(7)    NOT NULL,         -- e.g. '2026-03'
     store_name  VARCHAR(64)   NOT NULL,
-    revenue     NUMERIC(12,2) DEFAULT 0,
+    revenue     NUMERIC(20,11) DEFAULT 0,
     tr_slot_1   NUMERIC(6,4)  DEFAULT 0,        -- 08:00-13:59
     tr_slot_2   NUMERIC(6,4)  DEFAULT 0,        -- 14:00-16:59
     tr_slot_3   NUMERIC(6,4)  DEFAULT 0,        -- 17:00-21:59
