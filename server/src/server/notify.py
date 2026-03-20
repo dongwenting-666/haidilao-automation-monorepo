@@ -157,11 +157,16 @@ def notify_run_complete(run: "Run") -> None:
 def notify_daily_report_file(report_path: "Path") -> None:
     """Send the generated daily report xlsx to the production accounting chat.
 
-    Reads the ``production_accounting_report_chat`` alias from notify.toml
-    [chats] and uploads the file as a Lark IM file message.  Silent no-op if
-    Lark is not configured or the alias is missing.
+    Sends a card header first (so the file doesn't get lost in conversation),
+    then attaches the xlsx file.  Reads ``production_accounting_report_chat``
+    from notify.toml [chats].  Silent no-op if Lark is not configured or the
+    alias is missing.
     """
+    import re
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     from server.config import settings
+
     if not settings.lark_enabled:
         return
 
@@ -170,18 +175,39 @@ def notify_daily_report_file(report_path: "Path") -> None:
         log.warning("notify: 'production_accounting_report_chat' alias not found in notify.toml [chats], skipping file send")
         return
 
+    # Parse report date from filename: database_report_YYYY_MM_DD.xlsx
+    date_str = "unknown date"
+    m = re.search(r"(\d{4})_(\d{2})_(\d{2})", report_path.name)
+    if m:
+        date_str = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+
+    now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
+
     try:
         client = _client()
         if client is None:
             return
         with client:
+            # 1. Card header — anchors the file in conversation
+            client.send_card(
+                title=f"📊 海外门店经营日报 · {date_str}",
+                content=(
+                    f"**日报文件已生成**，数据日期：**{date_str}**\n\n"
+                    f"生成时间：{now} (Vancouver)\n\n"
+                    "---\n"
+                    "👇 附件见下方"
+                ),
+                color="blue",
+                chat_id=chat_id,
+            )
+            # 2. The xlsx file itself
             client.send_file(
                 report_path,
                 filename=report_path.name,
                 chat_id=chat_id,
                 file_type="xlsx",
             )
-        log.info("Daily report file sent to production_accounting_report_chat: %s", report_path.name)
+        log.info("Daily report card + file sent to production_accounting_report_chat: %s", report_path.name)
     except Exception:
         log.exception("Failed to send daily report file to Lark")
 
