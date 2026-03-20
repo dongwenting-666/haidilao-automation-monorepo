@@ -21,7 +21,7 @@ Monorepo for Haidilao Canada automation jobs, managed with [uv workspaces](https
 │   ├── store-hours-collect/          # Daily store working hours collection
 │   └── treasury-loan-watch/          # Treasury loan maturity alerting
 ├── server/                      # FastAPI server (job runner + admin panel)
-├── docker/                      # Docker / init scripts
+├── docker/                      # Docker / init scripts + docker-compose
 ├── scripts/                     # Utility scripts
 ├── tools/                       # Standalone tools
 │   └── corplink-vpn-helper/       # CorpLink VPN gRPC helper (Go)
@@ -32,17 +32,10 @@ Monorepo for Haidilao Canada automation jobs, managed with [uv workspaces](https
 
 - Python >= 3.13
 - [uv](https://docs.astral.sh/uv/)
+- Docker (for PostgreSQL, MinIO)
 - CorpLink VPN connected (for QBI and SAP access)
 - SAP GUI 770 (for KSB1 projects — Windows only)
-- Playwright browsers installed (`uv run playwright install chromium`)
-
-## Software Install Links
-
-| Software | Link |
-|----------|------|
-| SAP GUI (macOS) | [Feishu Wiki — SAP GUI Mac 安装指南](https://haidilao.feishu.cn/wiki/DWcHwOsf0iLjvlkHeZncJpyhn0g) |
-| SAP GUI (Windows) | [Feishu Doc — SAP GUI Windows 安装指南](https://haidilao.feishu.cn/docx/SWOkdCypPob5GOxOoXHcX8mvnO6) |
-| SealSuite (飞连 VPN) | [Volcengine — 飞连下载](https://www.volcengine.com/product/feilian/download) |
+- Playwright browsers (`uv run playwright install chromium`)
 
 ## Setup
 
@@ -53,23 +46,38 @@ uv sync
 # Copy and configure environment variables
 cp .env.example .env
 
-# Start PostgreSQL + pgAdmin + MinIO (Docker)
+# Start PostgreSQL + MinIO (Docker)
 docker compose -f docker/docker-compose.yml up -d
 
 # Install Playwright browsers
 uv run playwright install chromium
 ```
 
+## Service Management
+
+The server runs as a macOS LaunchAgent with `KeepAlive: true`.
+
+```bash
+# Start / stop / restart
+launchctl start com.haidilao.server
+launchctl stop com.haidilao.server
+launchctl stop com.haidilao.server && launchctl start com.haidilao.server
+
+# View logs
+tail -f server.log
+
+# Check status
+curl http://localhost:8000/api/runs
+```
+
+> **⚠️ Important:** The LaunchAgent plist at `~/Library/LaunchAgents/com.haidilao.server.plist`
+> sets its own `EnvironmentVariables`. When adding new env vars, update **both** `.env` and
+> the plist, then restart via `launchctl`. The plist env vars take precedence over `.env`
+> for values that `auth.py` reads via `os.environ`.
+
 ## Server
 
 The FastAPI server hosts all automation jobs and provides an admin panel.
-
-```bash
-# Start the server
-uv run --project server python -m server
-
-# Server runs on http://0.0.0.0:8000
-```
 
 ### API Endpoints
 
@@ -78,19 +86,25 @@ uv run --project server python -m server
 | `GET /api/reports/daily/{date}` | Trigger daily store operations report |
 | `GET /api/runs` | List all job runs |
 | `GET /api/runs/{run_id}` | Get run status and logs |
-| `POST /api/github/webhook` | Receive GitHub issue/comment events (HMAC-verified) |
-| `GET /api/tools/agent/{key}` | Download MinIO file (localhost-only, no auth) |
+| `POST /api/github/webhook` | GitHub issue/comment webhook (HMAC-SHA256 verified) |
+| `GET /api/tools/agent/{key}` | Download file from MinIO (localhost-only, no auth) |
 
-### Admin Panel
+### Admin Panel (`/admin`)
 
-The admin panel is available at `/admin` and provides a web UI for managing and monitoring jobs. Requires Lark OAuth login.
+Requires Lark OAuth login. Users must be in `ADMIN_WHITELIST`.
 
-| Path | Description |
-|------|-------------|
-| `/admin/targets` | Monthly store revenue + turnover rate targets |
-| `/admin/competitors` | Store → competitor mappings |
-| `/admin/users` | Lark user list + whitelist management |
-| `/admin/tools` | **Super-admin** — upload/list/delete files in MinIO |
+| Path | Description | Access |
+|------|-------------|--------|
+| `/admin/targets` | Monthly store revenue + turnover rate targets | All admins |
+| `/admin/competitors` | Store → competitor benchmark mappings | All admins |
+| `/admin/users` | User whitelist management | All admins |
+| `/admin/tools` | File upload/download (MinIO) | Super admins only |
+
+### GitHub Integration
+
+Issues and feature requests are tracked via [GitHub Issues](https://github.com/HongmingWang-Rabbit/haidilao-automation-monorepo/issues). An agent cron checks every 2 minutes for new issues/comments via webhook triggers.
+
+**Workflow labels:** `agent:triage` → `agent:planning` → `agent:approved` → `agent:in-progress` → `agent:done`
 
 ## Projects
 
@@ -99,49 +113,41 @@ The admin panel is available at `/admin` and provides a web UI for managing and 
 Downloads daily/time-period reports from Quick BI (QBI), computes store metrics, and generates an XLSX report. Automatically handles VPN reconnection (CorpLink has a 7.5h session timeout).
 
 ```bash
-# Generate report for a specific date
 uv run --project projects/daily-store-operation-report \
     python -m daily_store_operation_report.main 2026-03-17
 ```
 
 ### KSB1 Accounting Check
 
-Downloads KSB1 (Cost Center: Actual Line Items) data from SAP, then generates a month-over-month comparison report per store using **deterministic rule-based analysis**. The output is an XLSX workbook with one sheet per store (findings + detail rows), a raw data sheet, and a mapping reference sheet.
-
-Analysis highlights:
-- Cost elements present in one month but missing in the other
-- Significant amount differences (>500 CAD and >20% change)
-- Key cost elements (rent, utilities, insurance, etc.) flagged at a lower threshold (>100 CAD)
+Downloads KSB1 data from SAP, generates month-over-month comparison report per store using rule-based analysis. Flags missing cost elements, significant amount changes, and key cost element anomalies.
 
 ```bash
-# Check previous month (default)
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
-
-# Check a specific month/year
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main 2 2026
-
-# Skip SAP download, reuse existing KSB1 export
 uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main --skip-download
 ```
 
 ### Store Hours Collect
 
-Collects daily store working-hour data. Runs daily at 6:30 AM Vancouver time — checks for a monthly spreadsheet in the target folder (creates from template if missing), then populates the day's data.
+Daily at 6:30 AM — collects store working-hour data into monthly Feishu spreadsheets.
 
 ### Treasury Loan Watch
 
-Reads the treasury loan sheet from Feishu and sends a Lark notification for any loans maturing today.
+Reads treasury loan sheet from Feishu, sends Lark alert for loans maturing today.
 
 ## Environment Variables
 
-See `.env.example` for the full list. Key variables:
+See `.env.example` for the full list with descriptions.
 
 | Variable | Description |
 |----------|-------------|
-| `SAP_USERNAME` | SAP login username |
-| `SAP_PASSWORD` | SAP login password |
-| `QBI_USERNAME` | Quick BI login username |
-| `QBI_PASSWORD` | Quick BI login password |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `LARK_APP_ID` | Lark/Feishu app ID |
-| `LARK_APP_SECRET` | Lark/Feishu app secret |
+| `SESSION_SECRET` | HMAC key for signing admin session cookies |
+| `ADMIN_WHITELIST` | Comma-separated Lark open_ids for admin access |
+| `SUPER_ADMIN_OPEN_IDS` | Comma-separated Lark open_ids for super admin (Tools) |
+| `LARK_APP_ID` / `LARK_APP_SECRET` | Lark/Feishu app credentials |
+| `QBI_USERNAME` / `QBI_PASSWORD` | Quick BI login |
+| `SAP_USERNAME` / `SAP_PASSWORD` | SAP login |
+| `GITHUB_WEBHOOK_SECRET` | GitHub webhook HMAC secret |
+| `MINIO_ENDPOINT` | MinIO server (default: `localhost:9000`) |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO credentials |

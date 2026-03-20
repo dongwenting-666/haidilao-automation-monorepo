@@ -1,153 +1,74 @@
-# CLAUDE.md
+# CLAUDE.md — Project Conventions & Architecture Notes
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Architecture
 
-Detailed documentation lives in `docs/`. See [docs/README.md](docs/README.md) for the full index.
+- **Monorepo** managed by `uv workspaces` — libs/ for shared code, projects/ for CLI wrappers, server/ for the FastAPI app
+- **Server** runs as a macOS LaunchAgent (`com.haidilao.server`) with `KeepAlive: true`
+- **Reverse proxy**: nginx on the same host, proxies `haidilao.wanghongming.xyz` → `localhost:8000`
+- **Storage**: PostgreSQL (Docker) + MinIO (Docker) for file uploads
+- **Auth**: Lark OAuth → signed session cookies (itsdangerous `TimestampSigner`)
 
-## Project Overview
+## Key File Paths
 
-Monorepo for Haidilao paperwork automations. Uses **uv workspaces** with Python >= 3.13 and **hatchling** as the build backend.
+| File | Purpose |
+|------|---------|
+| `server/src/server/app.py` | FastAPI app, router registration, exception handlers |
+| `server/src/server/auth.py` | Session signing, whitelist, super admin checks |
+| `server/src/server/config.py` | Pydantic `Settings` — loads `.env` |
+| `server/src/server/db.py` | DB access layer (targets, competitors, admin users) |
+| `server/src/server/routes/tools.py` | MinIO file upload/download + admin UI |
+| `server/src/server/routes/github_webhook.py` | GitHub webhook receiver |
+| `libs/qbi-crawler/src/qbi_crawler/dashboard.py` | QBI report navigation + export |
+| `libs/vpn/src/vpn/_darwin.py` | CorpLink VPN reconnect via cliclick |
+| `~/Library/LaunchAgents/com.haidilao.server.plist` | LaunchAgent config (env vars!) |
+| `/opt/homebrew/etc/nginx/sites-enabled/haidilao.conf` | Nginx reverse proxy config |
 
-## Server
+## Critical Lessons Learned
 
-The `server/` directory contains a FastAPI app that exposes automation results via HTTP.
+### 1. `os.environ` vs pydantic-settings
+`pydantic-settings` loads `.env` into the `Settings` object but does **NOT** populate `os.environ`. Any code that reads `os.environ.get("SOME_VAR")` won't see `.env` values unless they're also exported in the shell or set in the LaunchAgent plist.
 
-- **LaunchAgent**: `com.haidilao.server` (managed via `launchctl`)
-- **Port**: 8000
-- **Production**: https://haidilao.wanghongming.xyz (proxied to localhost:8000)
-- **Key endpoints**:
-  - `GET /api/reports/daily/{date}` — daily store operation report
-  - `GET /api/reports/ksb1/{year}/{month}` — KSB1 accounting check report
-  - `GET /api/runs/{run_id}` — automation run status/result
-  - `GET /api/commands` — list commands; `POST /api/commands/{name}/run` — trigger a run by command name
-  - `GET /api/files/` — list output files; `GET /api/files/{path}` — download
-  - `POST /api/github/webhook` — GitHub issue/comment events; writes to `/tmp/github-issue-triggers.json`
-- **Admin UI**: `/admin` — targets, competitors, users (Lark OAuth login required)
-  - **Tools page**: `/admin/tools` — super-admin only; upload/list/delete files in MinIO bucket
-  - **Agent file access**: `GET /api/tools/agent/{key}` — no auth, localhost-only (127.0.0.1 / ::1);
-    lets the agent read uploaded files without a session cookie
-
-## Repository Layout
-
-- `libs/` — Shared libraries: `sap-gui`, `qbi-crawler`, `excel-utils`, `vpn`, `ollama-client`, `lark-client`, `db-client`
-- `projects/` — Automation projects: `ksb1-accounting-check`, `ksb1-accounting-check-gui`, `daily-store-operation-report`, `treasury-loan-watch`, `store-hours-collect`
-- `scripts/` — Standalone utility scripts (e.g., `vpn_reconnect.py`)
-- `output/` — Default export destination (gitignored): `output/ksb1/`, `output/qbi/`, `output/daily-report/`
-- `docs/` — Architecture docs, library references, edit history
-
-Each package follows `src/` layout. Projects depend on libs via `[tool.uv.sources]` workspace references.
-
-## Key Libraries
-
-| Library | Purpose | Docs |
-|---------|---------|------|
-| `sap-gui` | Cross-platform SAP GUI automation (COM on Windows, Scripting Console on macOS) | [docs/sap-gui.md](docs/sap-gui.md) |
-| `qbi-crawler` | Quick BI dashboard export via Playwright | [docs/qbi-crawler.md](docs/qbi-crawler.md) |
-| `excel-utils` | Shared openpyxl utilities (read, write, style) | [docs/excel-utils.md](docs/excel-utils.md) |
-| `vpn` | SealSuite VPN automation (macOS: cliclick + log-based status) | [docs/vpn.md](docs/vpn.md) |
-| `lark-client` | Feishu/Lark bot client (messaging, Drive, OAuth) | [docs/lark-client.md](docs/lark-client.md) |
-| `db-client` | PostgreSQL client (psycopg3 pool, migrations) | [docs/db-client.md](docs/db-client.md) |
-
-## SAP GUI Quick Reference
-
-- **Platform dispatch**: `session.py` imports `_win32.py` or `_darwin.py` based on `sys.platform`
-- **macOS auto-launch**: `SAPSession(auto_launch=True)` launches SAP GUI, connects, and polls for session readiness
-- **macOS bridge**: AppleScript pastes JS into Scripting Console, reads results from temp files
-- **KSB1 macOS**: `_run_darwin()` batches entire flow into one JS call (~38s vs ~150s)
-- **macOS constraints**: DY_PATH read-only, cost centers via AWT clipboard, post-export modal bypassed via `startTransaction()`
-
-## Commands
-
-```bash
-uv sync                              # Install all dependencies
-
-# SAP GUI E2E test (macOS: auto-launches; Windows: requires live SAP session)
-uv run --project libs/sap-gui python libs/sap-gui/tests/e2e_ksb1.py
-
-# KSB1 accounting check
-uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main
-uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.main --model qwen3:8b
-
-# KSB1 GUI
-python -m ksb1_accounting_check_gui
-cd projects/ksb1-accounting-check-gui && python -m PyInstaller ksb1_gui.spec --noconfirm
-
-# Daily store operation report
-uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10
-uv run --project projects/daily-store-operation-report python -m daily_store_operation_report.main 2026-02-10 --skip-download --data-dir output/qbi
-
-# Treasury loan watch
-uv run --project projects/treasury-loan-watch python -m treasury_loan_watch.main
-
-# Store hours collect (T-2 default)
-uv run --project projects/store-hours-collect python -m store_hours_collect.main
-# Store hours collect (specific date)
-uv run --project projects/store-hours-collect python -m store_hours_collect.main --date 2026-03-16
-
-# VPN unit tests
-uv run --project libs/vpn pytest libs/vpn/tests/test_darwin.py -v
-
-# VPN e2e tests (requires live CorpLink + Accessibility permission)
-uv run --project libs/vpn pytest libs/vpn/tests/test_e2e.py -v -s
-
-# Server
-uv run --project server python -m server              # start server (port 8000)
-# Admin UI: http://localhost:8000/admin  or  https://haidilao.wanghongming.xyz/admin
-
-# PostgreSQL (Docker)
-docker compose -f docker/docker-compose.yml up -d     # start DB
-docker compose -f docker/docker-compose.yml down      # stop DB
-docker compose -f docker/docker-compose.yml down -v   # stop + wipe data
-
-# Tests
-python -m pytest projects/ksb1-accounting-check/tests/ -v
-
-# Playwright (one-time setup)
-playwright install chromium
+**Rule:** Always read from `settings` first, fall back to `os.environ`. Example:
+```python
+from server.config import settings
+value = settings.some_field or os.environ.get("SOME_FIELD", "")
 ```
 
-## Environment Variables
+### 2. LaunchAgent plist is the source of truth
+The server runs via launchd, not via your shell. Environment variables must be in **both**:
+- `.env` (for pydantic-settings in `config.py`)
+- `~/Library/LaunchAgents/com.haidilao.server.plist` (for `os.environ` access)
 
-| Variable | Used by | Description |
-|---|---|---|
-| `SAP_USERNAME` / `SAP_PASSWORD` | sap-gui, projects | SAP login credentials |
-| `SAP_LANGUAGE` | sap-gui, projects | SAP language code (default: `ZH`) |
-| `SAP_CONNECTION` | sap-gui (macOS) | Override connection string (`/H/<host>/S/<port>`). Auto-detected from landscape XML if unset |
-| `SAPGUI_APP` | sap-gui (macOS) | Override SAP GUI app path. Auto-detected from `/Applications/SAPGUI *.app` if unset |
-| `SEALSUITE_EXE` | vpn | Override SealSuite executable path |
-| `LARK_APP_ID` | lark-client, server | Lark bot application ID |
-| `LARK_APP_SECRET` | lark-client, server | Lark bot application secret |
-| `DATABASE_URL` | db-client, server | PostgreSQL DSN (e.g. `postgresql://haidilao:haidilao_dev@localhost:5432/haidilao`) |
-| `ADMIN_WHITELIST` | server | Comma-separated Lark open_ids allowed admin access |
-| `SESSION_SECRET` | server | HMAC key for signing session cookies |
-| `LARK_OAUTH_REDIRECT_URI` | server | Lark OAuth redirect URI (default: `https://haidilao.wanghongming.xyz/admin/oauth/callback`) |
-| `TREASURY_NOTIFY_CHAT_ID` | treasury-loan-watch | Lark group chat ID for loan maturity alerts |
-| `HOURS_NOTIFY_CHAT_ID` | store-hours-collect | Lark group chat ID for working-hour data alerts |
-| `HOURS_TEMPLATE_TOKEN` | store-hours-collect | Feishu template spreadsheet token (default provided) |
-| `HOURS_FOLDER_TOKEN` | store-hours-collect | Feishu target folder token (default provided) |
-| `COOKIE_SECURE` | server (auth) | Set to `false` for local HTTP dev; default `true` (cookies marked Secure) |
-| `GITHUB_WEBHOOK_SECRET` | server (github_webhook) | HMAC-SHA256 secret for verifying GitHub webhook payloads; skip verification if unset |
-| `MINIO_ENDPOINT` | server (tools) | MinIO API endpoint (default: `localhost:9000`) |
-| `MINIO_ROOT_USER` | server (tools) | MinIO access key (default: `haidilao`) |
-| `MINIO_ROOT_PASSWORD` | server (tools) | MinIO secret key (default: `haidilao_minio_dev`) |
-| `MINIO_BUCKET` | server (tools) | MinIO bucket for uploads (default: `tools-uploads`) |
-| `MINIO_SECURE` | server (tools) | Use TLS for MinIO (default: `false`) |
-| `SUPER_ADMIN_OPEN_IDS` | server (auth, tools) | Comma-separated Lark open_ids with super-admin access |
+When adding new env vars, update both. Restart with `launchctl stop/start`.
 
-## Software Install Links
+### 3. CorpLink VPN
+- 450-minute (7.5h) max session timeout — auto-disconnects
+- `cliclick` works on Electron apps; `CGEvent` does not (without proper CGEventSource)
+- CorpLink gRPC is cert-locked — only ByteDance-signed processes can call it
 
-| Software | Link |
-|----------|------|
-| SAP GUI (macOS) | [Feishu Wiki — SAP GUI Mac 安装指南](https://haidilao.feishu.cn/wiki/DWcHwOsf0iLjvlkHeZncJpyhn0g) |
-| SAP GUI (Windows) | [Feishu Doc — SAP GUI Windows 安装指南](https://haidilao.feishu.cn/docx/SWOkdCypPob5GOxOoXHcX8mvnO6) |
-| SealSuite (飞连 VPN) | [Volcengine — 飞连下载](https://www.volcengine.com/product/feilian/download) |
+### 4. QBI Export Flakiness
+The Quick BI export dialog occasionally fails to render. `_click_export_and_wait_for_dialog()` retries up to 3 times with stale modal dismissal between attempts.
 
-## Key Conventions
+### 5. Nginx Upload Temp Dir
+Nginx workers run as `nobody`. The `client_body_temp` directory must be writable. On macOS with Homebrew nginx, the default path under `/opt/homebrew/var/run/nginx/` can have permission issues. Fixed by setting `client_body_temp_path /tmp/nginx_client_body_temp` in the server block.
 
-- On Windows, SAP GUI must be open before running automations; on macOS, `auto_launch=True` starts it automatically
-- SAP date format: `YYYY.MM.DD`
-- Process-specific SAP flows live in `libs/sap-gui/src/sap_gui/processes/<name>/`; projects are thin CLI wrappers
-- Process data files (cost center lists, mappings) live alongside their process module
-- Use `pathlib.Path` for all file path parameters and return types
-- Environment/config loading is the project entry point's responsibility, not libs'
-- New libs go in `libs/`, new automations go in `projects/`
+### 6. `uv` Build Caching
+`uv run --project server` caches the editable install. After changing server code, run `uv sync --project server --reinstall-package server` or the old code may still be loaded. The LaunchAgent restart handles this automatically since it does a fresh `uv run`.
+
+## Server Restart Procedure
+
+```bash
+# Correct way (uses launchd):
+launchctl stop com.haidilao.server && launchctl start com.haidilao.server
+
+# Wrong way (launchd will restart the old process):
+kill $(pgrep -f 'python -m server')  # DON'T — launchd KeepAlive respawns it
+```
+
+## Code Style
+
+- Python 3.13+, type hints everywhere
+- `from __future__ import annotations` in all modules
+- Logging via `logging.getLogger(__name__)`
+- DB access through `server/db.py` helper functions, never raw SQL in routes
+- HTML templates are inline f-strings in route files (no Jinja2)

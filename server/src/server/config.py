@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     lark_app_secret: str = ""
 
     # Admin OAuth / session
-    admin_whitelist: str = ""  # comma-separated Lark open_ids allowed in admin
-    session_secret: str = ""   # HMAC key for signing session cookies
+    admin_whitelist: str = ""        # comma-separated Lark open_ids allowed in admin
+    session_secret: str = ""         # HMAC key for signing session cookies
+    super_admin_open_ids: str = ""   # comma-separated Lark open_ids with super-admin access
     lark_oauth_redirect_uri: str = "https://haidilao.wanghongming.xyz/admin/oauth/callback"
 
     model_config = {"env_prefix": "", "extra": "ignore"}

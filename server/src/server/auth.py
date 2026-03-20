@@ -57,7 +57,7 @@ def get_session(request: Request) -> dict | None:
         raw = signer.unsign(cookie, max_age=_SESSION_MAX_AGE)
         return json.loads(raw)
     except (SignatureExpired, BadSignature, Exception) as exc:
-        logger.warning("Session cookie invalid: %s (cookie=%s...)", exc, cookie[:30] if cookie else "")
+        logger.debug("Session cookie invalid: %s", type(exc).__name__)
         return None
 
 
@@ -128,16 +128,19 @@ def is_whitelisted(open_id: str) -> bool:
 def is_super_admin(open_id: str) -> bool:
     """Return True if open_id is a super admin.
 
-    Checks SUPER_ADMIN_OPEN_IDS env var first, then falls back to
-    the admin_whitelist from Settings (single-admin setups where
-    the only admin is super admin).
+    Checks (in order):
+    1. SUPER_ADMIN_OPEN_IDS env var
+    2. Pydantic settings.super_admin_open_ids (reads from .env)
+    3. ADMIN_WHITELIST env var (fallback for single-admin setups)
+    4. Pydantic settings.admin_whitelist (fallback for single-admin setups)
     """
+    from server.config import settings
     raw = os.environ.get("SUPER_ADMIN_OPEN_IDS", "").strip()
+    if not raw:
+        raw = settings.super_admin_open_ids.strip()
     if not raw:
         raw = os.environ.get("ADMIN_WHITELIST", "").strip()
     if not raw:
-        # Fall back to pydantic settings (which loads from .env)
-        from server.config import settings
         raw = settings.admin_whitelist.strip()
     if not raw:
         return False
