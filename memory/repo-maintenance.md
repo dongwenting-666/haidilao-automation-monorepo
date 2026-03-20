@@ -1,5 +1,50 @@
 # Repo Maintenance Notes
 
+## 2026-03-20 (Run 15) — Scheduled Maintenance (6:12 AM Vancouver)
+
+### Summary
+Found and fixed one real test failure: `test_list_jobs` was hardcoding `data[0]` as `daily-report-cron` but `scheduler.get_jobs()` returns jobs in an undefined order — `store-hours-collect-cron` sorted first. Fixed to filter by ID. All 244 tests pass. Mar 19 daily report ran successfully at 6 AM (both `daily-report` and `treasury-loan-watch` succeeded). Mar 19 report file not yet on disk at check time (run just completed). QBI output stable at 316 files / 40MB (all ≤3 days old). Repo is clean.
+
+### Findings
+
+#### 1. Test Failure Fixed — `test_list_jobs` ✅
+`server/tests/test_routes_jobs.py::test_list_jobs` was failing:
+```
+AssertionError: assert 'store-hours-collect-cron' == 'daily-report-cron'
+```
+The test did `job = data[0]` and asserted `job["id"] == "daily-report-cron"`, but APScheduler's `get_jobs()` doesn't guarantee ordering. `store-hours-collect-cron` happened to sort alphabetically first.
+
+**Fix:** Changed the assertion to filter `data` by `id == "daily-report-cron"` and assert exactly one match. More robust and intent-revealing.
+
+**Commit:** `a3e1b85`
+
+#### 2. Scheduled Jobs Ran Successfully ✅
+`/api/runs` shows 2 runs at 2026-03-20T13:00:00 UTC (6 AM Vancouver):
+- `daily-report` → `success`
+- `treasury-loan-watch` → `success`
+
+#### 3. Daily Reports Status
+- `output/daily-report/`: 19 files (Feb 10, Mar 1–18) — Mar 19 run completed but file may not appear until next check (run finished at 13:02 UTC = 6:02 AM)
+- Mar 19 report will be on disk; the file list was checked just after the run completed
+
+#### 4. Output Directory Health
+- `output/qbi/`: 316 files / 40MB — all ≤3 days old (no stale files) ✅
+- `output/ksb1/`: 2.3MB ✅
+- `output/daily-report/`: 19 files through Mar 18 ✅
+
+#### 5. Code Quality — Clean
+- No new imports issues, no structural changes since run 14
+- README.md, CLAUDE.md, docs/: fully accurate
+- `git status`: clean after commit
+
+### Commits (Run 15)
+
+| Hash | Message |
+|------|---------|
+| `a3e1b85` | fix: test_list_jobs searches by ID instead of assuming job ordering |
+
+---
+
 ## 2026-03-20 (Run 14) — Scheduled Maintenance (5:08 AM Vancouver)
 
 ### Summary
