@@ -40,8 +40,11 @@ async def _run_store_hours_collect() -> None:
 
 def setup_default_jobs() -> None:
     """Register the default cron jobs."""
-    # Daily store operation report
-    trigger = CronTrigger(**_parse_cron(settings.daily_report_cron))
+    # Daily store operation report — default: 6:00 AM Vancouver time.
+    # The cron expression in settings is interpreted as Vancouver time so that
+    # the T-2 data reliability constraint is evaluated against the same clock
+    # that main.py uses (ZoneInfo("America/Vancouver")).
+    trigger = CronTrigger(**_parse_cron(settings.daily_report_cron), timezone="America/Vancouver")
     scheduler.add_job(
         _run_daily_report,
         trigger=trigger,

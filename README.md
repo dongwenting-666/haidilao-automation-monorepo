@@ -117,6 +117,14 @@ uv run --project projects/daily-store-operation-report \
     python -m daily_store_operation_report.main 2026-03-17
 ```
 
+**T-2 constraint:** QBI data is only reliable two days ago (T-2). The report will refuse to generate for dates more recent than T-2 (Vancouver time), and sends a Lark alert on rejection. The default date is T-2 when run without an explicit date argument.
+
+**Data validation:** A multi-stage validation pipeline checks data quality at every step:
+1. File-level: validates xlsx format, required sheets, and download session consistency
+2. Row-level: validates expected columns and store coverage after loading each QBI file
+3. Transform-level: raises an error if all stores have zero MTD data (signals file-ordering bug)
+4. Post-generation self-test: opens the output xlsx and verifies key rows are non-zero and region totals match
+
 ### KSB1 Accounting Check
 
 Downloads KSB1 data from SAP, generates month-over-month comparison report per store using rule-based analysis. Flags missing cost elements, significant amount changes, and key cost element anomalies.

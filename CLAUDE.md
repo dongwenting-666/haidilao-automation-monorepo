@@ -52,6 +52,37 @@ The Quick BI export dialog occasionally fails to render. `_click_export_and_wait
 ### 5. Nginx Upload Temp Dir
 Nginx workers run as `nobody`. The `client_body_temp` directory must be writable. On macOS with Homebrew nginx, the default path under `/opt/homebrew/var/run/nginx/` can have permission issues. Fixed by setting `client_body_temp_path /tmp/nginx_client_body_temp` in the server block.
 
+### 7. QBI T-2 Data Reliability
+QBI data for a given date is only finalized and reliable **two days later (T-2)**. Data for T-1 or today (T) may be incomplete or still updating. The daily report enforces this:
+- `main.py` computes `vancouver_today` with `ZoneInfo("America/Vancouver")` — this is the reference clock
+- Default date is `vancouver_today - timedelta(days=2)` (T-2)
+- Any explicitly passed date more recent than T-2 is rejected with a Lark alert and `sys.exit(1)`
+- The scheduler's `CronTrigger` must include `timezone="America/Vancouver"` so the 6 AM cron fires at 6 AM Vancouver time, not 6 AM UTC
+
+There is no `--force` flag to bypass T-2. If you need to generate a report for a more recent date for testing, temporarily change the date constraint in `main.py` (and revert before committing).
+
+### 8. Weighted Average Region Turnover Rate Formula
+The region-level cumulative monthly turnover rate on the comparison sheets is a **weighted average** — NOT a simple mean of per-store rates:
+
+```
+region_avg_tr = total_assessed_tables_MTD / (total_seats × days_elapsed_in_month)
+```
+
+- `total_assessed_tables_MTD`: sum of `mtd_tables` across all stores
+- `total_seats`: sum of `seats` across all stores (skipping stores with 0 seats)
+- `days_elapsed_in_month`: `dates.day_of_month` (1 on the 1st, 31 on the 31st)
+
+This matches QBI's "当月累计平均翻台率" calculation. Stores with `seats == 0` are excluded from the seats denominator to avoid diluting the average.
+
+### 9. Multi-stage Validation Pipeline
+`validation.py` runs checks at 4 stages:
+1. **File-level** (`validate_file_exists_and_readable`, `validate_xlsx_has_sheet`, `validate_file_timestamps`): runs before any processing
+2. **Row-level** (`validate_daily_rows`, `validate_time_period_rows`): runs after loading each xlsx sheet
+3. **Transform-level** (`validate_store_coverage`, `validate_no_all_zero_columns`): runs after computing metrics — `validate_no_all_zero_columns` raises a `ValueError` if ALL stores have zero MTD revenue (hard error; signals a file-ordering bug like the one fixed in 5274ed0)
+4. **Post-generation** (`validate_report_output`): opens the saved xlsx and checks key cells; soft failure (logs warning, doesn't abort)
+
+The all-zero check in stage 3 is what catches the file-sort bug: if `cur_daily`, `prev_daily`, and `yoy_daily` are in the wrong order, the YoY rows get filtered out and appear as all-zero.
+
 ### 6. Module-level `os.environ` reads are frozen at import time
 If a module does `SECRET = os.environ.get("SOME_SECRET", "")` at the top level, the
 value is captured once when Python imports the module — before launchd env vars are
