@@ -1,5 +1,49 @@
 # Repo Maintenance Notes
 
+## 2026-03-20 (Run 14) — Scheduled Maintenance (5:08 AM Vancouver)
+
+### Summary
+Clean pass. One real fix: suppressed 8 starlette `DeprecationWarning` in `test_routes_tools.py` by moving per-request `cookies=` arguments to client-level cookie setting (Starlette's recommended approach). All 244 tests pass with zero warnings. Daily report for Mar 18 is on disk; Mar 19 still pending (T-2 allows it today at 6 AM). QBI output growing: 279 files / 35MB (all from Mar 18–20). Server running.
+
+### Findings
+
+#### 1. Test Warning Fixed ✅
+`server/tests/test_routes_tools.py` — 8 tests in `TestSuperAdminRoutes` passed `cookies=` per-request to `client.get/post/delete`. Starlette deprecated this pattern because cookie persistence semantics are ambiguous.
+
+**Fix:** Changed `_setup` fixture to use `client.cookies.set(...)` on the client instance, then `client.cookies.clear()` after each test. All per-request `cookies=self.cookies` arguments removed from the 7 request calls in the class.
+
+**Commit:** `242905b`
+
+#### 2. Daily Reports Status
+- `output/daily-report/`: 19 files (Feb 10, Mar 1–18) ✅
+- **Mar 18** present ✅
+- **Mar 19** absent — T-2 allows generation today (Mar 20 Vancouver = T-2 for Mar 18 ✓, T-2 for Mar 19 ✓). Scheduler should run at 6 AM Vancouver.
+- **Mar 20** not yet (T-2 not reached)
+
+#### 3. Output Directory Health
+- `output/qbi/`: 279 files / 35MB (Mar 18–20 only) — no stale files (none older than 3 days) ✅
+- `output/ksb1/`: healthy ✅
+
+#### 4. Code Quality — Clean
+- No unused imports (confirmed false positives as before)
+- No missing `__init__.py`
+- All pyproject.toml consistent
+- README.md and CLAUDE.md fully accurate
+- Structure unchanged from Run 13
+
+#### 5. Server Status
+- LaunchAgent `com.haidilao.server` running (PID 19446)
+- `/api/runs` returned empty list (server restarted recently, in-memory runs cleared)
+- Server log at `server.log` (handled by launchd)
+
+### Commits (Run 14)
+
+| Hash | Message |
+|------|---------|
+| `242905b` | fix: use client-level cookies in TestSuperAdminRoutes to silence starlette deprecation warning |
+
+---
+
 ## 2026-03-20 (Run 12) — Scheduled Maintenance (2:59 AM Vancouver)
 
 ### Summary
