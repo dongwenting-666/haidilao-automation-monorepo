@@ -37,23 +37,45 @@ def _find_repo_root() -> Path:
 
 
 def _date_from_filename(p: Path) -> str:
-    """Extract date range string from QBI filename for sorting.
+    """Extract a download-timestamp sort key from a QBI filename.
 
-    Filenames look like: 海外门店经营日报数据_20260201_20260210.xlsx
-    Returns the end date portion (e.g. '20260210') for sorting.
-    Falls back to stem if pattern doesn't match.
+    QBI exports are named with a download timestamp, e.g.:
+        海外门店经营日报数据_20260319_2001.xlsx      → '20260319_2001'
+        海外门店经营日报数据_20260319_2002_2.xlsx    → '20260319_2002_2'
+        海外分时段报表_20260319_2003.xlsx            → '20260319_2003'
+
+    We strip the Chinese prefix (everything before the first numeric segment)
+    and return the remaining underscore-joined parts so that:
+      - Files from different download sessions sort by download date+time.
+      - The ``_2`` duplicate-avoidance suffix sorts naturally after the
+        same timestamp without the suffix.
+
+    Falls back to the full stem if the stem has fewer than 2 underscore-split
+    parts after stripping the prefix.
     """
     parts = p.stem.split("_")
-    return parts[-1] if len(parts) >= 3 else p.stem
+    # Drop leading non-numeric prefix parts (the Chinese report name)
+    numeric_start = next((i for i, part in enumerate(parts) if part.isdigit()), None)
+    if numeric_start is not None and numeric_start < len(parts) - 1:
+        return "_".join(parts[numeric_start:])
+    return p.stem
 
 
 def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
     """Find the 5 QBI files in a directory by matching filenames.
 
-    Sorts by date extracted from filename (not mtime) so download order
-    doesn't matter. The file with the latest end date is assumed to be
-    the current month, second latest is previous month, third is YoY.
-    For precise control, use --cur-daily, --prev-daily, etc. instead.
+    Files are sorted by their download timestamp (embedded in the filename).
+    Within each download session the 3 daily files are downloaded in order:
+      1. current month  (earliest timestamp → sorts to [-3])
+      2. previous month (middle timestamp  → sorts to [-2])
+      3. previous year  (latest timestamp  → sorts to [-1])
+
+    Similarly the 2 time-period files are downloaded as:
+      1. current month  (earlier timestamp → sorts to [-2])
+      2. previous year  (later timestamp   → sorts to [-1])
+
+    For precise control over which files are used, pass explicit paths via
+    --cur-daily, --prev-daily, --yoy-daily, --cur-tp, --yoy-tp instead.
     """
     daily_files = sorted(data_dir.glob("海外门店经营日报数据_*.xlsx"), key=_date_from_filename)
     tp_files = sorted(data_dir.glob("海外分时段报表_*.xlsx"), key=_date_from_filename)
@@ -68,11 +90,11 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
         )
 
     files = DownloadedFiles(
-        cur_daily=daily_files[-1],
+        cur_daily=daily_files[-3],
         prev_daily=daily_files[-2],
-        yoy_daily=daily_files[-3],
-        cur_time_period=tp_files[-1],
-        yoy_time_period=tp_files[-2],
+        yoy_daily=daily_files[-1],
+        cur_time_period=tp_files[-2],
+        yoy_time_period=tp_files[-1],
     )
     logger.info(
         "Resolved data files: cur=%s, prev=%s, yoy=%s, cur_tp=%s, yoy_tp=%s",
