@@ -255,7 +255,6 @@ def main() -> None:
             f"earliest valid report date is {earliest_valid}."
         )
         logger.error(msg)
-        _lark_alert(f"⚠️ 日报生成被拒绝\n\n{msg}")
         sys.exit(1)
 
     dates = compute_dates(report_date)
