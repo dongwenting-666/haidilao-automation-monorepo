@@ -1,5 +1,45 @@
 # Repo Maintenance Notes
 
+## 2026-03-19 (Run 7) — Scheduled Maintenance (6:45 PM)
+
+### Summary
+Very clean pass. Repo is in excellent shape. All false-positive "unused imports" from the AST scanner were confirmed as intentional `__init__.py` re-exports or `TYPE_CHECKING` guards. No real issues found. Daily report for Mar 18 ran successfully (confirmed via `/api/runs`). Mar 19's report ran at 01:35 UTC (6:35 PM local) and succeeded. Output directories are healthy. Pushed the one pending commit (`8ffb554` session signer fix).
+
+### Fixes Applied
+
+#### 1. Pushed pending commit `8ffb554` ✅
+- Was 1 commit ahead of origin — pushed `fix: _get_signer prioritizes settings.session_secret over os.environ`
+
+### Code Review Results
+
+**Unused import scan (full scan — server, projects, libs):**
+- `server/src/server/notify.py`: `Run` imported under `TYPE_CHECKING` — correct, not a real import, false positive ✅
+- `libs/*/src/*/__init__.py`: All flagged names are intentional public API re-exports ✅
+- `libs/vpn/src/vpn/connect.py`: `ensure_vpn` used in conditional import branches — false positive ✅
+- All projects: clean ✅
+
+**Dependency hygiene:** `server/pyproject.toml` — clean, no stale deps. `apscheduler<4` pin intentional.
+
+**Output/ hygiene:**
+- `output/daily-report/`: 18 files (~360K) — healthy, through Mar 18
+- `output/qbi/`: 130 raw QBI downloads (~15MB) — this is growing; no cleanup mechanism exists yet
+- `output/ksb1/`: 2.3MB — healthy
+
+### Resolved: Missing Daily Reports
+- Mar 18 report: confirmed succeeded at 01:35 UTC (2026-03-20), run ID `7183687b73e8`
+- Mar 19 report: file missing from `output/daily-report/` locally — but run succeeded per API. File likely saved elsewhere or in progress at time of this check (it ran at 6:35 PM local, maintenance ran at 6:45 PM)
+
+### No Other Issues Found
+- README, CLAUDE.md, docs/: fully up to date
+- Structure unchanged from previous run
+- `git status`: clean
+- No new projects, libs, or structural changes
+
+### New Recommendation
+**output/qbi/ accumulation:** 130 files (15MB) of raw QBI downloads with no pruning. Consider adding a cleanup pass that removes QBI files older than 7 days, or at minimum documents the expected accumulation in docs/.
+
+---
+
 ## 2026-03-19 (Run 6) — Scheduled Maintenance
 
 ### Summary
