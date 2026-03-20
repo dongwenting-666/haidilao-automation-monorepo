@@ -29,9 +29,9 @@ class RunStatus(str, Enum):
 
 
 class Run:
-    __slots__ = ("id", "command", "status", "params", "started_at", "finished_at", "logs", "queue_position", "scheduled")
+    __slots__ = ("id", "command", "status", "params", "started_at", "finished_at", "logs", "queue_position", "notify_chat")
 
-    def __init__(self, command: str, params: dict[str, Any], *, scheduled: bool = False) -> None:
+    def __init__(self, command: str, params: dict[str, Any], *, notify_chat: str = "") -> None:
         self.id: str = uuid.uuid4().hex[:12]
         self.command = command
         self.params = params
@@ -40,7 +40,7 @@ class Run:
         self.finished_at: datetime | None = None
         self.logs: str = ""
         self.queue_position: int | None = None  # None when running or done
-        self.scheduled: bool = scheduled  # True only for scheduler-triggered runs
+        self.notify_chat: str = notify_chat  # chat alias for file delivery ("" = no delivery)
 
     def to_dict(self, include_logs: bool = False) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -125,14 +125,14 @@ def _notify_run(run: Run) -> None:
     except Exception:
         pass  # notification failures must never affect the run result
 
-    # For a successful *scheduled* daily-report, send the xlsx to production chat.
-    # Non-scheduled runs (manual API triggers, tests) do NOT deliver to production.
-    if run.command == "daily-report" and run.status.value == "success" and run.scheduled:
+    # If notify_chat is set and the run succeeded, deliver the output file
+    # to the specified chat. Empty notify_chat = skip file delivery entirely.
+    if run.command == "daily-report" and run.status.value == "success" and run.notify_chat:
         try:
             from server.notify import notify_daily_report_file
             report_path = _find_report_from_run(run)
             if report_path:
-                notify_daily_report_file(report_path)
+                notify_daily_report_file(report_path, target_chat=run.notify_chat)
         except Exception:
             pass  # file delivery failures must never affect the run result
 
@@ -193,14 +193,17 @@ def start_queue_worker() -> None:
     _worker_task = loop.create_task(_queue_worker())
 
 
-def create_run(command_name: str, params: dict[str, Any], *, scheduled: bool = False) -> Run:
+def create_run(command_name: str, params: dict[str, Any], *, notify_chat: str = "") -> Run:
     """Create a Run, enqueue it for serial execution, and return it.
 
-    Set *scheduled=True* for runs created by the internal scheduler (cron).
-    Only scheduled runs trigger production deliveries (e.g. sending the daily
-    report xlsx to the production chat).
+    *notify_chat* is a chat alias from ``server/notify.toml [chats]``.
+    When set, the run's output file (e.g. daily report xlsx) is delivered
+    to that chat on success.  Empty string = no file delivery.
+
+    The internal scheduler passes ``notify_chat="production_accounting_report_chat"``
+    for the daily-report cron. Manual/API-triggered runs default to "" (no delivery).
     """
-    run = Run(command_name, params, scheduled=scheduled)
+    run = Run(command_name, params, notify_chat=notify_chat)
     _runs[run.id] = run
     _evict_old_runs()
     _queue.put_nowait(run)

@@ -156,13 +156,16 @@ def notify_run_complete(run: "Run") -> None:
         log.exception("Failed to send Lark notification for run %s", run.id)
 
 
-def notify_daily_report_file(report_path: "Path") -> None:
-    """Send the generated daily report xlsx to the production accounting chat.
+def notify_daily_report_file(report_path: "Path", target_chat: str = "production_accounting_report_chat") -> None:
+    """Send the generated daily report xlsx to a Lark chat.
 
     Sends a card header first (so the file doesn't get lost in conversation),
-    then attaches the xlsx file.  Reads ``production_accounting_report_chat``
-    from notify.toml [chats].  Silent no-op if Lark is not configured or the
-    alias is missing.
+    then attaches the xlsx file.
+
+    *target_chat* is a named alias from ``server/notify.toml [chats]``.
+    Defaults to ``production_accounting_report_chat`` for the scheduler cron.
+    Pass any alias (e.g. ``"hongming"``) for testing/debug delivery.
+    Silent no-op if Lark is not configured or the alias is missing.
     """
     import re
     from datetime import datetime
@@ -172,9 +175,9 @@ def notify_daily_report_file(report_path: "Path") -> None:
     if not settings.lark_enabled:
         return
 
-    chat_id = chat_id_for("production_accounting_report_chat")
+    chat_id = chat_id_for(target_chat)
     if not chat_id:
-        log.warning("notify: 'production_accounting_report_chat' alias not found in notify.toml [chats], skipping file send")
+        log.warning("notify: '%s' alias not found in notify.toml [chats], skipping file send", target_chat)
         return
 
     # Parse report date from filename: database_report_YYYY_MM_DD.xlsx

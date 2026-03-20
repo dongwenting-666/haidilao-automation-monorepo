@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/commands", tags=["commands"])
 
 class RunRequest(BaseModel):
     params: dict[str, Any] = {}
+    notify_chat: str = ""  # chat alias for file delivery ("" = no delivery)
 
 
 @router.get("")
@@ -28,5 +29,6 @@ async def run_command(name: str, body: RunRequest | None = None) -> dict[str, st
     if cmd is None:
         raise HTTPException(status_code=404, detail=f"Command '{name}' not found")
     params = body.params if body else {}
-    run = create_run(name, params)
+    notify_chat = body.notify_chat if body else ""
+    run = create_run(name, params, notify_chat=notify_chat)
     return {"run_id": run.id, "status": run.status.value}

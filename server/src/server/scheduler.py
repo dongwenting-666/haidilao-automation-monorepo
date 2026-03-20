@@ -23,19 +23,19 @@ def _parse_cron(expr: str) -> dict[str, str]:
 async def _run_daily_report() -> None:
     """Trigger daily-report command via the run system."""
     from server.routes.runs import create_run
-    create_run("daily-report", {}, scheduled=True)
+    create_run("daily-report", {}, notify_chat="production_accounting_report_chat")
 
 
 async def _run_treasury_loan_watch() -> None:
     """Trigger treasury-loan-watch command via the run system."""
     from server.routes.runs import create_run
-    create_run("treasury-loan-watch", {}, scheduled=True)
+    create_run("treasury-loan-watch", {})
 
 
 async def _run_store_hours_collect() -> None:
     """Trigger store-hours-collect command via the run system."""
     from server.routes.runs import create_run
-    create_run("store-hours-collect", {}, scheduled=True)
+    create_run("store-hours-collect", {})
 
 
 def setup_default_jobs() -> None:

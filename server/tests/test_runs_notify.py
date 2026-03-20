@@ -36,6 +36,7 @@ def make_run():
         run.id = "test-run"
         run.started_at = datetime.now(timezone.utc) - timedelta(seconds=30)
         run.finished_at = datetime.now(timezone.utc)
+        run.notify_chat = ""  # default: no file delivery
         return run
     return _make
 
@@ -114,7 +115,7 @@ class TestNotifyRun:
             _notify_run(run)
             mock.assert_called_once_with(run)
 
-    def test_scheduled_daily_report_success_sends_file(self, daily_dir, make_run):
+    def test_with_notify_chat_sends_file_to_target(self, daily_dir, make_run):
         report = daily_dir / "database_report_2026_03_18.xlsx"
         report.write_bytes(b"excel")
         run = make_run(
@@ -122,15 +123,14 @@ class TestNotifyRun:
             status="success",
             logs=f"Report saved to {report}",
         )
-        run.scheduled = True
+        run.notify_chat = "production_accounting_report_chat"
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run
             _notify_run(run)
-            mock_file.assert_called_once_with(report)
+            mock_file.assert_called_once_with(report, target_chat="production_accounting_report_chat")
 
-    def test_non_scheduled_daily_report_no_file_send(self, daily_dir, make_run):
-        """Manual/API-triggered runs should NOT send to production chat."""
+    def test_custom_notify_chat_sends_to_custom_target(self, daily_dir, make_run):
         report = daily_dir / "database_report_2026_03_18.xlsx"
         report.write_bytes(b"excel")
         run = make_run(
@@ -138,7 +138,23 @@ class TestNotifyRun:
             status="success",
             logs=f"Report saved to {report}",
         )
-        run.scheduled = False  # not from scheduler
+        run.notify_chat = "hongming"
+        with patch("server.notify.notify_run_complete"), \
+             patch("server.notify.notify_daily_report_file") as mock_file:
+            from server.routes.runs import _notify_run
+            _notify_run(run)
+            mock_file.assert_called_once_with(report, target_chat="hongming")
+
+    def test_empty_notify_chat_no_file_send(self, daily_dir, make_run):
+        """No notify_chat = no file delivery (manual/test runs)."""
+        report = daily_dir / "database_report_2026_03_18.xlsx"
+        report.write_bytes(b"excel")
+        run = make_run(
+            command="daily-report",
+            status="success",
+            logs=f"Report saved to {report}",
+        )
+        run.notify_chat = ""
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run
@@ -147,7 +163,7 @@ class TestNotifyRun:
 
     def test_daily_report_failure_no_file_send(self, daily_dir, make_run):
         run = make_run(command="daily-report", status="failed")
-        run.scheduled = True
+        run.notify_chat = "production_accounting_report_chat"
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run
@@ -156,7 +172,7 @@ class TestNotifyRun:
 
     def test_non_daily_report_no_file_send(self, make_run):
         run = make_run(command="ksb1", status="success")
-        run.scheduled = True
+        run.notify_chat = "production_accounting_report_chat"
         with patch("server.notify.notify_run_complete"), \
              patch("server.notify.notify_daily_report_file") as mock_file:
             from server.routes.runs import _notify_run
