@@ -35,6 +35,9 @@ def _get_signer() -> TimestampSigner:
     global _fallback_secret
     secret = os.environ.get("SESSION_SECRET", "")
     if not secret:
+        from server.config import settings
+        secret = settings.session_secret
+    if not secret:
         if not _fallback_secret:
             _fallback_secret = secrets.token_hex(32)
             logger.warning(

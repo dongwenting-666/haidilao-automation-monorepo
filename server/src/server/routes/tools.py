@@ -241,12 +241,15 @@ async function uploadFiles(files) {{
     try {{
       const res  = await fetch('/admin/tools/upload', {{ method: 'POST', body: fd }});
       if (res.status === 401 || res.redirected) {{
-        window.location.href = '/admin/logout';
+        showMsg('✗ 会话已过期，请重新登录', false);
+        bar.style.display = 'none';
+        setTimeout(() => window.location.href = '/admin/login', 2000);
         return;
       }}
       const ct = res.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {{
-        window.location.href = '/admin/logout';
+        showMsg('✗ 服务器返回异常 (content-type: ' + ct + ', status: ' + res.status + ')', false);
+        bar.style.display = 'none';
         return;
       }}
       const data = await res.json();
