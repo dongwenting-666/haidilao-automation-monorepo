@@ -12,3 +12,9 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end tests that trigger real automation (SAP GUI, QBI). Run with: pytest -m e2e",
+]
+addopts = "-m 'not e2e'"

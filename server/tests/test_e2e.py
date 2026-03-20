@@ -1,4 +1,8 @@
-"""End-to-end test — start a real uvicorn server and exercise all API endpoints."""
+"""End-to-end test — start a real uvicorn server and exercise all API endpoints.
+
+WARNING: This test triggers REAL automation commands (KSB1/SAP GUI).
+Only run manually with: pytest -m e2e
+"""
 
 from __future__ import annotations
 
@@ -63,6 +67,7 @@ def server():
         proc.wait()
 
 
+@pytest.mark.e2e
 def test_full_lifecycle(server):
     """Exercise every API endpoint in a single lifecycle test."""
     base = server
