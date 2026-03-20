@@ -3,25 +3,27 @@
 # server-start.sh — Haidilao automation server launcher with crash alerting
 #
 # Managed by launchd (com.haidilao.server). launchd handles restart via
-# KeepAlive. This script's job is to:
-#   1. Start the server and wait for it to exit
-#   2. On abnormal exit, send a Lark alert + wake OpenClaw via cron API
-#      so the agent can investigate, restart if needed, and report back
-#      to Hongming on Telegram
+# KeepAlive. This script:
+#   1. Detects whether this is a fresh start or a crash recovery (via flag file)
+#   2. On crash recovery: waits for the server to become healthy, then sends
+#      a ✅ "server recovered" message to Lark + notifies the OpenClaw agent
+#   3. On crash: sends 🔴 Lark alert + wakes OpenClaw agent to investigate
+#      and report back on TUI
 #
-# Crash flow:
+# Full crash flow:
 #   server crashes (exit != 0)
-#       → send_crash_alert() fires
-#           → Lark text to 'hongming' chat
-#           → OpenClaw cron one-shot agentTurn (isolated) to wake agent
-#       → script exits with original exit code
-#       → launchd sees non-zero exit + KeepAlive → restarts after ThrottleInterval
+#     → send_crash_alert(): Lark 🔴 to hongming + OpenClaw cron agentTurn
+#     → writes CRASH_FLAG_FILE
+#     → script exits with original code
+#     → launchd restarts after ThrottleInterval (30s)
+#     → next run detects flag → waits for healthy → send_recovery_notice()
+#     → agent reports back on TUI with diagnosis
 # =============================================================================
 
 set -euo pipefail
 
 REPO_ROOT="/Users/hongming-claw/haidilao-automation-monorepo"
-OPENCLAW_GATEWAY="http://127.0.0.1:18789"
+CRASH_FLAG_FILE="/tmp/haidilao-server-crashed.flag"
 
 # ---------------------------------------------------------------------------
 # Logging — stdout only; launchd routes it to server.log via StandardOutPath
@@ -35,16 +37,10 @@ log_err() {
 }
 
 # ---------------------------------------------------------------------------
-# Crash alert — Lark text + OpenClaw agentTurn wake
+# Send a Lark text message to the hongming chat
 # ---------------------------------------------------------------------------
-send_crash_alert() {
-    local exit_code="$1"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S %Z')
-
-    log "Server exited with code $exit_code — sending crash alert"
-
-    # 1. Lark alert via Python (credentials from env set by launchd plist)
+lark_send() {
+    local message="$1"
     /Users/hongming-claw/.local/bin/uv run \
         --project "$REPO_ROOT/server" \
         python -c "
@@ -58,24 +54,100 @@ try:
     app_secret = os.environ.get('LARK_APP_SECRET', '')
     chat_id = chat_id_for('hongming')
     if app_id and app_secret and chat_id:
-        msg = (
-            '🔴 海底捞自动化服务器崩溃\n\n'
-            '时间: $timestamp\n'
-            '退出码: $exit_code\n\n'
-            'launchd 正在自动重启服务器。\n'
-            'OpenClaw 已收到通知，正在调查中。'
-        )
         with LarkClient(app_id=app_id, app_secret=app_secret) as c:
-            c.send_text(msg, chat_id=chat_id)
-        print('Lark alert sent')
+            c.send_text($(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$message"), chat_id=chat_id)
+        print('Lark message sent')
     else:
-        print('Lark credentials or chat alias not configured, skipping', file=sys.stderr)
+        print('Lark not configured, skipping', file=sys.stderr)
 except Exception as e:
-    print(f'Lark alert failed: {e}', file=sys.stderr)
-" || log_err "Lark alert script failed (non-fatal)"
+    print(f'Lark send failed: {e}', file=sys.stderr)
+" 2>>"$REPO_ROOT/server.log" || true
+}
 
-    # 2. Wake OpenClaw agent via one-shot cron job (agentTurn in isolated session)
-    local alert_message="🔴 SYSTEM ALERT: Haidilao automation server crashed at $timestamp (exit code $exit_code). Repo: $REPO_ROOT. Please: (1) check the last 50 lines of server.log at $REPO_ROOT/server.log for the error, (2) verify launchd restarted the server successfully via 'launchctl list com.haidilao.server' and 'curl http://localhost:8000/api/runs', (3) if the server is not healthy, investigate and fix the root cause, (4) report back to Hongming on Telegram with what happened and the current status."
+# ---------------------------------------------------------------------------
+# Wait for the server to become healthy on :8000
+# ---------------------------------------------------------------------------
+wait_for_healthy() {
+    local max_attempts=30
+    local attempt=0
+    local delay=2
+
+    log "Waiting for server to become healthy on :8000..."
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -sf http://localhost:8000/api/runs >/dev/null 2>&1; then
+            log "Server healthy after $((attempt * delay))s"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep $delay
+    done
+
+    log_err "Server did not become healthy within $((max_attempts * delay))s"
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Recovery notice — sent on first healthy boot after a crash
+# ---------------------------------------------------------------------------
+send_recovery_notice() {
+    local crash_info
+    crash_info=$(cat "$CRASH_FLAG_FILE" 2>/dev/null || echo "unknown crash")
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+    log "Server recovered — sending recovery notice"
+
+    # 1. Lark recovery message
+    lark_send "✅ 海底捞自动化服务器已恢复
+
+时间: $timestamp
+原崩溃: $crash_info
+
+服务器已重启并通过健康检查。OpenClaw 正在调查崩溃原因并将在 TUI 中报告。"
+
+    # 2. Wake agent in isolated session — instruct it to investigate and report on TUI
+    local recovery_message="✅ RECOVERY: Haidilao automation server has recovered at $timestamp after crash ($crash_info). Please: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) summarise what went wrong and whether any action is needed, (3) send a brief status update to Hongming NOW on TUI (this session) in plain language — what crashed, why, and whether it's fully resolved. Keep it short."
+
+    /opt/homebrew/bin/openclaw cron add \
+        --name "server-recovery-$(date +%s)" \
+        --at "1m" \
+        --session isolated \
+        --message "$recovery_message" \
+        --announce \
+        --timeout-seconds 180 \
+        --delete-after-run \
+        && log "OpenClaw recovery cron scheduled" \
+        || log_err "OpenClaw recovery cron failed (non-fatal)"
+
+    # Clean up crash flag
+    rm -f "$CRASH_FLAG_FILE"
+    log "Crash flag removed"
+}
+
+# ---------------------------------------------------------------------------
+# Crash alert — Lark 🔴 + OpenClaw agent wake for investigation
+# ---------------------------------------------------------------------------
+send_crash_alert() {
+    local exit_code="$1"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+    log "Server exited with code $exit_code — sending crash alert"
+
+    # Write crash flag so next boot knows it's a recovery
+    echo "exit_code=$exit_code at=$timestamp" > "$CRASH_FLAG_FILE"
+
+    # 1. Lark 🔴 alert
+    lark_send "🔴 海底捞自动化服务器崩溃
+
+时间: $timestamp
+退出码: $exit_code
+
+launchd 正在自动重启服务器（30秒后）。
+服务器恢复后将发送通知，OpenClaw 将在 TUI 中报告调查结果。"
+
+    # 2. Wake OpenClaw agent to investigate (reports back on TUI)
+    local alert_message="🔴 SYSTEM ALERT: Haidilao automation server crashed at $timestamp (exit code $exit_code). Repo: $REPO_ROOT/server.log. IMPORTANT: Do NOT send a final report yet — wait for the recovery notice. Your job right now is to: (1) read the last 100 lines of $REPO_ROOT/server.log to identify the crash cause, (2) prepare your diagnosis. You will be triggered again after recovery to deliver the full report on TUI."
 
     /opt/homebrew/bin/openclaw cron add \
         --name "server-crash-$(date +%s)" \
@@ -83,10 +155,10 @@ except Exception as e:
         --session isolated \
         --message "$alert_message" \
         --announce \
-        --timeout-seconds 300 \
+        --timeout-seconds 180 \
         --delete-after-run \
-        && log "OpenClaw cron wake scheduled" \
-        || log_err "OpenClaw cron wake failed (non-fatal)"
+        && log "OpenClaw crash investigation cron scheduled" \
+        || log_err "OpenClaw crash cron failed (non-fatal)"
 
     log "Crash alert complete"
 }
@@ -99,13 +171,38 @@ log "Starting Haidilao automation server"
 log "Repo:   $REPO_ROOT"
 log "uv:     $(/Users/hongming-claw/.local/bin/uv --version 2>/dev/null || echo 'unknown')"
 log "PID:    $$"
+
+# Detect crash recovery
+if [ -f "$CRASH_FLAG_FILE" ]; then
+    log "⚠️  Crash flag detected — this is a recovery restart"
+    log "Crash info: $(cat "$CRASH_FLAG_FILE")"
+    IS_RECOVERY=1
+else
+    IS_RECOVERY=0
+fi
 log "========================================="
 
 cd "$REPO_ROOT"
 
 # Run the server — capture exit code without triggering set -e
 set +e
-/Users/hongming-claw/.local/bin/uv run --project server python -m server
+/Users/hongming-claw/.local/bin/uv run --project server python -m server &
+SERVER_PID=$!
+
+# If this is a recovery restart, wait for healthy then notify
+if [ "$IS_RECOVERY" -eq 1 ]; then
+    # Give server a moment to start binding
+    sleep 3
+    if wait_for_healthy; then
+        send_recovery_notice
+    else
+        log_err "Server failed to become healthy after crash recovery"
+        lark_send "⚠️ 海底捞服务器重启后未能通过健康检查，请手动检查。"
+    fi
+fi
+
+# Wait for server to exit
+wait $SERVER_PID
 SERVER_EXIT=$?
 set -e
 
