@@ -83,6 +83,19 @@ class LarkClient:
             raise LarkAPIError(data.get("code", -1), data.get("msg", "unknown error"))
         return data
 
+    def _put(self, path: str, json: Any) -> dict:
+        """PUT to a Lark API endpoint, raise on non-zero code."""
+        resp = self._http.put(
+            f"{_BASE}{path}",
+            headers=self._headers(),
+            json=json,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            raise LarkAPIError(data.get("code", -1), data.get("msg", "unknown error"))
+        return data
+
     def _get(self, path: str, params: dict | None = None) -> httpx.Response:
         """GET from a Lark API endpoint (raw response, caller checks status)."""
         resp = self._http.get(
