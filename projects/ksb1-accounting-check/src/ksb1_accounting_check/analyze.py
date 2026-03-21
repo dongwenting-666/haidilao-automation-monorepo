@@ -17,9 +17,6 @@ MAPPING_FILE = Path(__file__).resolve().parent / "报表科目.xlsx"
 
 BOLD_FONT = Font(bold=True)
 
-# Detail columns for store sheets
-DETAIL_COLS = ["月份", "对象货币值", "名称"]
-
 
 def load_cost_element_mapping(path: Path = MAPPING_FILE) -> dict[str, str]:
     """Load 成本要素 → 报表科目 mapping from the mapping spreadsheet.
@@ -252,7 +249,9 @@ def generate_report(
             continue
 
         log.info("Analyzing %s...", store)
-        findings = analyze_store(store, prev_month, target_month, kemu_summary)
+        # Collect all rows for this store (both months) for cross-store detection
+        store_all_rows = [r for r in rows if r.get("CO对象名称") == store]
+        findings = analyze_store(store, prev_month, target_month, kemu_summary, all_rows=store_all_rows)
 
         # Optional: enhance observations with LLM
         if llm_client and findings:
@@ -317,48 +316,32 @@ def _write_findings_sheet(
     prev_month: int,
     curr_month: int,
 ) -> None:
-    """Write a store sheet: observation → detail rows underneath."""
-    # Row 1: header
+    """Write a store sheet: concise notes only, like the manual report.
+
+    Output format (matching manual style):
+        Row 1: "说明"
+        Row 3: "12月多计提电费5K"
+        Row 5: "12月多530 左右保险费"
+        ...
+    No detail tables — just one-line observations per finding, spaced out.
+    Detail data lives in the 原数据 sheet for anyone who needs to drill down.
+    """
     ws.cell(row=1, column=1, value="说明").font = BOLD_FONT
     row_num = 2
 
     for finding in findings:
         observation = finding["observation"]
-        cost_elements = finding.get("cost_elements", [])
+        # Write observation as a clean one-liner
+        ws.cell(row=row_num, column=1, value=observation)
+        row_num += 2  # blank row between findings for readability
 
-        # Observation row
-        cell = ws.cell(row=row_num, column=1, value=observation)
-        cell.font = BOLD_FONT
-        row_num += 1
-
-        # Collect detail rows by cost_elements across all kemus
-        raw_rows = []
-        if cost_elements:
-            for _kemu_name, rows in kemu_rows.items():
-                for r in rows:
-                    if r.get("成本要素名称") in cost_elements:
-                        raw_rows.append(r)
-
-        if raw_rows:
-            detail_rows = _build_detail_rows(raw_rows)
-
-            # Column headers
-            for col, h in enumerate(DETAIL_COLS, 1):
-                ws.cell(row=row_num, column=col, value=h).font = BOLD_FONT
-            row_num += 1
-
-            for r in detail_rows:
-                for col, key in enumerate(DETAIL_COLS, 1):
-                    ws.cell(row=row_num, column=col, value=r.get(key))
-                row_num += 1
-
-        # Blank separator
-        row_num += 1
-
-    # Auto-width columns
-    for col in ws.columns:
-        max_len = max((len(str(c.value or "")) for c in col), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+    # Auto-width column A
+    max_len = 10
+    for row in ws.iter_rows(min_col=1, max_col=1):
+        for cell in row:
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+    ws.column_dimensions["A"].width = min(max_len + 4, 80)
 
 
 def _short_store_name(name: str) -> str:
