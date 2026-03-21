@@ -34,7 +34,7 @@ def _find_repo_root() -> Path:
         if candidate.is_file() and "[tool.uv.workspace]" in candidate.read_text(encoding="utf-8"):
             return p
         p = p.parent
-    return Path(__file__).resolve().parents[5]  # best-effort fallback
+    return Path(__file__).resolve().parents[4]  # best-effort fallback
 
 
 @lru_cache(maxsize=1)
