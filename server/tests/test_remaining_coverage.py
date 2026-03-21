@@ -79,7 +79,9 @@ class TestSchedulerFunctions:
         with patch("server.routes.runs.create_run") as mock:
             from server.scheduler import _run_store_hours_collect
             await _run_store_hours_collect()
-            mock.assert_called_once_with("store-hours-collect", {}, notify_chat="store_hours")
+            # Run-complete card → hongming (admin). The store_hours group only
+            # receives the unfilled-store alert sent directly by main.py.
+            mock.assert_called_once_with("store-hours-collect", {}, notify_chat="hongming")
 
 
 # ---------------------------------------------------------------------------

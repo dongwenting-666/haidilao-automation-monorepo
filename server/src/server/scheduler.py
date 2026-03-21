@@ -35,7 +35,9 @@ async def _run_treasury_loan_watch() -> None:
 async def _run_store_hours_collect() -> None:
     """Trigger store-hours-collect command via the run system."""
     from server.routes.runs import create_run
-    create_run("store-hours-collect", {}, notify_chat="store_hours")
+    # Run-complete card goes to admin (hongming). The store_hours group only
+    # receives the unfilled-store alert sent directly by store_hours_collect.main.
+    create_run("store-hours-collect", {}, notify_chat="hongming")
 
 
 def setup_default_jobs() -> None:

@@ -196,6 +196,30 @@ The plist only contains: `HOME`, `PATH`, `LARK_APP_ID`, `LARK_APP_SECRET`. Every
 
 When adding a new secret: if the crash script (or any pre-server bootstrap) needs it, add it to **both** `.env` and the plist. Server-only secrets: `.env` only.
 
+### 18. Two-Level Lark Notification Routing
+
+Each scheduled command has **two independent notification layers**. They must be configured separately.
+
+**Layer 1 — Server-level run-complete card** (`notify.toml` + `scheduler.py`)
+- Controlled by `notify_chat` passed to `create_run()` in `scheduler.py`
+- The per-command `[command]` entry in `notify.toml` controls which chat gets the ✅/❌ run card
+- Rule: always route to `hongming` unless the output is production data that belongs to another group
+
+**Layer 2 — Command-internal notifications** (inside the project's `main.py`)
+- The command itself may send additional messages based on its own logic
+- `store-hours-collect` uses `chat_id_for("store_hours")` for data-fill summaries and `chat_id_for("hongming")` for unfilled-store alerts
+- These are completely independent of Layer 1
+
+**Current routing table:**
+
+| Command | notify_chat (Layer 1) | Internal destination (Layer 2) |
+|---------|----------------------|-------------------------------|
+| `daily-report` | `production_accounting_report_chat` | — |
+| `treasury-loan-watch` | `hongming` | `hongming` (loan alerts) |
+| `store-hours-collect` | `hongming` | `store_hours` (data-fill summary) + `hongming` (unfilled alert) |
+
+**Rule:** never route a run-complete card to the `production_accounting_report_chat` or `store_hours` groups. Those groups are for specific business outputs only — not server status cards.
+
 ## Code Style
 
 - Python 3.13+, type hints everywhere

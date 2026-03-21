@@ -152,6 +152,21 @@ uv run --project projects/ksb1-accounting-check python -m ksb1_accounting_check.
 
 Daily at 6:30 AM — collects store working-hour data into monthly Feishu spreadsheets.
 
+```bash
+uv run --project projects/store-hours-collect \
+    python -m store_hours_collect.main [--date YYYY-MM-DD]
+```
+
+**What it does:**
+1. Finds or creates the monthly spreadsheet in the Feishu folder (copies template if missing)
+2. Fills columns D/E (翻台率 / 总桌数) from the daily report XLSX for any unfilled past dates
+3. Checks columns F–K (staffing data) for unfilled rows and alerts if any are missing
+
+**Notification routing:**
+- Data-fill summary → `store_hours` group (sent by the command itself)
+- Unfilled-store alert → `hongming` admin chat (sent by the command itself; silent if all filled)
+- Run-complete card (✅/❌) → `hongming` admin chat (sent by the server after the run)
+
 ### Treasury Loan Watch
 
 Reads treasury loan sheet from Feishu, sends Lark alert for loans maturing today.

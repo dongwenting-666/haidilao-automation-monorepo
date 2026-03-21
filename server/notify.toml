@@ -33,4 +33,6 @@ chat = "hongming"
 chat = "hongming"
 
 [store-hours-collect]
-chat = "store_hours"
+# Run-complete card (success/fail) goes to admin. The store_hours group only
+# receives the unfilled-store alert sent directly by store_hours_collect.main.
+chat = "hongming"

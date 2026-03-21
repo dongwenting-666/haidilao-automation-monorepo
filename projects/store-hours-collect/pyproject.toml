@@ -5,6 +5,7 @@ description = "Daily store working-hour data collection — creates monthly Feis
 requires-python = ">=3.13"
 dependencies = [
     "lark-client",
+    "openpyxl>=3.1.0",
     "python-dotenv>=1.0",
 ]
 

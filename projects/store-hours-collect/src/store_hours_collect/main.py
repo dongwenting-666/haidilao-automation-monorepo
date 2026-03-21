@@ -6,7 +6,7 @@ Daily at 6:30 AM Vancouver time:
 2. Check columns D (翻台率) and E (总桌数) for all dates from day 1 to T-2.
    For each missing date, load from the generated daily report XLSX and fill in.
 3. Check which blue columns (F–K: staffing data) are still empty for past dates.
-   Alert admins (hongming chat) if any are unfilled; silent if everything is fine.
+   Alert admin (hongming chat) if any are unfilled; completely silent if everything is fine.
 
 Template: https://haidilao.feishu.cn/sheets/SbTns7kTxhxn5TtLMyccOrqRnqe
 Folder:   https://haidilao.feishu.cn/drive/folder/AVt8fGZLHl5PzJd2gw3cNa10ntd
