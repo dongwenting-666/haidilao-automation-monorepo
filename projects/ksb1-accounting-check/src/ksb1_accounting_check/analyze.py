@@ -345,10 +345,9 @@ def _write_findings_sheet(
 
 
 def _short_store_name(name: str) -> str:
-    """Shorten store name to fit Excel's 31-char sheet name limit."""
-    prefix = "加拿大"
-    if name.startswith(prefix):
-        name = name[len(prefix):]
+    """Shorten store name to match manual format: '一店', '二店', etc."""
+    # "加拿大一店销售公共组" → "一店"
+    name = name.replace("加拿大", "").replace("销售公共组", "").strip()
     return name[:31]
 
 

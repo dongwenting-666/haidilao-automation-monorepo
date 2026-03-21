@@ -6,8 +6,18 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# High-volume routine kemus — skip from analysis entirely
-SKIP_KEMUS = {"23、物料消耗", "33、资产折旧费", "15、员工餐费用"}
+# High-volume routine kemus — skip from analysis entirely.
+# These are payroll/insurance items that fluctuate naturally month-to-month
+# and aren't what the manual check focuses on.
+SKIP_KEMUS = {
+    "23、物料消耗",
+    "33、资产折旧费",
+    "15、员工餐费用",
+    "14、员工社保费",        # routine insurance
+    "正式工工资",            # handled at kemu level, not per-element
+    "钟点工工资",            # handled at kemu level
+    "35、装修费摊销",        # fixed amortization
+}
 
 # Sentinel note strings (shared with analyze.py)
 NOTE_PREV_ONLY = "上月有本月无"
@@ -23,9 +33,9 @@ KEY_COST_ELEMENTS = [
 _KEY_COST_ELEMENTS_LOWER = [kw.lower() for kw in KEY_COST_ELEMENTS]
 
 # Thresholds for "significant difference"
-MIN_ABS_DIFF = 500           # Ignore differences under 500 CAD
-MIN_KEY_ELEMENT_DIFF = 100   # Key elements: report changes above 100 CAD
-MIN_PCT_CHANGE = 0.20        # 20% change threshold for non-key items
+MIN_ABS_DIFF = 1000          # Ignore non-key differences under 1000 CAD
+MIN_KEY_ELEMENT_DIFF = 200   # Key elements: report changes above 200 CAD
+MIN_PCT_CHANGE = 0.30        # 30% change threshold for non-key items
 
 
 def _is_key_element(name: str) -> bool:
@@ -77,6 +87,12 @@ def analyze_store(
 ) -> list[dict]:
     """Analyze a store using deterministic rules.
 
+    Produces concise observations matching manual report style:
+    - Key items missing this month (暂未计提/报销)
+    - Key items that doubled (两个月都在X月报了)
+    - Significant amount changes for key cost elements
+    - Cross-store charge detection
+
     Returns list of findings: [{"observation": "...", "kemu_list": [...], "cost_elements": [...]}]
     """
     findings = []
@@ -86,13 +102,19 @@ def analyze_store(
         if kemu in SKIP_KEMUS:
             continue
 
+        # Kemu-level: detect missing key items (whole category gone)
+        if _is_key_element(kemu):
+            kemu_finding = _check_kemu_level(kemu, kemu_item, prev_month, curr_month)
+            if kemu_finding:
+                findings.append(kemu_finding)
+                continue  # don't also report per-element if kemu-level covers it
+
         for detail in kemu_item.get("明细", []):
             finding = _check_cost_element(kemu, detail, prev_month, curr_month)
             if finding:
                 findings.append(finding)
 
-    # Cross-store charge detection: flag transactions where 名称 mentions
-    # a different store than the one being analyzed
+    # Cross-store charge detection
     if all_rows:
         cross_store = _check_cross_store_charges(store, all_rows, curr_month)
         if cross_store:
@@ -100,6 +122,73 @@ def analyze_store(
 
     log.info("  %s: %d findings from rules", store, len(findings))
     return findings
+
+
+def _check_kemu_level(
+    kemu: str,
+    kemu_item: dict,
+    prev_month: int,
+    curr_month: int,
+) -> dict | None:
+    """Check a whole 科目 category for key patterns the manual report flags.
+
+    Detects:
+    - Key category entirely missing this month → "X月暂未计提Y"
+    - Key category entirely missing last month → "X月Y费用补报/新增"
+    - Key category doubled → "两个月的Y都在X月报了"
+    """
+    prev_amt = kemu_item["上月金额"]
+    curr_amt = kemu_item["本月金额"]
+    note = kemu_item.get("备注", "")
+
+    # Strip number prefix for cleaner display: "210、电费" → "电费"
+    display = kemu.split("、")[-1] if "、" in kemu else kemu
+
+    if note == NOTE_PREV_ONLY:
+        return _finding(f"{curr_month}月暂未计提{display}", kemu, display)
+
+    if note == NOTE_CURR_ONLY:
+        if abs(curr_amt) >= MIN_KEY_ELEMENT_DIFF:
+            amt_str = _fmt_short_amt(curr_amt)
+            return _finding(f"{curr_month}月新增{display}{amt_str}", kemu, display)
+
+    # Doubled: current month is roughly 2x the expected (prev_amt as baseline)
+    if prev_amt != 0 and curr_amt != 0:
+        ratio = curr_amt / prev_amt
+        if ratio > 1.8 and abs(curr_amt - prev_amt) >= 1000:
+            return _finding(
+                f"两个月的{display}可能都在{curr_month}月报了（{curr_month}月是{prev_month}月的{ratio:.1f}倍）",
+                kemu, display,
+            )
+        if ratio < 0.2 and abs(prev_amt - curr_amt) >= 1000:
+            return _finding(
+                f"两个月的{display}可能都在{prev_month}月报了（{prev_month}月是{curr_month}月的{1/ratio:.1f}倍）",
+                kemu, display,
+            )
+
+    return None
+
+
+def _fmt_short_amt(amt: float) -> str:
+    """Format amount concisely: 5000 → 5K, 300 → 300."""
+    abs_amt = abs(amt)
+    if abs_amt >= 1000:
+        return f"{abs_amt/1000:.1f}K".rstrip("0").rstrip(".")
+    return f"{abs_amt:.0f}"
+
+
+# Cost element name keywords that are routine and shouldn't generate findings
+# unless they're completely absent. These fluctuate naturally month-to-month.
+_ROUTINE_KEYWORDS = [
+    "退休金", "工伤保险", "员工保险", "雇主健康税", "健康服务保险",
+    "联邦政府税", "魁北克政府税", "职能部门费用分摊",
+]
+_ROUTINE_KEYWORDS_LOWER = [kw.lower() for kw in _ROUTINE_KEYWORDS]
+
+
+def _is_routine(name: str) -> bool:
+    name_lower = name.lower()
+    return any(kw in name_lower for kw in _ROUTINE_KEYWORDS_LOWER)
 
 
 def _check_cost_element(
@@ -110,6 +199,10 @@ def _check_cost_element(
 ) -> dict | None:
     """Check a single cost element against rules. Returns a finding or None."""
     name = detail["成本要素名称"]
+
+    # Skip routine payroll/insurance sub-items — they fluctuate naturally
+    if _is_routine(name):
+        return None
     prev_amt = detail["上月金额"]
     curr_amt = detail["本月金额"]
     diff = detail["差异"]
@@ -118,23 +211,20 @@ def _check_cost_element(
 
     # Rule 1: Present last month, absent this month
     if note == NOTE_PREV_ONLY:
-        if abs(prev_amt) >= 1000:
-            amt_str = f"{abs(prev_amt)/1000:.1f}K".rstrip("0").rstrip(".")
-        else:
-            amt_str = f"{abs(prev_amt):.0f}"
+        # Only report if the missing amount is meaningful
+        if abs(prev_amt) < MIN_KEY_ELEMENT_DIFF and not is_key:
+            return None
         return _finding(
-            f"{prev_month}月有{name}{amt_str}，{curr_month}月无",
+            f"{curr_month}月无{name}（{prev_month}月有{_fmt_short_amt(prev_amt)}）",
             kemu, name,
         )
 
     # Rule 2: New this month
     if note == NOTE_CURR_ONLY:
-        if abs(curr_amt) >= 1000:
-            amt_str = f"{abs(curr_amt)/1000:.1f}K".rstrip("0").rstrip(".")
-        else:
-            amt_str = f"{abs(curr_amt):.0f}"
+        if abs(curr_amt) < MIN_KEY_ELEMENT_DIFF and not is_key:
+            return None
         return _finding(
-            f"{curr_month}月新增{name}{amt_str}",
+            f"{curr_month}月新增{name}{_fmt_short_amt(curr_amt)}",
             kemu, name,
         )
 
