@@ -228,21 +228,17 @@ def _check_cost_element(
             kemu, name,
         )
 
-    # Rule 3: Amount difference checks
+    # Rule 3: Significant amount differences — only for KEY items with
+    # meaningful changes. Present-in-both-months + small change = normal.
+    # We want to flag things that suggest a missed submission or error.
     abs_diff = abs(diff)
-    if abs_diff < MIN_ABS_DIFF and not is_key:
-        return None
+    if not is_key:
+        return None  # present in both months + not a key item = normal
 
-    # Key elements: always report above minimal threshold
-    if is_key and abs_diff >= MIN_KEY_ELEMENT_DIFF:
-        return _finding(
-            _fmt_diff_obs(name, prev_month, curr_month, diff, prev_amt, curr_amt),
-            kemu, name,
-        )
-
-    # Non-key elements: report if above both absolute and percentage thresholds
-    pct_change = abs(diff) / abs(prev_amt) if prev_amt != 0 else (float("inf") if curr_amt != 0 else 0)
-    if abs_diff >= MIN_ABS_DIFF and pct_change >= MIN_PCT_CHANGE:
+    # Key items: only report if change is both large enough in absolute
+    # AND percentage terms to suggest something was missed/doubled
+    pct_change = abs(diff) / abs(prev_amt) if prev_amt != 0 else float("inf")
+    if abs_diff >= MIN_KEY_ELEMENT_DIFF and pct_change >= 0.15:
         return _finding(
             _fmt_diff_obs(name, prev_month, curr_month, diff, prev_amt, curr_amt),
             kemu, name,
