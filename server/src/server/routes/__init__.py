@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 from fastapi import APIRouter
 
 from server.routes.commands import router as commands_router

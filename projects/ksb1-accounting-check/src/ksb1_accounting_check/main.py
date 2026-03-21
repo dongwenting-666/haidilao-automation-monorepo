@@ -1,5 +1,7 @@
 """KSB1 Accounting Check — download KSB1 and compare months by 科目 per store."""
 
+from __future__ import annotations
+
 import argparse
 import calendar
 import logging

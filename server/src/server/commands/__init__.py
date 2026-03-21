@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 from server.commands.base import BaseCommand
 from server.commands.daily_report import DailyReportCommand
 from server.commands.ksb1 import KSB1Command

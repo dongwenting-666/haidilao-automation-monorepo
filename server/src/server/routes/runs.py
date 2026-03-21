@@ -194,8 +194,13 @@ async def _queue_worker() -> None:
 
 
 def start_queue_worker() -> None:
-    """Start the background queue worker. Call once from app lifespan."""
-    global _worker_task
+    """Start the background queue worker. Call once from app lifespan.
+
+    Recreates the async queue to bind it to the current event loop — necessary
+    when the server restarts (or in tests where each TestClient creates a new loop).
+    """
+    global _worker_task, _queue
+    _queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
     _worker_task = loop.create_task(_queue_worker())
 

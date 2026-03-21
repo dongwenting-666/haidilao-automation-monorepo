@@ -1127,12 +1127,14 @@ version = "0.1.0"
 source = { editable = "projects/store-hours-collect" }
 dependencies = [
     { name = "lark-client" },
+    { name = "openpyxl" },
     { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "lark-client", editable = "libs/lark-client" },
+    { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
 

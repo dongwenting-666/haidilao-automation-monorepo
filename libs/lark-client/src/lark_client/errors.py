@@ -1,5 +1,7 @@
 """Lark client error hierarchy."""
 
+from __future__ import annotations
+
 
 class LarkError(Exception):
     """Base error for Lark client operations."""
