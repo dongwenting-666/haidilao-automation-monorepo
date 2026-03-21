@@ -200,25 +200,30 @@ When adding a new secret: if the crash script (or any pre-server bootstrap) need
 
 Each scheduled command has **two independent notification layers**. They must be configured separately.
 
-**Layer 1 — Server-level run-complete card** (`notify.toml` + `scheduler.py`)
-- Controlled by `notify_chat` passed to `create_run()` in `scheduler.py`
-- The per-command `[command]` entry in `notify.toml` controls which chat gets the ✅/❌ run card
-- Rule: always route to `hongming` unless the output is production data that belongs to another group
+**Layer 1a — Run-complete card** (`notify.toml [command]` entry)
+- `notify_run_complete(run)` in `server/notify.py` uses `_target_for(run.command)` from `notify.toml`
+- Always routes to `hongming` for all commands — run cards are admin status, not business output
+
+**Layer 1b — File/gate control** (`run.notify_chat` in `scheduler.py`)
+- `create_run(..., notify_chat=<alias>)` in `scheduler.py` controls two things:
+  1. Whether any server notification fires at all (empty = completely silent run)
+  2. Where file delivery goes (daily-report xlsx → `run.notify_chat`)
+- Rule: empty string = silent (for manual/test runs or agent-triggered runs)
 
 **Layer 2 — Command-internal notifications** (inside the project's `main.py`)
-- The command itself may send additional messages based on its own logic
-- `store-hours-collect` uses `chat_id_for("store_hours")` for data-fill summaries and `chat_id_for("hongming")` for unfilled-store alerts
-- These are completely independent of Layer 1
+- The command itself may send additional Lark messages based on its own logic
+- `store-hours-collect` sends data-fill summaries to `store_hours` and unfilled alerts to `hongming`
+- These are completely independent of Layer 1 — they always fire when the command runs
 
 **Current routing table:**
 
-| Command | notify_chat (Layer 1) | Internal destination (Layer 2) |
-|---------|----------------------|-------------------------------|
-| `daily-report` | `production_accounting_report_chat` | — |
-| `treasury-loan-watch` | `hongming` | `hongming` (loan alerts) |
-| `store-hours-collect` | `hongming` | `store_hours` (data-fill summary) + `hongming` (unfilled alert) |
+| Command | notify.toml (run card) | run.notify_chat (file gate) | Internal (Layer 2) |
+|---------|----------------------|----------------------------|--------------------|
+| `daily-report` | `hongming` | `production_accounting_report_chat` (xlsx delivery) | — |
+| `treasury-loan-watch` | `hongming` | `hongming` | `hongming` (loan alerts) |
+| `store-hours-collect` | `hongming` | `hongming` | `store_hours` (data summary) + `hongming` (unfilled alert, silent if ok) |
 
-**Rule:** never route a run-complete card to the `production_accounting_report_chat` or `store_hours` groups. Those groups are for specific business outputs only — not server status cards.
+**Rule:** never set `run.notify_chat` to `store_hours` or `production_accounting_report_chat` for anything other than their specific purpose. Those groups receive business outputs only — not server status cards.
 
 ## Code Style
 
