@@ -13,7 +13,8 @@ Folder:   https://haidilao.feishu.cn/drive/folder/AVt8fGZLHl5PzJd2gw3cNa10ntd
 
 Environment variables:
     LARK_APP_ID / LARK_APP_SECRET   Feishu bot credentials
-    HOURS_NOTIFY_CHAT_ID            (optional) override chat ID; defaults to notify.toml [chats] 'store_hours'
+    HOURS_NOTIFY_CHAT_ID            (optional) override chat ID for data-fill summaries; defaults to notify.toml [chats] 'store_hours'
+    HOURS_ALERT_CHAT_ID             (optional) override chat ID for unfilled-store alerts; defaults to notify.toml [chats] 'hongming'
     HOURS_TEMPLATE_TOKEN            Template spreadsheet token (default provided)
     HOURS_FOLDER_TOKEN              Target folder token (default provided)
 """
@@ -394,6 +395,8 @@ def main() -> None:
 
     from lark_client import chat_id_for
     chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or chat_id_for("store_hours") or ""
+    # Unfilled-store alerts go to the admin/operator chat, NOT the store group
+    alert_chat_id = os.environ.get("HOURS_ALERT_CHAT_ID") or chat_id_for("hongming") or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
@@ -401,6 +404,8 @@ def main() -> None:
     if not chat_id:
         logger.error("HOURS_NOTIFY_CHAT_ID not set and 'store_hours' alias missing from notify.toml")
         sys.exit(1)
+    if not alert_chat_id:
+        logger.warning("HOURS_ALERT_CHAT_ID not set and 'hongming' alias missing from notify.toml; unfilled alerts will be suppressed")
 
     from lark_client import LarkClient
     with LarkClient(app_id=app_id, app_secret=app_secret) as client:
@@ -428,10 +433,13 @@ def main() -> None:
     else:
         logger.info("All dates already filled for D/E columns")
 
-    # Step 3: Check unfilled blue columns and alert
+    # Step 3: Check unfilled blue columns and alert admin (NOT the store group)
     unfilled = check_unfilled(token, sheet_token, year, month, target_date)
     if unfilled:
-        send_unfilled_alert(token, chat_id, year, month, unfilled, sheet_url)
+        if alert_chat_id:
+            send_unfilled_alert(token, alert_chat_id, year, month, unfilled, sheet_url)
+        else:
+            logger.warning("Unfilled stores detected (%d) but alert_chat_id not configured — skipping alert", len(unfilled))
     else:
         logger.info("All stores have filled staffing data up to %s ✓", target_date)
 
