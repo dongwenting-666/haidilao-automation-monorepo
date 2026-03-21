@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from server.run_guard import require_run_token
 
 from server.config import settings
-from server.routes.runs import RunStatus, _runs, create_run
+from server.routes.runs import Run, RunStatus, _runs, create_run
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -38,7 +38,7 @@ _EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _active_run(command: str, match_params: dict) -> object | None:
+def _active_run(command: str, match_params: dict) -> Run | None:
     """Return the most recent pending/running run matching command + params."""
     for run in reversed(list(_runs.values())):
         if run.command != command:
@@ -155,10 +155,6 @@ async def check_treasury_loans(check_date: date):
         {"date": check_date.isoformat()},
     )
 
-
-# ---------------------------------------------------------------------------
-# KSB1 accounting check report
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Store working-hour data collection (manual trigger)
