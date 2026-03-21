@@ -9,12 +9,14 @@ from server.config import REPO_ROOT
 # --- Registry ---
 
 
-def test_list_commands_returns_both():
+def test_list_commands_returns_all():
     cmds = list_commands()
     names = {c.name for c in cmds}
-    # Assert all registered commands are present (includes newer additions)
+    # Assert all four registered commands are present
     assert "daily-report" in names
     assert "ksb1" in names
+    assert "treasury-loan-watch" in names
+    assert "store-hours-collect" in names
 
 
 def test_get_command_found():
