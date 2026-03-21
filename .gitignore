@@ -31,4 +31,5 @@ Thumbs.db
 screen_test.jpg
 screen_test.png
 server.log
+server.log*.bz2
 corplink_screenshot.png
