@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import json
 import logging
+import pathlib
 import threading
 import time
 from typing import Any
@@ -166,7 +169,6 @@ class LarkClient:
                 }
             ],
         }
-        import json
         return self._post(
             f"/im/v1/messages?receive_id_type={id_type}",
             {
@@ -214,10 +216,6 @@ class LarkClient:
             Lark file type hint: ``"xlsx"`` | ``"pdf"`` | ``"doc"`` | etc.
             Defaults to ``"xlsx"``.
         """
-        import io
-        import json
-        import pathlib
-
         # Read bytes if a path was given
         if isinstance(path_or_bytes, (str, pathlib.Path)):
             data = pathlib.Path(path_or_bytes).read_bytes()
@@ -303,7 +301,6 @@ class LarkClient:
 
         Returns the created file metadata.
         """
-        import io
         token = self._get_token()
         resp = self._http.post(
             f"{_BASE}/drive/v1/files/upload_all",
@@ -352,5 +349,4 @@ def _resolve_target(
 
 def _json_str(text: str) -> str:
     """JSON-encode a string value (including the surrounding quotes)."""
-    import json
     return json.dumps(text)
