@@ -103,7 +103,7 @@ Requires Lark OAuth login. Users must be in `ADMIN_WHITELIST`.
 
 ### GitHub Integration
 
-Issues and feature requests are tracked via [GitHub Issues](https://github.com/HongmingWang-Rabbit/haidilao-automation-monorepo/issues). An agent cron checks every 2 minutes for new issues/comments via webhook triggers.
+Issues and feature requests are tracked via [GitHub Issues](https://github.com/HongmingWang-Rabbit/haidilao-automation-monorepo/issues). A GitHub webhook delivers issue/comment events to `POST /api/github/webhook` (HMAC-SHA256 verified).
 
 **Workflow labels:** `agent:triage` → `agent:planning` → `agent:approved` → `agent:in-progress` → `agent:done`
 

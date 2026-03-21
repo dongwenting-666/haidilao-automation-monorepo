@@ -177,9 +177,18 @@ Both `lark_client.notify_config._load_chats()` and `server.notify._load_config()
 
 The server is launched via `scripts/server-start.sh`, not `uv` directly. On any non-zero exit:
 1. Sends a 🔴 Lark text alert to the `hongming` chat
-2. Schedules an OpenClaw isolated agentTurn (`openclaw cron add --at 1m --session isolated`) so the agent wakes, investigates, and reports to Hongming on Telegram
+2. Schedules an OpenClaw isolated agentTurn (`openclaw cron add --at 1m --session isolated`) so the agent wakes, investigates, and reports to Hongming on TUI
 
 Clean exit (code 0, e.g. `launchctl stop`) = no alert. `KeepAlive.SuccessfulExit = false` means launchd only restarts on crash, not on clean shutdown. `ThrottleInterval = 30` prevents rapid crash loops.
+
+### 17. Never call `launchctl start/stop/kickstart` from an agent cron
+
+The OpenClaw agent crons (healthcheck, log-monitor) must **never** call `launchctl start`, `launchctl stop`, or `launchctl kickstart` on `com.haidilao.server`. launchd manages its own restart lifecycle — external `launchctl start` while launchd is already restarting the service causes a race condition that spawns dozens of competing uvicorn processes, all failing with `address already in use`.
+
+**Safe auto-fix:** Docker containers only (`docker start <container>`).
+**Everything else:** alert via Lark + report on TUI, let Hongming decide.
+
+This lesson came from a restart storm on 2026-03-20 where the healthcheck cron triggered `launchctl start` during a launchd-managed recovery, spawning 50+ port-conflict failures in the log.
 
 ### 16. plist env vars — minimal set
 

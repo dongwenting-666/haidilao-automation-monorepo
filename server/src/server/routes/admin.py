@@ -733,3 +733,67 @@ async def set_whitelist(request: Request, session: dict = Depends(require_auth))
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+# ── API Key Management (super-admin only) ─────────────────────────────────
+
+
+@router.get("/api-keys")
+async def list_api_keys_page(session: dict = Depends(require_auth)):
+    from server.auth import is_super_admin
+    if not is_super_admin(session["open_id"]):
+        return JSONResponse({"ok": False, "error": "Super admin required"}, status_code=403)
+    from server.api_keys import list_api_keys
+    keys = list_api_keys()
+    return JSONResponse({"ok": True, "keys": keys}, headers={"Content-Type": "application/json"})
+
+
+@router.post("/api-keys/create")
+async def create_api_key_route(request: Request, session: dict = Depends(require_auth)):
+    from server.auth import is_super_admin
+    if not is_super_admin(session["open_id"]):
+        return JSONResponse({"ok": False, "error": "Super admin required"}, status_code=403)
+
+    body = await request.json()
+    open_id = body.get("open_id", "")
+    label = body.get("label", "")
+    scopes = body.get("scopes", "reports:read,files:read")
+
+    if not open_id:
+        return JSONResponse({"ok": False, "error": "open_id required"}, status_code=400)
+
+    # Verify user exists and is whitelisted
+    from server.db import get_admin_users
+    users = {u["open_id"]: u for u in get_admin_users()}
+    if open_id not in users:
+        return JSONResponse({"ok": False, "error": "User not found"}, status_code=404)
+    if not users[open_id].get("whitelisted"):
+        return JSONResponse({"ok": False, "error": "User must be whitelisted first"}, status_code=400)
+
+    try:
+        from server.api_keys import create_api_key
+        raw_key, record = create_api_key(open_id, label, scopes)
+        return JSONResponse({
+            "ok": True,
+            "key": raw_key,  # shown ONCE — never stored or returned again
+            "record": record,
+            "warning": "Save this key now. It cannot be retrieved later.",
+        })
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.post("/api-keys/revoke")
+async def revoke_api_key_route(request: Request, session: dict = Depends(require_auth)):
+    from server.auth import is_super_admin
+    if not is_super_admin(session["open_id"]):
+        return JSONResponse({"ok": False, "error": "Super admin required"}, status_code=403)
+
+    body = await request.json()
+    key_id = body.get("id")
+    if not key_id:
+        return JSONResponse({"ok": False, "error": "Key id required"}, status_code=400)
+
+    from server.api_keys import revoke_api_key
+    revoked = revoke_api_key(int(key_id))
+    return JSONResponse({"ok": True, "revoked": revoked})

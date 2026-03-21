@@ -32,19 +32,13 @@ class TestGetSigner:
 
     def test_fallback_secret_is_stable_within_process(self, monkeypatch):
         """Without SESSION_SECRET, the same fallback key must be used every call."""
-        monkeypatch.delenv("SESSION_SECRET", raising=False)
-        # Patch settings to return empty secret too
-        from server.auth import _get_signer
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr("server.config.settings.session_secret", "")
-            # Clear cached fallback so we start fresh
-            import server.auth as auth_mod
-            auth_mod._fallback_secret = ""
-            s1 = auth_mod._get_signer()
-            s2 = auth_mod._get_signer()
-            # Both signers should produce the same signature for the same payload
-            payload = b"hello"
-            assert s1.sign(payload) == s2.sign(payload)
+        monkeypatch.setattr("server.config.settings.session_secret", "")
+        import server.auth as auth_mod
+        auth_mod._fallback_secret = ""
+        s1 = auth_mod._get_signer()
+        s2 = auth_mod._get_signer()
+        payload = b"hello"
+        assert s1.sign(payload) == s2.sign(payload)
 
 
 # ── Session round-trip ────────────────────────────────────────────────────────

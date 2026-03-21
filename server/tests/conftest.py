@@ -21,12 +21,16 @@ def _clean_runs():
 
 @pytest.fixture(autouse=True)
 def _disable_run_guard(monkeypatch):
-    """Disable the run guard in tests by default.
+    """Disable the run guard and API key checks in tests by default.
 
-    Tests that explicitly test the guard (test_run_guard.py) override
-    this by setting run_token to a non-empty value.
+    Tests that explicitly test the guard (test_run_guard.py, test_api_keys.py)
+    override this by setting run_token or mocking api_keys functions.
     """
     monkeypatch.setattr("server.config.settings.run_token", "")
+    # Mock has_any_api_keys to return False so the run guard is disabled.
+    # This is imported lazily in run_guard.require_run_token, so we patch the source module.
+    import server.api_keys as _ak
+    monkeypatch.setattr(_ak, "has_any_api_keys", lambda: False)
 
 
 @pytest.fixture()
