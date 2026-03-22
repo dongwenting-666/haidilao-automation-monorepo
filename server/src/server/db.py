@@ -6,7 +6,6 @@ DATABASE_URL is optional. All functions degrade gracefully when no DB is configu
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -28,10 +27,8 @@ def get_db() -> "Database | None":
         return _db
     _db_attempted = True
 
-    # Read from pydantic Settings first (covers .env via pydantic-settings),
-    # fall back to os.environ for backwards compatibility.
     from server.config import settings
-    url = settings.database_url or os.environ.get("DATABASE_URL") or ""
+    url = settings.database_url
     if not url:
         logger.debug("DATABASE_URL not set — DB layer disabled")
         return None
