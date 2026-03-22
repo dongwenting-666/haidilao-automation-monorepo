@@ -6,8 +6,8 @@ Chat IDs are defined once as named aliases in the ``[chats]`` section and
 referenced by name in per-command entries::
 
     [chats]
-    hongming    = "oc_78f29489a577f10e36ebf989bccdcc83"
-    store_hours = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"
+    hongming    = "oc_..."   # see server/notify.toml for actual IDs
+    store_hours = "oc_..."
 
     [daily-report]
     chat = "hongming"          # resolved via [chats]

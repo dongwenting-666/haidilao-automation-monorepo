@@ -5,11 +5,11 @@ Usage:
 
     client = LarkClient(app_id="...", app_secret="...")
 
-    # Send a text message to a chat
-    client.send_text(chat_id="oc_xxx", text="Hello!")
+    # Send a text message to a chat (resolve chat_id via chat_id_for("alias"))
+    client.send_text(chat_id=chat_id_for("hongming"), text="Hello!")
 
     # Send a rich card message
-    client.send_card(chat_id="oc_xxx", title="Report ready", content="...")
+    client.send_card(chat_id=chat_id_for("hongming"), title="Report ready", content="...")
 
     # Download a Drive file
     data = client.download_file(file_token="xxx")

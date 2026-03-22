@@ -4,16 +4,16 @@ All projects in this monorepo share ``server/notify.toml``.
 The ``[chats]`` section defines human-readable aliases for Lark open_chat_ids::
 
     [chats]
-    hongming    = "oc_78f29489a577f10e36ebf989bccdcc83"
-    store_hours = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"
+    hongming    = "oc_..."   # see server/notify.toml for actual IDs
+    store_hours = "oc_..."
 
 Use ``chat_id_for(alias)`` anywhere you need a chat ID — no raw IDs in code.
 
 Usage:
     from lark_client.notify_config import chat_id_for
 
-    chat_id = chat_id_for("hongming")   # → "oc_78f29489..."
-    chat_id = chat_id_for("store_hours") # → "oc_9fe9a845..."
+    chat_id = chat_id_for("hongming")
+    chat_id = chat_id_for("store_hours")
 """
 
 from __future__ import annotations
