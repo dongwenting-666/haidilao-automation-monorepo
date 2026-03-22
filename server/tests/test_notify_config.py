@@ -7,10 +7,12 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    from lark_client.notify_config import _load_chats
+    from lark_client.notify_config import _load_chats, _load_notify_toml
     _load_chats.cache_clear()
+    _load_notify_toml.cache_clear()
     yield
     _load_chats.cache_clear()
+    _load_notify_toml.cache_clear()
 
 
 class TestChatIdFor:
@@ -50,4 +52,5 @@ class TestLoadChats:
         from lark_client import notify_config as nc
         monkeypatch.setattr(nc, "_find_repo_root", lambda: nc.Path("/nonexistent"))
         nc._load_chats.cache_clear()
+        nc._load_notify_toml.cache_clear()
         assert nc._load_chats() == {}

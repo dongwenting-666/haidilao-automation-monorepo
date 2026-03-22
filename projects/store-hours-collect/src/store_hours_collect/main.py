@@ -11,15 +11,17 @@ Daily at 6:30 AM Vancouver time:
 Template: https://haidilao.feishu.cn/sheets/SbTns7kTxhxn5TtLMyccOrqRnqe
 Folder:   https://haidilao.feishu.cn/drive/folder/AVt8fGZLHl5PzJd2gw3cNa10ntd
 
-Notification routing (all resolved from server/notify.toml [chats] or env overrides):
-    data-fill summary → hongming     (HOURS_NOTIFY_CHAT_ID to override)
-    unfilled alert    → store_hours  (HOURS_ALERT_CHAT_ID  to override)
+Notification routing (configured in server/notify.toml [store-hours-collect]):
+    chat       = "hongming"    # data-fill summary → admin
+    alert_chat = "store_hours" # unfilled alert    → store group
     all stores filled → silent
+
+    Env vars HOURS_NOTIFY_CHAT_ID / HOURS_ALERT_CHAT_ID override toml for ad-hoc runs.
 
 Environment variables:
     LARK_APP_ID / LARK_APP_SECRET   Feishu bot credentials
-    HOURS_NOTIFY_CHAT_ID            (optional) override chat for data-fill summaries
-    HOURS_ALERT_CHAT_ID             (optional) override chat for unfilled-store alerts
+    HOURS_NOTIFY_CHAT_ID            (optional) override for data-fill summary chat
+    HOURS_ALERT_CHAT_ID             (optional) override for unfilled-store alert chat
     HOURS_TEMPLATE_TOKEN            Template spreadsheet token (default provided)
     HOURS_FOLDER_TOKEN              Target folder token (default provided)
 """
@@ -35,7 +37,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from lark_client import LarkClient, chat_id_for
+from lark_client import LarkClient, chat_id_for, command_chat_for
 
 logger = logging.getLogger(__name__)
 
@@ -362,18 +364,19 @@ def main() -> None:
     template_token = os.environ.get("HOURS_TEMPLATE_TOKEN", TEMPLATE_TOKEN)
     folder_token = os.environ.get("HOURS_FOLDER_TOKEN", FOLDER_TOKEN)
 
-    # Chat routing — single source of truth: server/notify.toml [chats]
-    summary_chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or chat_id_for("hongming")     or ""
-    alert_chat_id   = os.environ.get("HOURS_ALERT_CHAT_ID")  or chat_id_for("store_hours")  or ""
+    # Chat routing — configured in server/notify.toml [store-hours-collect]
+    # Env vars override toml for ad-hoc testing; toml is the source of truth for production.
+    summary_chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or command_chat_for("store-hours-collect", "chat")        or ""
+    alert_chat_id   = os.environ.get("HOURS_ALERT_CHAT_ID")  or command_chat_for("store-hours-collect", "alert_chat")  or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not summary_chat_id:
-        logger.error("'hongming' alias missing from notify.toml and HOURS_NOTIFY_CHAT_ID not set")
+        logger.error("notify.toml [store-hours-collect] 'chat' not set and HOURS_NOTIFY_CHAT_ID not provided")
         sys.exit(1)
     if not alert_chat_id:
-        logger.warning("'store_hours' alias missing from notify.toml and HOURS_ALERT_CHAT_ID not set; unfilled alerts will be suppressed")
+        logger.warning("notify.toml [store-hours-collect] 'alert_chat' not set and HOURS_ALERT_CHAT_ID not provided; unfilled alerts will be suppressed")
 
     # T-2: if today is 2026-03-18, target date = 2026-03-16
     target_date = date.fromisoformat(args.date) if args.date else date.today() - timedelta(days=2)

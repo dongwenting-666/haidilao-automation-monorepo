@@ -11,10 +11,14 @@ production_accounting_report_chat  = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"   # s
 
 # ── Per-command targets ────────────────────────────────────────────────────
 # Each key is a command name (matches BaseCommand.name).
-# Provide either:
+# Standard keys (used by server/notify.py for run-complete cards):
 #   chat = "<alias>"        — resolved via [chats] above (preferred)
 #   chat_id = "<raw_id>"   — direct open_chat_id (fallback)
 #   user_id = "<open_id>"  — DM to a specific user
+#
+# Commands can also define extra named keys for secondary notifications
+# (read via lark_client.command_chat_for(command, key)):
+#   alert_chat = "<alias>" — e.g. a secondary channel for unfilled-data alerts
 #
 # If a command is not listed here, notifications are silently skipped.
 # Set LARK_APP_ID and LARK_APP_SECRET in .env to enable Lark integration.
@@ -33,6 +37,5 @@ chat = "hongming"
 chat = "production_accounting_report_chat"
 
 [store-hours-collect]
-# Run-complete card (success/fail) goes to admin. The store_hours group only
-# receives the unfilled-store alert sent directly by store_hours_collect.main.
-chat = "hongming"
+chat       = "hongming"    # run-complete card (success/fail) → admin
+alert_chat = "store_hours" # unfilled-store alert → store group

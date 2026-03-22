@@ -19,6 +19,6 @@ from __future__ import annotations
 
 from lark_client.client import LarkClient
 from lark_client.errors import LarkError, LarkAuthError, LarkAPIError
-from lark_client.notify_config import chat_id_for
+from lark_client.notify_config import chat_id_for, command_chat_for
 
-__all__ = ["LarkClient", "LarkError", "LarkAuthError", "LarkAPIError", "chat_id_for"]
+__all__ = ["LarkClient", "LarkError", "LarkAuthError", "LarkAPIError", "chat_id_for", "command_chat_for"]
