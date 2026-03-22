@@ -30,7 +30,7 @@ chat = "hongming"
 # user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
 
 [treasury-loan-watch]
-chat = "hongming"
+chat = "production_accounting_report_chat"
 
 [store-hours-collect]
 # Run-complete card (success/fail) goes to admin. The store_hours group only

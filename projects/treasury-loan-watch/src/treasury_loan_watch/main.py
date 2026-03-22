@@ -234,13 +234,13 @@ def main() -> None:
     sheet_id = os.environ.get("TREASURY_SHEET_ID", SHEET_TAB_ID)
 
     from lark_client import chat_id_for
-    chat_id = os.environ.get("TREASURY_NOTIFY_CHAT_ID") or chat_id_for("hongming") or ""
+    chat_id = os.environ.get("TREASURY_NOTIFY_CHAT_ID") or chat_id_for("production_accounting_report_chat") or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not chat_id:
-        logger.error("TREASURY_NOTIFY_CHAT_ID not set and 'hongming' alias missing from notify.toml")
+        logger.error("TREASURY_NOTIFY_CHAT_ID not set and 'production_accounting_report_chat' alias missing from notify.toml")
         sys.exit(1)
 
     from lark_client import LarkClient
