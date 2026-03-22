@@ -22,8 +22,12 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from lark_client import LarkClient
 
 logger = logging.getLogger(__name__)
 
@@ -97,19 +101,14 @@ def _safe_col(row: list, idx: int, default: object = None) -> object:
 
 # ── Sheet reader ──────────────────────────────────────────────────────────────
 
-def fetch_loans(token: str, sheet_token: str, sheet_id: str) -> list[LoanRecord]:
+def fetch_loans(client: LarkClient, sheet_token: str, sheet_id: str) -> list[LoanRecord]:
     """Fetch all loan rows from the Feishu sheet and return parsed records.
 
     Skips the title row (row 1) and header row (row 2).
     Skips rows with non-numeric maturity dates (formula cells, blanks).
     """
-    import httpx
-
-    resp = httpx.get(
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{sheet_token}"
-        f"/values/{sheet_id}!{_FETCH_RANGE}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
+    resp = client._get(
+        f"/sheets/v2/spreadsheets/{sheet_token}/values/{sheet_id}!{_FETCH_RANGE}",
     )
     resp.raise_for_status()
 
@@ -197,23 +196,17 @@ def build_card(due_loans: list[LoanRecord], today: date) -> str:
     return json.dumps(card)
 
 
-def send_notification(chat_id: str, due_loans: list[LoanRecord], today: date) -> None:
+def send_notification(client: LarkClient, chat_id: str, due_loans: list[LoanRecord], today: date) -> None:
     """Send the maturity alert card to the Lark group."""
-    from lark_client import LarkClient
-
-    app_id = os.environ["LARK_APP_ID"]
-    app_secret = os.environ["LARK_APP_SECRET"]
-
-    with LarkClient(app_id=app_id, app_secret=app_secret) as client:
-        card_json = build_card(due_loans, today)
-        client._post(
-            "/im/v1/messages?receive_id_type=chat_id",
-            {
-                "receive_id": chat_id,
-                "msg_type": "interactive",
-                "content": card_json,
-            },
-        )
+    card_json = build_card(due_loans, today)
+    client._post(
+        "/im/v1/messages?receive_id_type=chat_id",
+        {
+            "receive_id": chat_id,
+            "msg_type": "interactive",
+            "content": card_json,
+        },
+    )
     logger.info("Notification sent for %d due loans", len(due_loans))
 
 
@@ -250,25 +243,23 @@ def main() -> None:
         logger.error("TREASURY_NOTIFY_CHAT_ID not set and 'hongming' alias missing from notify.toml")
         sys.exit(1)
 
-    # Get Lark tenant token for sheet API access
     from lark_client import LarkClient
-    with LarkClient(app_id=app_id, app_secret=app_secret) as client:
-        token = client._get_token()
 
     check_date = date.fromisoformat(args.date) if args.date else date.today()
     logger.info("Checking loan maturities for %s", check_date)
 
-    loans = fetch_loans(token, sheet_token, sheet_id)
-    logger.info("Loaded %d loan records", len(loans))
+    with LarkClient(app_id=app_id, app_secret=app_secret) as client:
+        loans = fetch_loans(client, sheet_token, sheet_id)
+        logger.info("Loaded %d loan records", len(loans))
 
-    due = [loan for loan in loans if loan.maturity_date == check_date]
-    logger.info("%d loan(s) due on %s", len(due), check_date)
+        due = [loan for loan in loans if loan.maturity_date == check_date]
+        logger.info("%d loan(s) due on %s", len(due), check_date)
 
-    if not due:
-        logger.info("No loans due on %s — nothing to notify", check_date)
-        return
+        if not due:
+            logger.info("No loans due on %s — nothing to notify", check_date)
+            return
 
-    send_notification(chat_id, due, check_date)
+        send_notification(client, chat_id, due, check_date)
     logger.info("Done")
 
 
