@@ -1,5 +1,7 @@
 """Store names, regions, time slots, and other constants."""
 
+from __future__ import annotations
+
 # Ordered store list (default column order in report)
 STORES: list[str] = [
     "加拿大一店",
