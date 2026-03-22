@@ -6,14 +6,14 @@ Daily at 6:30 AM Vancouver time:
 2. Check columns D (翻台率) and E (总桌数) for all dates from day 1 to T-2.
    For each missing date, load from the generated daily report XLSX and fill in.
 3. Check which blue columns (F–K: staffing data) are still empty for past dates.
-   Alert admin (hongming chat) if any are unfilled; completely silent if everything is fine.
+   Alert stores (store_hours chat) if any are unfilled; completely silent if everything is fine.
 
 Template: https://haidilao.feishu.cn/sheets/SbTns7kTxhxn5TtLMyccOrqRnqe
 Folder:   https://haidilao.feishu.cn/drive/folder/AVt8fGZLHl5PzJd2gw3cNa10ntd
 
 Notification routing (all resolved from server/notify.toml [chats] or env overrides):
-    data-fill summary → store_hours  (HOURS_NOTIFY_CHAT_ID to override)
-    unfilled alert    → hongming     (HOURS_ALERT_CHAT_ID  to override)
+    data-fill summary → hongming     (HOURS_NOTIFY_CHAT_ID to override)
+    unfilled alert    → store_hours  (HOURS_ALERT_CHAT_ID  to override)
     all stores filled → silent
 
 Environment variables:
@@ -363,17 +363,17 @@ def main() -> None:
     folder_token = os.environ.get("HOURS_FOLDER_TOKEN", FOLDER_TOKEN)
 
     # Chat routing — single source of truth: server/notify.toml [chats]
-    summary_chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or chat_id_for("store_hours") or ""
-    alert_chat_id   = os.environ.get("HOURS_ALERT_CHAT_ID")  or chat_id_for("hongming")     or ""
+    summary_chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or chat_id_for("hongming")     or ""
+    alert_chat_id   = os.environ.get("HOURS_ALERT_CHAT_ID")  or chat_id_for("store_hours")  or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not summary_chat_id:
-        logger.error("'store_hours' alias missing from notify.toml and HOURS_NOTIFY_CHAT_ID not set")
+        logger.error("'hongming' alias missing from notify.toml and HOURS_NOTIFY_CHAT_ID not set")
         sys.exit(1)
     if not alert_chat_id:
-        logger.warning("'hongming' alias missing from notify.toml and HOURS_ALERT_CHAT_ID not set; unfilled alerts will be suppressed")
+        logger.warning("'store_hours' alias missing from notify.toml and HOURS_ALERT_CHAT_ID not set; unfilled alerts will be suppressed")
 
     # T-2: if today is 2026-03-18, target date = 2026-03-16
     target_date = date.fromisoformat(args.date) if args.date else date.today() - timedelta(days=2)
