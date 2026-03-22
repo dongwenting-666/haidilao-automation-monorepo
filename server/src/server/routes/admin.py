@@ -156,7 +156,7 @@ async def login_page(request: Request, next: str = "/admin/targets"):
     state = quote(next)  # store next URL in state param
     auth_url = get_lark_auth_url(redirect_uri, state)
 
-    html = f"""<!DOCTYPE html>
+    page_html = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -205,7 +205,7 @@ async def login_page(request: Request, next: str = "/admin/targets"):
 </div>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=page_html)
 
 
 # ── GET /admin/oauth/callback ─────────────────────────────────────────────────
@@ -344,7 +344,7 @@ async def targets_page(request: Request, month: str | None = None, session: dict
     user_name = session.get("name", "管理员")
     _is_super = is_super_admin(session.get("open_id", ""))
 
-    html = f"""<!DOCTYPE html>
+    page_html = f"""<!DOCTYPE html>
 <html>
 <head>
 {_BASE_STYLE}
@@ -464,7 +464,7 @@ async function saveAll() {{
 </body>
 </html>"""
 
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=page_html)
 
 
 # ── POST /admin/targets ───────────────────────────────────────────────────────
@@ -535,7 +535,7 @@ async def competitors_page(request: Request, session: dict = Depends(require_aut
     user_name = session.get("name", "管理员")
     _is_super = is_super_admin(session.get("open_id", ""))
 
-    html = f"""<!DOCTYPE html>
+    page_html = f"""<!DOCTYPE html>
 <html>
 <head>
 {_BASE_STYLE}
@@ -602,7 +602,7 @@ async function saveAll() {{
 </body>
 </html>"""
 
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=page_html)
 
 
 # ── POST /admin/competitors ───────────────────────────────────────────────────
@@ -661,7 +661,7 @@ async def users_page(request: Request, session: dict = Depends(require_auth)):
         rows = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px">暂无登录记录</td></tr>'
 
     name = session.get("name", "")
-    html = f"""<!DOCTYPE html>
+    page_html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>用户管理 — Haidilao Admin</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -713,7 +713,7 @@ async function toggleUser(openId, grant) {{
 }}
 </script>
 </body></html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=page_html)
 
 
 @router.post("/users/whitelist")
