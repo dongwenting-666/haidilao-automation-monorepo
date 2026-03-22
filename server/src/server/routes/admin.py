@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import html
 import logging
-import os
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, Request
