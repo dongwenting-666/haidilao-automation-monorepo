@@ -103,25 +103,25 @@ class TestLoadConfig:
 class TestTargetFor:
     def test_alias_resolution(self, sample_toml):
         from server.notify import _target_for
-        chat_id, user_id = _target_for("daily-report")
+        chat_id, user_id, _ = _target_for("daily-report")
         assert chat_id == "oc_test_hongming"
         assert user_id is None
 
     def test_raw_chat_id_fallback(self, sample_toml):
         from server.notify import _target_for
-        chat_id, user_id = _target_for("treasury-loan-watch")
+        chat_id, user_id, _ = _target_for("treasury-loan-watch")
         assert chat_id == "oc_raw_id"
         assert user_id is None
 
     def test_both_set_prefers_chat_id(self, sample_toml):
         from server.notify import _target_for
-        chat_id, user_id = _target_for("both-set")
+        chat_id, user_id, _ = _target_for("both-set")
         assert chat_id == "oc_chat"
         assert user_id is None
 
     def test_unknown_command_returns_none(self, sample_toml):
         from server.notify import _target_for
-        chat_id, user_id = _target_for("nonexistent-command")
+        chat_id, user_id, _ = _target_for("nonexistent-command")
         assert chat_id is None
         assert user_id is None
 
@@ -134,7 +134,7 @@ class TestTargetFor:
         monkeypatch.setattr(nc_mod, "_load_chats", lambda: {})
         from server.notify import _load_config, _target_for
         _load_config.cache_clear()
-        chat_id, _ = _target_for("test")
+        chat_id, _, _2 = _target_for("test")
         assert chat_id is None
 
 

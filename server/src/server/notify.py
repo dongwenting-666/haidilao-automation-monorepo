@@ -73,10 +73,15 @@ def chat_id_for(alias: str) -> str | None:
     return _chat_id_for(alias)
 
 
-def _target_for(command: str) -> tuple[str | None, str | None]:
-    """Return (chat_id, user_id) for a command, or (None, None) if not configured."""
+def _target_for(command: str) -> tuple[str | None, str | None, bool]:
+    """Return (chat_id, user_id, on_failure_only) for a command.
+
+    ``on_failure_only=True`` means the run-complete card is suppressed on success
+    (set via ``on_failure_only = true`` in the command's notify.toml section).
+    """
     config = _load_config()
     entry = config.get(command, {})
+    on_failure_only: bool = bool(entry.get("on_failure_only", False))
 
     # Prefer named alias → raw chat_id fallback → user_id
     chat_alias = entry.get("chat")
@@ -86,7 +91,7 @@ def _target_for(command: str) -> tuple[str | None, str | None]:
             log.warning(
                 "notify.toml [%s]: chat alias %r not found in [chats]", command, chat_alias
             )
-        return chat_id, None
+        return chat_id, None, on_failure_only
 
     chat_id = entry.get("chat_id") or None
     user_id = entry.get("user_id") or None
@@ -95,7 +100,7 @@ def _target_for(command: str) -> tuple[str | None, str | None]:
             "notify.toml [%s]: both chat_id and user_id set — using chat_id", command
         )
         user_id = None
-    return chat_id, user_id
+    return chat_id, user_id, on_failure_only
 
 
 def _client():
@@ -111,18 +116,22 @@ def notify_run_complete(run: "Run") -> None:
     """Send a Lark card summarising a completed run.
 
     Silent no-op if Lark is not configured or the command has no target
-    in notify.toml.
+    in notify.toml.  If ``on_failure_only = true`` is set for the command,
+    the card is also suppressed on success.
     """
     from server.config import settings
     if not settings.lark_enabled:
         return
 
-    chat_id, user_id = _target_for(run.command)
+    chat_id, user_id, on_failure_only = _target_for(run.command)
     if not chat_id and not user_id:
         log.debug("notify: no target for command %r, skipping", run.command)
         return
 
     success = run.status.value == "success"
+    if on_failure_only and success:
+        log.debug("notify: on_failure_only=true for %r, suppressing success card", run.command)
+        return
     color = "green" if success else "red"
     icon = "✅" if success else "❌"
 
@@ -226,7 +235,7 @@ def notify_text(command: str, text: str) -> None:
     if not settings.lark_enabled:
         return
 
-    chat_id, user_id = _target_for(command)
+    chat_id, user_id, _ = _target_for(command)
     if not chat_id and not user_id:
         return
 
