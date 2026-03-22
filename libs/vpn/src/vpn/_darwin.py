@@ -45,6 +45,8 @@ CorpLink v3.1.21, measured on fresh launch):
     Overview VPN toggle (connect) →  dx=400, dy=115
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re

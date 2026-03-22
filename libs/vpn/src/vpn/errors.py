@@ -1,5 +1,7 @@
 """VPN error hierarchy and shared constants."""
 
+from __future__ import annotations
+
 MAX_POLL_ATTEMPTS = 20
 POLL_INTERVAL_SECONDS = 3
 

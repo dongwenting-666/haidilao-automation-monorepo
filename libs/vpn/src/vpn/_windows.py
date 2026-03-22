@@ -4,6 +4,8 @@ Uses pywinauto (UIA backend) to interact with the SealSuite Electron window
 and winreg to locate the CorpLink executable.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re

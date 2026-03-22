@@ -9,6 +9,8 @@ Usage:
     # ... run your automation ...
 """
 
+from __future__ import annotations
+
 from vpn.connect import ensure_vpn
 from vpn.errors import VPNAppNotFoundError, VPNConnectionError, VPNError
 

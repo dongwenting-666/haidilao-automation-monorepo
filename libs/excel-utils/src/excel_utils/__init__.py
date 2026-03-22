@@ -1,5 +1,7 @@
 """Shared Excel generation utilities for Haidilao automations."""
 
+from __future__ import annotations
+
 from importlib.metadata import version
 
 from excel_utils.reader import load_data_rows, load_mapping

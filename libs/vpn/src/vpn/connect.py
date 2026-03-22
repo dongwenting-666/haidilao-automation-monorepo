@@ -5,6 +5,8 @@ Delegates to the platform-specific implementation:
 - macOS: log parsing + AppleScript (``_darwin.py``)
 """
 
+from __future__ import annotations
+
 import sys
 
 from vpn.errors import VPNError
