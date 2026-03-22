@@ -7,10 +7,13 @@ table so re-runs are idempotent.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .client import Database
 from .errors import DBQueryError
+
+logger = logging.getLogger(__name__)
 
 _CREATE_MIGRATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS _migrations (
@@ -62,7 +65,7 @@ def run_migrations(db: Database, migrations_dir: Path) -> None:
                 f"Migration '{filename}' failed: {exc}"
             ) from exc
 
-        print(f"[migrations] applied: {filename}")
+        logger.info("[migrations] applied: %s", filename)
 
     if not sql_files:
-        print("[migrations] no .sql files found — nothing to do")
+        logger.debug("[migrations] no .sql files found — nothing to do")
