@@ -225,6 +225,13 @@ Each scheduled command has **two independent notification layers**. They must be
 
 **Rule:** never set `run.notify_chat` to `store_hours` or `production_accounting_report_chat` for anything other than their specific purpose. Those groups receive business outputs only — not server status cards.
 
+## Agent / Subagent Rules
+
+**Never run e2e tests unless explicitly asked.** SAP GUI e2e tests take over the screen.
+
+- ✅ Safe: `uv run pytest server/tests/ libs/ projects/*/tests/ -q` — e2e excluded by default via `addopts = "-m 'not e2e'"` in root `pyproject.toml`
+- ❌ Never: `pytest -m e2e`, running `libs/sap-gui/tests/e2e_ksb1.py`, or anything that invokes `sap_gui.processes`
+
 ## Code Style
 
 - Python 3.13+, type hints everywhere
