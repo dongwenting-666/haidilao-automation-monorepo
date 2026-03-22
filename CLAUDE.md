@@ -160,15 +160,27 @@ name when the generic name (e.g. `test_e2e.py`) would otherwise collide:
 
 ### 14. Lark Chat IDs are Named Aliases — Never Hardcode `oc_xxx`
 
-All Lark group chat IDs live in **`server/notify.toml [chats]`** as named aliases. Never put a raw `oc_xxx` string in Python.
+All Lark group chat IDs live in **`server/notify.toml [chats]`** as named aliases. Never put a raw `oc_xxx` string in Python — this includes **docstrings and comments**.
 
 ```python
 # ✅ correct
 from lark_client import chat_id_for
 chat_id = chat_id_for("hongming")
 
-# ❌ wrong
+# ❌ wrong (executable code)
 chat_id = "oc_78f29489a577f10e36ebf989bccdcc83"
+
+# ❌ also wrong (docstring example with real ID)
+"""
+[chats]
+hongming = "oc_78f29489a577f10e36ebf989bccdcc83"  # ← don't put this in a .py file
+"""
+
+# ✅ correct in docstrings (use placeholder)
+"""
+[chats]
+hongming = "oc_..."   # see server/notify.toml for actual IDs
+"""
 ```
 
 Both `lark_client.notify_config._load_chats()` and `server.notify._load_config()` use `lru_cache(maxsize=1)`. **Changes to `notify.toml` require a server restart** — the cache is never hot-reloaded.
@@ -232,10 +244,50 @@ Each scheduled command has **two independent notification layers**. They must be
 - ✅ Safe: `uv run pytest server/tests/ libs/ projects/*/tests/ -q` — e2e excluded by default via `addopts = "-m 'not e2e'"` in root `pyproject.toml`
 - ❌ Never: `pytest -m e2e`, running `libs/sap-gui/tests/e2e_ksb1.py`, or anything that invokes `sap_gui.processes`
 
+### 19. Use LarkClient for All Lark API Calls — No Raw httpx
+
+All Lark API calls must go through `LarkClient` from `libs/lark-client`. Never create
+a raw `httpx` client, set `Authorization: Bearer ...` headers, or construct Lark API
+URLs manually.
+
+```python
+# ✅ correct — use LarkClient._get for unlisted endpoints
+with LarkClient(app_id=..., app_secret=...) as client:
+    resp = client._get(f"/sheets/v2/spreadsheets/{token}/values/{range}")
+    data = resp.json()
+
+# ❌ wrong — bypasses token management, auth abstraction, and error handling
+import httpx
+resp = httpx.get(
+    f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{token}/...",
+    headers={"Authorization": f"Bearer {raw_token}"},
+)
+```
+
+`LarkClient._get`, `._post`, and `._put` handle token refresh, base URL assembly,
+and `raise_for_status()`. For endpoints not covered by public methods (send_card,
+send_text, etc.), use `client._post("/path", payload)` with a path relative to
+`https://open.feishu.cn/open-apis`.
+
+**Single client rule:** Open one `with LarkClient(...) as client:` block per function
+and reuse it for all API calls (fetch + notify) — don't open a second client for
+notifications.
+
+### 20. Keep Tests in Sync When Refactoring Business Logic
+
+When refactoring rules, thresholds, or business logic, always update the tests in the
+same commit (or an immediate follow-up). Tests that test the **old** behavior will
+silently pass false-positives only in isolation and fail in full suite runs, eroding
+confidence in the test suite.
+
+**Lesson from 9fcca5f / c627164:** `rules.py` was refactored to only report non-key
+cost elements for NOTE_CURR_ONLY/NOTE_PREV_ONLY cases. The tests were not updated,
+causing 5 failures. The fix required updating test assertions to match the new behaviour.
+
 ## Code Style
 
 - Python 3.13+, type hints everywhere
 - `from __future__ import annotations` in all modules
-- Logging via `logging.getLogger(__name__)`
+- Logging via `logging.getLogger(__name__)` — never `print()` in library/server code
 - DB access through `server/db.py` helper functions, never raw SQL in routes
 - HTML templates are inline f-strings in route files (no Jinja2)
