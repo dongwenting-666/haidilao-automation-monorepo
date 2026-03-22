@@ -12,8 +12,9 @@ Template: https://haidilao.feishu.cn/sheets/SbTns7kTxhxn5TtLMyccOrqRnqe
 Folder:   https://haidilao.feishu.cn/drive/folder/AVt8fGZLHl5PzJd2gw3cNa10ntd
 
 Notification routing (configured in server/notify.toml [store-hours-collect]):
-    chat       = "hongming"    # data-fill summary → admin
-    alert_chat = "store_hours" # unfilled alert    → store group
+    chat         = "hongming"    # run-complete card (server) → admin only
+    summary_chat = "store_hours" # data-fill summary (翻台率/总桌数) → store group
+    alert_chat   = "store_hours" # unfilled alert → store group
     all stores filled → silent
 
     Env vars HOURS_NOTIFY_CHAT_ID / HOURS_ALERT_CHAT_ID override toml for ad-hoc runs.
@@ -366,14 +367,14 @@ def main() -> None:
 
     # Chat routing — configured in server/notify.toml [store-hours-collect]
     # Env vars override toml for ad-hoc testing; toml is the source of truth for production.
-    summary_chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or command_chat_for("store-hours-collect", "chat")        or ""
-    alert_chat_id   = os.environ.get("HOURS_ALERT_CHAT_ID")  or command_chat_for("store-hours-collect", "alert_chat")  or ""
+    summary_chat_id = os.environ.get("HOURS_NOTIFY_CHAT_ID") or command_chat_for("store-hours-collect", "summary_chat") or ""
+    alert_chat_id   = os.environ.get("HOURS_ALERT_CHAT_ID")  or command_chat_for("store-hours-collect", "alert_chat")   or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not summary_chat_id:
-        logger.error("notify.toml [store-hours-collect] 'chat' not set and HOURS_NOTIFY_CHAT_ID not provided")
+        logger.error("notify.toml [store-hours-collect] 'summary_chat' not set and HOURS_NOTIFY_CHAT_ID not provided")
         sys.exit(1)
     if not alert_chat_id:
         logger.warning("notify.toml [store-hours-collect] 'alert_chat' not set and HOURS_ALERT_CHAT_ID not provided; unfilled alerts will be suppressed")

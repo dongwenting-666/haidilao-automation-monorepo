@@ -37,5 +37,6 @@ chat = "hongming"
 chat = "production_accounting_report_chat"
 
 [store-hours-collect]
-chat       = "hongming"    # run-complete card (success/fail) → admin
-alert_chat = "store_hours" # unfilled-store alert → store group
+chat         = "hongming"    # run-complete card (success/fail) → admin only
+summary_chat = "store_hours" # data-fill summary (翻台率/总桌数) → store group
+alert_chat   = "store_hours" # unfilled-store alert → store group
