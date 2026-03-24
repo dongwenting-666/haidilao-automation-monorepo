@@ -221,7 +221,21 @@ def notify_daily_report_file(report_path: "Path", target_chat: str = "production
                 chat_id=chat_id,
                 file_type="xlsx",
             )
-        log.info("Daily report card + file sent to production_accounting_report_chat: %s", report_path.name)
+
+            # 3. Sheet screenshots — each sheet as a PNG image
+            try:
+                from server.sheet_screenshot import render_all_sheets
+                sheets = render_all_sheets(report_path)
+                for sheet_name, png_bytes in sheets:
+                    try:
+                        client.send_image(png_bytes, chat_id=chat_id)
+                        log.info("Sent screenshot for sheet '%s'", sheet_name)
+                    except Exception:
+                        log.exception("Failed to send screenshot for sheet '%s'", sheet_name)
+            except Exception:
+                log.exception("Failed to render sheet screenshots")
+
+        log.info("Daily report card + file + screenshots sent to %s: %s", target_chat, report_path.name)
     except Exception:
         log.exception("Failed to send daily report file to Lark")
 

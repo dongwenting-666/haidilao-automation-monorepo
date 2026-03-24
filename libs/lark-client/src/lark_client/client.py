@@ -188,6 +188,59 @@ class LarkClient:
             },
         )
 
+    def send_image(
+        self,
+        path_or_bytes: "str | bytes | pathlib.Path",
+        *,
+        chat_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict:
+        """Upload an image and send it as an image message.
+
+        Parameters
+        ----------
+        path_or_bytes:
+            Local image path (str or Path) or raw PNG/JPEG bytes.
+        chat_id:
+            Target group open_chat_id.
+        user_id:
+            Target user open_id (DM).
+        """
+        if isinstance(path_or_bytes, (str, pathlib.Path)):
+            data = pathlib.Path(path_or_bytes).read_bytes()
+        else:
+            data = path_or_bytes
+
+        token = self._get_token()
+
+        # Step 1: upload image
+        upload_resp = self._http.post(
+            f"{_BASE}/im/v1/images",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"image_type": "message"},
+            files={"image": ("image.png", io.BytesIO(data), "image/png")},
+        )
+        upload_resp.raise_for_status()
+        upload_data = upload_resp.json()
+        if upload_data.get("code") != 0:
+            raise LarkAPIError(
+                upload_data.get("code", -1),
+                upload_data.get("msg", "Image upload failed"),
+            )
+        image_key = upload_data["data"]["image_key"]
+        log.debug("Image uploaded: key=%s", image_key)
+
+        # Step 2: send as image message
+        receive_id, id_type = _resolve_target(chat_id, user_id)
+        return self._post(
+            f"/im/v1/messages?receive_id_type={id_type}",
+            {
+                "receive_id": receive_id,
+                "msg_type": "image",
+                "content": json.dumps({"image_key": image_key}),
+            },
+        )
+
     def send_file(
         self,
         path_or_bytes: "str | bytes | pathlib.Path",
