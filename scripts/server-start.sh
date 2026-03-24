@@ -61,7 +61,7 @@ try:
         print('Lark not configured, skipping', file=sys.stderr)
 except Exception as e:
     print(f'Lark send failed: {e}', file=sys.stderr)
-" 2>>"$REPO_ROOT/server.log" || true
+" 2>&1 || true
 }
 
 # ---------------------------------------------------------------------------
@@ -164,6 +164,32 @@ launchd 正在自动重启服务器（30秒后）。
 }
 
 # ---------------------------------------------------------------------------
+# Wait for port 8000 to be free (prevents "address already in use" races)
+# ---------------------------------------------------------------------------
+wait_for_port_free() {
+    local port=8000
+    local max_wait=15
+    local waited=0
+
+    while [ $waited -lt $max_wait ]; do
+        if ! /usr/sbin/lsof -ti :"$port" >/dev/null 2>&1; then
+            [ $waited -gt 0 ] && log "Port $port free after ${waited}s"
+            return 0
+        fi
+        if [ $waited -eq 0 ]; then
+            log "Port $port still in use — waiting for release..."
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    log_err "Port $port still in use after ${max_wait}s — killing remaining processes"
+    /usr/sbin/lsof -ti :"$port" | xargs kill -9 2>/dev/null || true
+    sleep 1
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 log "========================================="
@@ -183,6 +209,9 @@ fi
 log "========================================="
 
 cd "$REPO_ROOT"
+
+# Ensure port is free before starting (prevents "address already in use" on restart)
+wait_for_port_free
 
 # Run the server — capture exit code without triggering set -e
 set +e
