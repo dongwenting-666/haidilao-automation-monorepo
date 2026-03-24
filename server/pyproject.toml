@@ -26,6 +26,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/server"]
 
+[tool.pytest.ini_options]
+markers = ["e2e: end-to-end tests that trigger real automation (SAP GUI, VPN)"]
+addopts = "-m 'not e2e'"
+
 [tool.uv.sources]
 lark-client = { workspace = true, editable = true }
 db-client = { workspace = true, editable = true }
