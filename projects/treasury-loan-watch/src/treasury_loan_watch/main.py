@@ -234,13 +234,13 @@ def main() -> None:
     sheet_id = os.environ.get("TREASURY_SHEET_ID", SHEET_TAB_ID)
 
     from lark_client import chat_id_for
-    chat_id = os.environ.get("TREASURY_NOTIFY_CHAT_ID") or chat_id_for("production_accounting_report_chat") or ""
+    chat_id = os.environ.get("TREASURY_NOTIFY_CHAT_ID") or chat_id_for("hongming") or ""
 
     if not app_id or not app_secret:
         logger.error("LARK_APP_ID and LARK_APP_SECRET must be set")
         sys.exit(1)
     if not chat_id:
-        logger.error("TREASURY_NOTIFY_CHAT_ID not set and 'production_accounting_report_chat' alias missing from notify.toml")
+        logger.error("TREASURY_NOTIFY_CHAT_ID not set and 'hongming' alias missing from notify.toml")
         sys.exit(1)
 
     from lark_client import LarkClient
@@ -251,6 +251,10 @@ def main() -> None:
     with LarkClient(app_id=app_id, app_secret=app_secret) as client:
         loans = fetch_loans(client, sheet_token, sheet_id)
         logger.info("Loaded %d loan records", len(loans))
+
+        # Only watch company code 9451 (Haidilao Canada)
+        loans = [loan for loan in loans if str(loan.company_code).strip() == "9451"]
+        logger.info("Filtered to %d records for company code 9451", len(loans))
 
         due = [loan for loan in loans if loan.maturity_date == check_date]
         logger.info("%d loan(s) due on %s", len(due), check_date)
