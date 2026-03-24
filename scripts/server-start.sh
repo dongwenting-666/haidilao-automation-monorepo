@@ -171,10 +171,23 @@ wait_for_port_free() {
     local max_wait=15
     local waited=0
 
+    # Phase 1: wait for lsof to show no listeners
     while [ $waited -lt $max_wait ]; do
         if ! /usr/sbin/lsof -ti :"$port" >/dev/null 2>&1; then
-            [ $waited -gt 0 ] && log "Port $port free after ${waited}s"
-            return 0
+            # Phase 2: confirm port is truly bindable (handles TCP TIME_WAIT)
+            if python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(('0.0.0.0', $port))
+    s.close()
+except OSError:
+    sys.exit(1)
+" 2>/dev/null; then
+                [ $waited -gt 0 ] && log "Port $port free after ${waited}s"
+                return 0
+            fi
         fi
         if [ $waited -eq 0 ]; then
             log "Port $port still in use — waiting for release..."
@@ -185,7 +198,7 @@ wait_for_port_free() {
 
     log_err "Port $port still in use after ${max_wait}s — killing remaining processes"
     /usr/sbin/lsof -ti :"$port" | xargs kill -9 2>/dev/null || true
-    sleep 1
+    sleep 2
     return 0
 }
 
