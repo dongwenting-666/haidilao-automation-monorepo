@@ -1,7 +1,8 @@
 """Render Excel worksheet tabs as PNG images for Lark delivery.
 
-Uses openpyxl to read cell values and Pillow to draw a table-style image.
-Handles merged cells, number formatting, and auto-sizing columns.
+Reads actual cell styles (fill colors, fonts, borders, alignment, merged
+cells) from the openpyxl workbook and reproduces them faithfully in a
+Pillow image — the output looks like the Excel sheet itself.
 """
 
 from __future__ import annotations
@@ -12,48 +13,113 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from openpyxl import load_workbook
+from openpyxl.styles import Font as XlFont, PatternFill
 from openpyxl.utils import get_column_letter
 from PIL import Image, ImageDraw, ImageFont
 
 if TYPE_CHECKING:
+    from openpyxl.cell import Cell
     from openpyxl.worksheet.worksheet import Worksheet
 
 log = logging.getLogger(__name__)
 
 # ── Layout constants ──────────────────────────────────────────────────────────
-_CELL_PAD_X = 12       # horizontal padding inside each cell
-_CELL_PAD_Y = 8        # vertical padding inside each cell
-_ROW_HEIGHT = 32       # fixed row height in pixels
-_HEADER_BG = (59, 130, 246)    # blue header background
-_HEADER_FG = (255, 255, 255)   # white header text
-_ALT_ROW_BG = (241, 245, 249)  # light grey-blue for alternating rows
-_GRID_COLOR = (209, 213, 219)  # border/grid line color
-_TEXT_COLOR = (31, 41, 55)     # dark text
-_TITLE_BG = (30, 58, 138)     # dark blue for sheet title bar
-_TITLE_FG = (255, 255, 255)
-_TITLE_HEIGHT = 44
-_MAX_COL_WIDTH = 320   # cap column width to prevent ultra-wide images
-_MIN_COL_WIDTH = 70
+_CELL_PAD_X = 8        # horizontal padding inside each cell
+_CELL_PAD_Y = 4        # vertical padding inside each cell
+_DEFAULT_ROW_HEIGHT = 28  # default row height in pixels
+_GRID_COLOR = (169, 169, 169)  # Excel-style grid line color
+_BORDER_COLOR = (128, 128, 128)  # Stronger border for merged cells / outer edges
+_DEFAULT_BG = (255, 255, 255)
+_DEFAULT_FG = (0, 0, 0)
+_MAX_COL_WIDTH = 350
+_MIN_COL_WIDTH = 50
 
 
-def _try_load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    """Load a CJK-capable font, falling back to the default bitmap font."""
-    # macOS system fonts that handle CJK
-    candidates = [
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/System/Library/Fonts/SFNSText.ttf",
-    ]
-    for path in candidates:
+# ── Font loading ──────────────────────────────────────────────────────────────
+_font_cache: dict[tuple[int, bool], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
+
+_CJK_FONT_PATHS = [
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/Helvetica.ttc",
+]
+
+
+def _get_font(size: int = 12, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Load a CJK-capable font with caching."""
+    key = (size, bold)
+    if key in _font_cache:
+        return _font_cache[key]
+
+    font = None
+    for path in _CJK_FONT_PATHS:
         try:
-            return ImageFont.truetype(path, size)
+            # PingFang.ttc: index 0=Regular, index 1=Medium (semi-bold)
+            idx = 1 if bold and "PingFang" in path else 0
+            font = ImageFont.truetype(path, size, index=idx)
+            break
         except (OSError, IOError):
             continue
-    return ImageFont.load_default()
+
+    if font is None:
+        font = ImageFont.load_default()
+
+    _font_cache[key] = font
+    return font
 
 
-def _cell_display_value(cell) -> str:
+# ── Color helpers ─────────────────────────────────────────────────────────────
+
+def _argb_to_rgb(color_str: str | None) -> tuple[int, int, int] | None:
+    """Convert an ARGB hex string (e.g. 'FFFF0000') to an RGB tuple."""
+    if not color_str or color_str == "00000000" or len(color_str) < 6:
+        return None
+    # Strip alpha channel if present
+    hex_part = color_str[-6:]
+    try:
+        r = int(hex_part[0:2], 16)
+        g = int(hex_part[2:4], 16)
+        b = int(hex_part[4:6], 16)
+        return (r, g, b)
+    except (ValueError, IndexError):
+        return None
+
+
+def _cell_bg(cell: "Cell") -> tuple[int, int, int]:
+    """Get the background fill color of a cell."""
+    fill = cell.fill
+    if fill and fill.fill_type == "solid" and fill.start_color:
+        rgb = _argb_to_rgb(str(fill.start_color.rgb) if fill.start_color.rgb else None)
+        if rgb and rgb != (0, 0, 0):  # skip if it resolves to black (theme fallback)
+            return rgb
+    return _DEFAULT_BG
+
+
+def _cell_fg(cell: "Cell") -> tuple[int, int, int]:
+    """Get the text color of a cell."""
+    font = cell.font
+    if font and font.color and font.color.rgb:
+        rgb = _argb_to_rgb(str(font.color.rgb))
+        if rgb:
+            return rgb
+    return _DEFAULT_FG
+
+
+def _cell_font_size(cell: "Cell") -> int:
+    """Get the font size of a cell (default 11)."""
+    if cell.font and cell.font.size:
+        return int(cell.font.size)
+    return 11
+
+
+def _cell_is_bold(cell: "Cell") -> bool:
+    """Check if cell font is bold."""
+    return bool(cell.font and cell.font.bold)
+
+
+# ── Cell value formatting ────────────────────────────────────────────────────
+
+def _cell_display_value(cell: "Cell") -> str:
     """Get the display string for a cell, respecting number formats."""
     if cell.value is None:
         return ""
@@ -73,157 +139,253 @@ def _cell_display_value(cell) -> str:
     return str(v)
 
 
-def _get_merged_value(ws: "Worksheet", row: int, col: int) -> str | None:
-    """If (row, col) is inside a merged range, return the top-left cell value."""
-    for merge_range in ws.merged_cells.ranges:
-        if (row, col) in [(r, c) for r in range(merge_range.min_row, merge_range.max_row + 1)
-                          for c in range(merge_range.min_col, merge_range.max_col + 1)]:
-            cell = ws.cell(merge_range.min_row, merge_range.min_col)
-            return _cell_display_value(cell)
-    return None
+# ── Merged cell tracking ─────────────────────────────────────────────────────
 
+def _build_merge_map(ws: "Worksheet") -> dict[tuple[int, int], tuple[int, int, int, int]]:
+    """Build a map of (row, col) → (min_row, min_col, max_row, max_col) for merged cells."""
+    merge_map: dict[tuple[int, int], tuple[int, int, int, int]] = {}
+    for mr in ws.merged_cells.ranges:
+        for r in range(mr.min_row, mr.max_row + 1):
+            for c in range(mr.min_col, mr.max_col + 1):
+                merge_map[(r, c)] = (mr.min_row, mr.min_col, mr.max_row, mr.max_col)
+    return merge_map
+
+
+# ── Main renderer ─────────────────────────────────────────────────────────────
 
 def render_sheet(ws: "Worksheet", sheet_name: str) -> bytes:
-    """Render a single worksheet to a PNG image (returned as bytes).
-
-    The image looks like a clean data table with a title bar showing the
-    sheet name, a coloured header row, alternating row backgrounds, and
-    grid lines.
-    """
-    font = _try_load_font(14)
-    font_bold = _try_load_font(15)
-    font_title = _try_load_font(18)
-
+    """Render a single worksheet to a PNG image faithfully reproducing Excel styling."""
     max_row = ws.max_row or 1
     max_col = ws.max_column or 1
+    merge_map = _build_merge_map(ws)
 
-    # Read all cell text values
-    grid: list[list[str]] = []
-    for r in range(1, max_row + 1):
-        row_vals: list[str] = []
-        for c in range(1, max_col + 1):
-            cell = ws.cell(r, c)
-            text = _cell_display_value(cell)
-            if not text:
-                # Check if part of a merged range
-                merged = _get_merged_value(ws, r, c)
-                if merged:
-                    text = merged
-            row_vals.append(text)
-        grid.append(row_vals)
-
-    if not grid:
-        return b""
-
-    # Compute column widths based on content
+    # ── Phase 1: Measure column widths ────────────────────────────────────
     col_widths: list[int] = []
-    for c in range(max_col):
-        max_w = _MIN_COL_WIDTH
-        for row_vals in grid:
-            if c < len(row_vals):
-                try:
-                    bbox = font.getbbox(row_vals[c])
-                    w = bbox[2] - bbox[0] if bbox else 0
-                except Exception:
-                    w = len(row_vals[c]) * 9
-                max_w = max(max_w, w + _CELL_PAD_X * 2)
-        col_widths.append(min(max_w, _MAX_COL_WIDTH))
+    for c in range(1, max_col + 1):
+        # Check if worksheet has an explicit column width
+        col_letter = get_column_letter(c)
+        ws_col_dim = ws.column_dimensions.get(col_letter)
+        if ws_col_dim and ws_col_dim.width and ws_col_dim.width > 0:
+            # openpyxl width is in "characters" (~7px each)
+            px = int(ws_col_dim.width * 7.5) + _CELL_PAD_X * 2
+        else:
+            # Auto-size from content
+            px = _MIN_COL_WIDTH
+            for r in range(1, max_row + 1):
+                cell = ws.cell(r, c)
+                # Skip cells that are part of a merge but not the top-left
+                if (r, c) in merge_map:
+                    mr_min_r, mr_min_c, _, _ = merge_map[(r, c)]
+                    if r != mr_min_r or c != mr_min_c:
+                        continue
+                text = _cell_display_value(cell)
+                if text:
+                    font = _get_font(_cell_font_size(cell), _cell_is_bold(cell))
+                    try:
+                        bbox = font.getbbox(text)
+                        tw = bbox[2] - bbox[0] if bbox else len(text) * 8
+                    except Exception:
+                        tw = len(text) * 8
+                    px = max(px, tw + _CELL_PAD_X * 2)
+        col_widths.append(min(max(px, _MIN_COL_WIDTH), _MAX_COL_WIDTH))
 
-    # Image dimensions
-    table_width = sum(col_widths) + 1  # +1 for right border
-    table_height = _TITLE_HEIGHT + _ROW_HEIGHT * max_row + 1
-    img_width = table_width + 20   # 10px margin each side
-    img_height = table_height + 20
+    # ── Phase 2: Measure row heights ──────────────────────────────────────
+    row_heights: list[int] = []
+    for r in range(1, max_row + 1):
+        ws_row_dim = ws.row_dimensions.get(r)
+        if ws_row_dim and ws_row_dim.height and ws_row_dim.height > 0:
+            h = int(ws_row_dim.height * 1.33)  # Excel points → pixels
+        else:
+            h = _DEFAULT_ROW_HEIGHT
+        row_heights.append(max(h, _DEFAULT_ROW_HEIGHT))
+
+    # ── Phase 3: Compute positions ────────────────────────────────────────
+    margin = 6
+    table_width = sum(col_widths) + 1
+    table_height = sum(row_heights) + 1
+
+    col_x: list[int] = [margin]
+    for w in col_widths:
+        col_x.append(col_x[-1] + w)
+
+    row_y: list[int] = [margin]
+    for h in row_heights:
+        row_y.append(row_y[-1] + h)
+
+    img_width = table_width + margin * 2
+    img_height = table_height + margin * 2
 
     img = Image.new("RGB", (img_width, img_height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    x_offset = 10
-    y_offset = 10
+    # ── Phase 4: Draw cell backgrounds ────────────────────────────────────
+    drawn_merges: set[tuple[int, int, int, int]] = set()
 
-    # Title bar
-    draw.rectangle(
-        [x_offset, y_offset, x_offset + table_width - 1, y_offset + _TITLE_HEIGHT - 1],
-        fill=_TITLE_BG,
-    )
-    draw.text(
-        (x_offset + 16, y_offset + (_TITLE_HEIGHT - 18) // 2),
-        sheet_name,
-        fill=_TITLE_FG,
-        font=font_title,
-    )
+    for r in range(1, max_row + 1):
+        for c in range(1, max_col + 1):
+            ri = r - 1  # 0-indexed
+            ci = c - 1
 
-    # Draw rows
-    y = y_offset + _TITLE_HEIGHT
-    for row_idx, row_vals in enumerate(grid):
-        x = x_offset
-        is_header = row_idx == 0
-        is_alt = not is_header and row_idx % 2 == 0
+            # Handle merged cells
+            if (r, c) in merge_map:
+                mr = merge_map[(r, c)]
+                if r != mr[0] or c != mr[1]:
+                    continue  # not the top-left — skip
+                if mr in drawn_merges:
+                    continue
+                drawn_merges.add(mr)
 
-        # Row background
-        if is_header:
-            bg = _HEADER_BG
-        elif is_alt:
-            bg = _ALT_ROW_BG
-        else:
-            bg = (255, 255, 255)
+                # Merged range coordinates
+                x1 = col_x[mr[1] - 1]
+                y1 = row_y[mr[0] - 1]
+                x2 = col_x[mr[3]] - 1  # max_col
+                y2 = row_y[mr[2]] - 1  # max_row
 
-        draw.rectangle(
-            [x, y, x + table_width - 1, y + _ROW_HEIGHT - 1],
-            fill=bg,
-        )
+                cell = ws.cell(mr[0], mr[1])
+                bg = _cell_bg(cell)
+                draw.rectangle([x1, y1, x2, y2], fill=bg)
 
-        # Cell values
-        for col_idx, text in enumerate(row_vals):
-            if col_idx >= len(col_widths):
-                break
-            cw = col_widths[col_idx]
+                # Draw text in merged cell
+                text = _cell_display_value(cell)
+                if text:
+                    fg = _cell_fg(cell)
+                    font_size = min(_cell_font_size(cell) + 2, 22)  # scale up slightly for screen
+                    font = _get_font(font_size, _cell_is_bold(cell))
 
-            # Truncate if too long
-            display = text
-            try:
-                bbox = font.getbbox(display)
-                tw = bbox[2] - bbox[0] if bbox else 0
-            except Exception:
-                tw = len(display) * 9
-            while tw > cw - _CELL_PAD_X * 2 and len(display) > 1:
-                display = display[:-2] + "…"
+                    # Center text in merged range
+                    try:
+                        bbox = font.getbbox(text)
+                        tw = bbox[2] - bbox[0] if bbox else 0
+                        th = bbox[3] - bbox[1] if bbox else font_size
+                    except Exception:
+                        tw, th = len(text) * 8, font_size
+
+                    # Handle multi-line text (wrap_text)
+                    lines = text.split("\n")
+                    if len(lines) > 1:
+                        total_h = th * len(lines)
+                        ty = y1 + ((y2 - y1) - total_h) // 2
+                        for line in lines:
+                            try:
+                                lbbox = font.getbbox(line)
+                                lw = lbbox[2] - lbbox[0] if lbbox else 0
+                            except Exception:
+                                lw = len(line) * 8
+                            tx = x1 + ((x2 - x1) - lw) // 2
+                            draw.text((tx, ty), line, fill=fg, font=font)
+                            ty += th
+                    else:
+                        tx = x1 + ((x2 - x1) - tw) // 2
+                        ty = y1 + ((y2 - y1) - th) // 2
+                        draw.text((tx, ty), text, fill=fg, font=font)
+                continue
+
+            # Regular (non-merged) cell
+            x1 = col_x[ci]
+            y1 = row_y[ri]
+            x2 = col_x[ci + 1] - 1
+            y2 = row_y[ri + 1] - 1
+
+            cell = ws.cell(r, c)
+            bg = _cell_bg(cell)
+            draw.rectangle([x1, y1, x2, y2], fill=bg)
+
+            text = _cell_display_value(cell)
+            if text:
+                fg = _cell_fg(cell)
+                font_size = min(_cell_font_size(cell) + 2, 22)
+                font = _get_font(font_size, _cell_is_bold(cell))
+
                 try:
-                    bbox = font.getbbox(display)
+                    bbox = font.getbbox(text)
                     tw = bbox[2] - bbox[0] if bbox else 0
+                    th = bbox[3] - bbox[1] if bbox else font_size
                 except Exception:
-                    tw = len(display) * 9
+                    tw, th = len(text) * 8, font_size
 
-            fg = _HEADER_FG if is_header else _TEXT_COLOR
-            f = font_bold if is_header else font
+                cell_w = x2 - x1
+                cell_h = y2 - y1
 
-            # Right-align numbers, left-align text
-            is_numeric = text and any(ch.isdigit() for ch in text) and not any(
-                u'\u4e00' <= ch <= u'\u9fff' for ch in text
-            )
-            if is_numeric and not is_header:
-                text_x = x + cw - _CELL_PAD_X - tw
-            else:
-                text_x = x + _CELL_PAD_X
+                # Truncate if too wide
+                display = text
+                while tw > cell_w - _CELL_PAD_X * 2 and len(display) > 2:
+                    display = display[:-2] + "…"
+                    try:
+                        bbox = font.getbbox(display)
+                        tw = bbox[2] - bbox[0] if bbox else 0
+                    except Exception:
+                        tw = len(display) * 8
 
-            text_y = y + (_ROW_HEIGHT - 14) // 2
-            draw.text((text_x, text_y), display, fill=fg, font=f)
+                # Alignment
+                alignment = cell.alignment
+                h_align = alignment.horizontal if alignment else None
 
-            # Vertical grid line
-            draw.line([(x + cw, y), (x + cw, y + _ROW_HEIGHT)], fill=_GRID_COLOR)
+                if h_align == "center":
+                    tx = x1 + (cell_w - tw) // 2
+                elif h_align == "right":
+                    tx = x2 - _CELL_PAD_X - tw
+                elif h_align == "left" or h_align is None:
+                    # Default: right-align numbers, left-align text
+                    is_numeric = isinstance(cell.value, (int, float))
+                    if is_numeric:
+                        tx = x2 - _CELL_PAD_X - tw
+                    else:
+                        tx = x1 + _CELL_PAD_X
+                else:
+                    tx = x1 + _CELL_PAD_X
 
-            x += cw
+                ty = y1 + (cell_h - th) // 2
+                draw.text((tx, ty), display, fill=fg, font=font)
 
-        # Horizontal grid line
-        draw.line([(x_offset, y + _ROW_HEIGHT), (x_offset + table_width - 1, y + _ROW_HEIGHT)], fill=_GRID_COLOR)
+    # ── Phase 5: Draw grid lines (skip lines inside merged ranges) ──────
+    # Build sets of grid segments to suppress inside merged areas
+    suppress_h: set[tuple[int, int]] = set()  # (row_boundary, col) — suppress horizontal line at this col
+    suppress_v: set[tuple[int, int]] = set()  # (col_boundary, row) — suppress vertical line at this row
+    for mr in drawn_merges:
+        min_r, min_c, max_r, max_c = mr
+        # Suppress internal horizontal lines
+        for rb in range(min_r, max_r):  # internal row boundaries
+            for c in range(min_c, max_c + 1):
+                suppress_h.add((rb, c))
+        # Suppress internal vertical lines
+        for cb in range(min_c, max_c):  # internal col boundaries
+            for r in range(min_r, max_r + 1):
+                suppress_v.add((cb, r))
 
-        y += _ROW_HEIGHT
+    # Horizontal lines — draw segments, skipping suppressed parts
+    for ri in range(max_row + 1):
+        seg_start = col_x[0]
+        for ci in range(max_col):
+            # Check if this segment (row boundary ri, column ci+1) is suppressed
+            # ri=0 is the top border, ri=max_row is the bottom border
+            # Suppress applies to internal row boundaries: ri corresponds to "after row ri"
+            if (ri, ci + 1) in suppress_h:
+                # Draw accumulated segment up to this point
+                if col_x[ci] > seg_start:
+                    draw.line([(seg_start, row_y[ri]), (col_x[ci], row_y[ri])], fill=_GRID_COLOR)
+                seg_start = col_x[ci + 1]
+        # Draw remaining segment
+        if col_x[-1] > seg_start:
+            draw.line([(seg_start, row_y[ri]), (col_x[-1], row_y[ri])], fill=_GRID_COLOR)
 
-    # Outer border
-    draw.rectangle(
-        [x_offset, y_offset + _TITLE_HEIGHT, x_offset + table_width - 1, y],
-        outline=_GRID_COLOR,
-    )
+    # Vertical lines — draw segments, skipping suppressed parts
+    for ci in range(max_col + 1):
+        seg_start = row_y[0]
+        for ri in range(max_row):
+            if (ci, ri + 1) in suppress_v:
+                if row_y[ri] > seg_start:
+                    draw.line([(col_x[ci], seg_start), (col_x[ci], row_y[ri])], fill=_GRID_COLOR)
+                seg_start = row_y[ri + 1]
+        if row_y[-1] > seg_start:
+            draw.line([(col_x[ci], seg_start), (col_x[ci], row_y[-1])], fill=_GRID_COLOR)
+
+    # ── Phase 6: Draw borders for merged cells (on top of grid) ───────────
+    for mr in drawn_merges:
+        x1 = col_x[mr[1] - 1]
+        y1 = row_y[mr[0] - 1]
+        x2 = col_x[mr[3]]
+        y2 = row_y[mr[2]]
+        draw.rectangle([x1, y1, x2, y2], outline=_BORDER_COLOR)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
