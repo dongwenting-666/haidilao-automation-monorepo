@@ -34,7 +34,7 @@ chat = "hongming"
 # user_id = "ou_xxxxxxxxxxxxxxxxxxxxxxxx"
 
 [treasury-loan-watch]
-chat = "production_accounting_report_chat"
+chat = "hongming"
 
 [store-hours-collect]
 chat            = "hongming"    # run-complete card → admin (failure only)
