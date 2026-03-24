@@ -2,6 +2,38 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from daily_store_operation_report.transform import StoreMetrics
+
+
+def region_turnover_rate(
+    stores: dict[str, "StoreMetrics"],
+    store_list: list[str],
+    *,
+    tables_attr: str = "mtd_tables",
+    num_days: int,
+) -> float:
+    """Compute region average turnover rate using the capacity formula.
+
+    Formula: total_tables / (total_seats × days)
+
+    This matches the QBI dashboard's 当月累计平均翻台率 — a weighted
+    average by restaurant capacity, not a simple average of per-store
+    daily turnover rates.
+
+    *tables_attr* selects which table count to use (e.g. "mtd_tables",
+    "yoy_mtd_tables", "prev_mtd_tables").
+    """
+    active = [s for s in store_list
+              if getattr(stores[s], tables_attr, 0) > 0 and stores[s].seats > 0]
+    if not active:
+        return 0.0
+    total_tables = sum(getattr(stores[s], tables_attr) for s in active)
+    total_seats = sum(stores[s].seats for s in active)
+    return div_or_zero(total_tables, total_seats * num_days)
+
 
 def div_or_zero(a: float, b: float) -> float:
     """Divide a by b, returning 0 when b is 0."""

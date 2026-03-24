@@ -27,7 +27,7 @@ from daily_store_operation_report.sheets.styles import (
     apply_fill_row,
 )
 from daily_store_operation_report.transform import ReportData
-from daily_store_operation_report.utils import div_or_zero, pct_str
+from daily_store_operation_report.utils import div_or_zero, pct_str, region_turnover_rate
 
 
 _NCOLS = 11  # A..K
@@ -112,13 +112,16 @@ def build_yoy_summary_sheet(wb: Workbook, data: ReportData) -> Worksheet:
     ws["A8"].alignment = CENTER
 
     tr_cur = [data.stores[s].mtd_turnover_rate for s in ordered_stores]
-    tr_cur_nonzero = [data.stores[s].mtd_turnover_rate for s in ordered_stores if data.stores[s].mtd_tables > 0]
-    region_avg_tr = sum(tr_cur_nonzero) / len(tr_cur_nonzero) if tr_cur_nonzero else 0
+    num_days = dates.day_of_month
+    region_avg_tr = region_turnover_rate(
+        data.stores, ordered_stores, tables_attr="mtd_tables", num_days=num_days,
+    )
     _write_row(8, "本月截止目前", tr_cur, region_avg_tr)
 
     tr_yoy = [data.stores[s].yoy_mtd_turnover_rate for s in ordered_stores]
-    yoy_tr_nonzero = [data.stores[s].yoy_mtd_turnover_rate for s in ordered_stores if data.stores[s].yoy_mtd_tables > 0]
-    region_avg_tr_yoy = sum(yoy_tr_nonzero) / len(yoy_tr_nonzero) if yoy_tr_nonzero else 0
+    region_avg_tr_yoy = region_turnover_rate(
+        data.stores, ordered_stores, tables_attr="yoy_mtd_tables", num_days=num_days,
+    )
     _write_row(9, "去年截止同期", tr_yoy, region_avg_tr_yoy)
 
     tr_diff = [data.stores[s].mtd_turnover_rate - data.stores[s].yoy_mtd_turnover_rate for s in ordered_stores]

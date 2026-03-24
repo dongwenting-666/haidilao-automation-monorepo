@@ -224,9 +224,17 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
     # vs sum cols (tables/桌数: cols 9, 11, 13, 14, 15)
     # Difference cols (6=目标差异, 7=同比差异, 12=翻台率同比差异) are derived
     # from already-averaged values AFTER the main loop — not averaged directly.
-    _WEIGHTED_AVG_COLS = {3, 5, 8}  # current-period TR → weighted by seats
-    _SIMPLE_AVG_COLS = {4, 10}       # YoY TR → simple avg excluding zeros (stores may not exist in prior year)
-    _DIFF_COLS = {6, 7, 12}          # derived after averaging — col6=col3-col5, col7=col3-col4, col12=col8-col10
+    # Turnover rate columns use the capacity formula: total_tables / (total_seats × days)
+    # This matches QBI's 当月累计平均翻台率 — weighted by restaurant capacity.
+    # Col 3 (今年 TR), Col 4 (去年 TR), Col 5 (目标 TR): capacity-weighted
+    # Col 8 (当日 TR), Col 10 (去年同周同日 TR): capacity-weighted (1 day)
+    # Col 9, 11, 13, 14, 15: straight sums (桌数)
+    # Col 6, 7, 12: derived diffs
+    _CAPACITY_AVG_COLS = {3, 4, 5, 8, 10}
+    _DIFF_COLS = {6, 7, 12}
+
+    num_days = dates.day_of_month
+    total_seats = sum(s for s in store_seats if s > 0)
 
     region_vals: dict[int, float] = {}
     for col_idx in range(3, _NCOLS + 1):
@@ -234,18 +242,16 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
             continue  # computed after the loop
         values = [st[col_idx] for st in store_subtotals]
         total = sum(values)
-        if col_idx in _WEIGHTED_AVG_COLS:
-            total_seats = sum(s for s in store_seats if s > 0)
+        if col_idx in _CAPACITY_AVG_COLS:
             if total_seats:
+                # Sum of per-store (turnover × seats) / total_seats
+                # = total_tables / (total_seats × days) since per-store TR = tables/(seats×days)
                 total = sum(
                     v * s for v, s in zip(values, store_seats) if s > 0
                 ) / total_seats
             else:
                 nonzero = sum(1 for v in values if v != 0)
                 total = total / (nonzero or 1)
-        elif col_idx in _SIMPLE_AVG_COLS:
-            nonzero = sum(1 for v in values if v != 0)
-            total = total / (nonzero or 1)
         # else: sum (桌数 columns)
         region_vals[col_idx] = total
 
