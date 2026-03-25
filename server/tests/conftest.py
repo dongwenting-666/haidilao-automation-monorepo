@@ -19,19 +19,25 @@ def _clean_runs():
     _runs.clear()
 
 
+TEST_RUN_TOKEN = "test-token"
+
 @pytest.fixture(autouse=True)
 def _disable_run_guard(monkeypatch):
-    """Disable the run guard, API key checks, and SAP guard in tests by default.
+    """Set a predictable test RUN_TOKEN and enable SAP for tests.
 
-    Tests that explicitly test the guard (test_run_guard.py, test_api_keys.py)
-    override this by setting run_token or mocking api_keys functions.
+    All tests use X-Run-Token: test-token for authenticated requests.
+    Tests in test_run_guard.py override run_token as needed.
     """
     monkeypatch.setenv("HAIDILAO_SAP_ENABLED", "1")  # allow ksb1 runs in tests
-    monkeypatch.setattr("server.config.settings.run_token", "")
-    # Mock has_any_api_keys to return False so the run guard is disabled.
-    # This is imported lazily in run_guard.require_run_token, so we patch the source module.
+    monkeypatch.setattr("server.config.settings.run_token", TEST_RUN_TOKEN)
     import server.api_keys as _ak
-    monkeypatch.setattr(_ak, "has_any_api_keys", lambda: False)
+    monkeypatch.setattr(_ak, "verify_api_key", lambda key: None)  # no API keys in tests
+
+
+@pytest.fixture()
+def auth_headers() -> dict[str, str]:
+    """Auth headers for tests that hit protected endpoints."""
+    return {"X-Run-Token": TEST_RUN_TOKEN}
 
 
 @pytest.fixture()
@@ -62,7 +68,20 @@ def mock_subprocess():
 
 @pytest.fixture()
 def client():
-    """FastAPI TestClient with server exceptions suppressed."""
+    """FastAPI TestClient with the test RUN_TOKEN pre-set in headers."""
+    from server.app import app
+
+    with TestClient(
+        app,
+        raise_server_exceptions=False,
+        headers={"X-Run-Token": TEST_RUN_TOKEN},
+    ) as c:
+        yield c
+
+
+@pytest.fixture()
+def unauthed_client():
+    """FastAPI TestClient with NO auth headers — for testing 403 responses."""
     from server.app import app
 
     with TestClient(app, raise_server_exceptions=False) as c:

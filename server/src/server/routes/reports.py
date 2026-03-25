@@ -97,13 +97,25 @@ def _daily_report_path(report_date: date) -> Path:
 
 
 @router.get("/daily/{report_date}", dependencies=[Depends(require_run_token)])
-async def get_daily_report(report_date: date, no_cache: bool = False):
+async def get_daily_report(report_date: date):
     """Download the daily store operation report for *report_date* (YYYY-MM-DD).
 
-    Pass ``?no_cache=true`` to force regeneration even if a file already exists.
+    Returns 200 with file if cached, or 202 to trigger generation.
+    Use POST /api/reports/daily/{date}/regenerate to force regeneration.
     """
     path = _daily_report_path(report_date)
-    if no_cache and path.is_file():
+    return _serve_or_queue(
+        path,
+        "daily-report",
+        {"date": report_date.isoformat()},
+    )
+
+
+@router.post("/daily/{report_date}/regenerate", dependencies=[Depends(require_run_token)])
+async def regenerate_daily_report(report_date: date):
+    """Force regeneration of the daily report, deleting any cached file first."""
+    path = _daily_report_path(report_date)
+    if path.is_file():
         path.unlink()
     return _serve_or_queue(
         path,
@@ -142,15 +154,11 @@ def _ksb1_report_path(year: int, month: int) -> Path | None:
 # Treasury loan watch (test/manual trigger)
 # ---------------------------------------------------------------------------
 
-@router.get("/treasury/check/{check_date}", dependencies=[Depends(require_run_token)])
+@router.post("/treasury/check/{check_date}", dependencies=[Depends(require_run_token)])
 async def check_treasury_loans(check_date: date):
-    """Trigger a treasury loan maturity check for a specific date.
-
-    Useful for testing: ``GET /api/reports/treasury/check/2026-03-22``
-    will check and notify for loans due on March 22.
-    """
+    """Trigger a treasury loan maturity check for a specific date."""
     return _serve_or_queue(
-        None,  # no cached file — always runs
+        None,
         "treasury-loan-watch",
         {"date": check_date.isoformat()},
     )
@@ -160,12 +168,9 @@ async def check_treasury_loans(check_date: date):
 # Store working-hour data collection (manual trigger)
 # ---------------------------------------------------------------------------
 
-@router.get("/store-hours/check/{check_date}", dependencies=[Depends(require_run_token)])
+@router.post("/store-hours/check/{check_date}", dependencies=[Depends(require_run_token)])
 async def check_store_hours(check_date: date):
-    """Trigger store working-hour data collection for a specific date.
-
-    Example: ``GET /api/reports/store-hours/check/2026-03-16``
-    """
+    """Trigger store working-hour data collection for a specific date."""
     return _serve_or_queue(
         None,
         "store-hours-collect",

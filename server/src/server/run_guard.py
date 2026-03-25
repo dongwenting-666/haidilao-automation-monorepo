@@ -7,6 +7,9 @@ exist yet (backwards compatible).
 The scheduler's cron jobs call ``create_run()`` directly (in-process), so
 they bypass this check entirely.
 
+Auth is ALWAYS required. There is no "allow all if unconfigured" fallback —
+that was the root cause of unauthorized SAP automation being triggered.
+
 Usage in routes::
 
     from server.run_guard import require_run_token
@@ -35,12 +38,12 @@ async def require_run_token(
 
     Checks in order:
     1. X-API-Key header → verify via api_keys module, require ``runs:trigger`` scope
-    2. X-Run-Token header → check against ``settings.run_token`` (legacy fallback)
-    3. If neither auth mechanism is configured (no API keys, no RUN_TOKEN) → allow all
+    2. X-Run-Token header → check against ``settings.run_token``
+    3. No valid auth → always 403. No unauthenticated fallback.
 
     The scheduler calls ``create_run()`` directly and bypasses this entirely.
     """
-    from server.api_keys import has_any_api_keys, verify_api_key
+    from server.api_keys import verify_api_key
 
     # 1. Try API key first
     raw_key = x_api_key or request.query_params.get("api_key")
@@ -54,21 +57,15 @@ async def require_run_token(
         return  # authorized
 
     # 2. Try RUN_TOKEN (legacy)
-    if settings.run_token:
-        if x_run_token == settings.run_token:
-            return  # authorized
-        if x_run_token:
-            raise HTTPException(status_code=403, detail="Invalid X-Run-Token")
-        # No X-Run-Token header — fall through to check if we should require it
+    if settings.run_token and x_run_token == settings.run_token:
+        return  # authorized
 
-    # 3. If any API keys exist in DB, require one
-    if has_any_api_keys():
-        raise HTTPException(status_code=403, detail="X-API-Key header required")
-
-    # 4. If RUN_TOKEN is set but not provided
-    if settings.run_token:
-        log.warning("Run request blocked: missing X-Run-Token or X-API-Key header")
-        raise HTTPException(status_code=403, detail="X-API-Key or X-Run-Token header required")
-
-    # 5. No auth configured at all — allow (backwards compatible)
-    return
+    # 3. Deny — auth is always required
+    log.warning(
+        "Blocked unauthenticated request: %s %s from %s",
+        request.method, request.url.path, request.client.host if request.client else "unknown",
+    )
+    raise HTTPException(
+        status_code=403,
+        detail="Authentication required: provide X-API-Key or X-Run-Token header",
+    )

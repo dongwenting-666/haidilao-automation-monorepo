@@ -148,9 +148,10 @@ def test_list_runs_empty(client):
 
 
 def test_create_and_get_run(client, mock_subprocess):
-    # Trigger a run via the commands endpoint
-    resp = client.post("/api/commands/ksb1/run")
-    run_id = resp.json()["run_id"]
+    # /api/commands route is removed — create a run directly via create_run
+    from server.routes.runs import create_run
+    run = create_run("ksb1", {})
+    run_id = run.id
 
     # List should contain it
     runs = client.get("/api/runs").json()

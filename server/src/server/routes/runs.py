@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from server.run_guard import require_run_token
 
 from server.commands import get_command
 from server.config import REPO_ROOT
@@ -233,12 +235,12 @@ def create_run(command_name: str, params: dict[str, Any], *, notify_chat: str = 
     return run
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_run_token)])
 async def list_runs() -> list[dict[str, Any]]:
     return [r.to_dict() for r in reversed(_runs.values())]
 
 
-@router.get("/{run_id}")
+@router.get("/{run_id}", dependencies=[Depends(require_run_token)])
 async def get_run(run_id: str) -> dict[str, Any]:
     run = _runs.get(run_id)
     if run is None:

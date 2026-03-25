@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from server.config import settings
+from server.run_guard import require_run_token
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -21,7 +22,7 @@ def _safe_path(subpath: str) -> Path:
     return target
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(require_run_token)])
 async def list_files(subdir: str = "") -> list[dict[str, Any]]:
     root = _safe_path(subdir)
     if not root.is_dir():
@@ -37,7 +38,7 @@ async def list_files(subdir: str = "") -> list[dict[str, Any]]:
     return items
 
 
-@router.get("/{path:path}")
+@router.get("/{path:path}", dependencies=[Depends(require_run_token)])
 async def download_file(path: str) -> FileResponse:
     target = _safe_path(path)
     if not target.is_file():

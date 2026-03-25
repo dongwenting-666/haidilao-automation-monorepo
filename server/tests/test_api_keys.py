@@ -147,54 +147,51 @@ class TestHasAnyApiKeys:
 # ---------------------------------------------------------------------------
 
 class TestRunGuardWithApiKeys:
-    """Test that the run guard accepts API keys with runs:trigger scope."""
+    """Test that the run guard accepts API keys with runs:trigger scope.
+
+    Uses /api/reports/daily/{date} as the test endpoint since /api/commands is removed.
+    """
 
     @pytest.fixture(autouse=True)
     def _set_token(self, monkeypatch):
         monkeypatch.setattr("server.config.settings.run_token", "legacy-token")
+        import server.routes.reports as reports_mod
+        from pathlib import Path
+        monkeypatch.setattr(reports_mod, "_DAILY_OUTPUT", Path("/nonexistent"))
 
-    def test_api_key_with_runs_trigger(self, client):
-        with patch("server.api_keys.has_any_api_keys", return_value=True), \
-             patch("server.api_keys.verify_api_key", return_value={
+    def test_api_key_with_runs_trigger(self, unauthed_client, mock_subprocess):
+        with patch("server.api_keys.verify_api_key", return_value={
                  "open_id": "ou_1", "scopes": "runs:trigger", "label": "test"
              }):
-            resp = client.post(
-                "/api/commands/daily-report/run",
-                json={"params": {}},
+            resp = unauthed_client.get(
+                "/api/reports/daily/2026-03-18",
                 headers={"X-API-Key": "hld_testkey"},
             )
-            # 200 = authorized (mock_subprocess not set, but auth passed)
             assert resp.status_code != 403
 
-    def test_api_key_without_scope_rejected(self, client):
-        with patch("server.api_keys.has_any_api_keys", return_value=True), \
-             patch("server.api_keys.verify_api_key", return_value={
+    def test_api_key_without_scope_rejected(self, unauthed_client):
+        with patch("server.api_keys.verify_api_key", return_value={
                  "open_id": "ou_1", "scopes": "reports:read", "label": "test"
              }):
-            resp = client.post(
-                "/api/commands/daily-report/run",
-                json={"params": {}},
+            resp = unauthed_client.get(
+                "/api/reports/daily/2026-03-18",
                 headers={"X-API-Key": "hld_testkey"},
             )
             assert resp.status_code == 403
 
-    def test_legacy_run_token_still_works(self, client, mock_subprocess):
-        with patch("server.api_keys.has_any_api_keys", return_value=False):
-            resp = client.post(
-                "/api/commands/daily-report/run",
-                json={"params": {}},
-                headers={"X-Run-Token": "legacy-token"},
-            )
-            assert resp.status_code == 200
+    def test_legacy_run_token_still_works(self, unauthed_client, mock_subprocess):
+        resp = unauthed_client.get(
+            "/api/reports/daily/2026-03-18",
+            headers={"X-Run-Token": "legacy-token"},
+        )
+        assert resp.status_code == 202
 
-    def test_admin_scope_grants_runs(self, client, mock_subprocess):
-        with patch("server.api_keys.has_any_api_keys", return_value=True), \
-             patch("server.api_keys.verify_api_key", return_value={
+    def test_admin_scope_grants_runs(self, unauthed_client, mock_subprocess):
+        with patch("server.api_keys.verify_api_key", return_value={
                  "open_id": "ou_1", "scopes": "admin", "label": "super"
              }):
-            resp = client.post(
-                "/api/commands/daily-report/run",
-                json={"params": {}},
+            resp = unauthed_client.get(
+                "/api/reports/daily/2026-03-18",
                 headers={"X-API-Key": "hld_admin"},
             )
-            assert resp.status_code == 200
+            assert resp.status_code == 202

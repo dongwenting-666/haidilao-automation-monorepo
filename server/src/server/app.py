@@ -33,6 +33,10 @@ app = FastAPI(
     description="HTTP API for triggering automation commands, viewing run history, and downloading output files.",
     version="0.1.0",
     lifespan=lifespan,
+    # Disable public API docs — exposes endpoint schema to scanners
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 app.include_router(api_router)
 app.include_router(admin_router)
