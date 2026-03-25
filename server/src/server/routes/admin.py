@@ -8,6 +8,7 @@ Routes:
     GET  /admin/targets      → targets admin page (HTML)  [auth required]
     POST /admin/targets      → save targets (JSON API)    [auth required]
     GET  /admin/competitors  → competitors admin page (HTML)  [auth required]
+    GET  /admin/api-keys     → API key management page (HTML) [super-admin]
     POST /admin/competitors  → save competitors (JSON API)    [auth required]
 """
 
@@ -116,16 +117,20 @@ _HEADER_TMPL = """
 """
 
 _TOOLS_NAV_LINK = '<a href="/admin/tools" class="{tools_active}">工具</a>'
+_APIKEYS_NAV_LINK = '<a href="/admin/api-keys" class="{ak_active}">API密钥</a>'
 
 
 def _header(page: str, name: str = "", super_admin: bool = False) -> str:
     tools_link = _TOOLS_NAV_LINK.format(
         tools_active="active" if page == "tools" else ""
     ) if super_admin else ""
+    apikeys_link = _APIKEYS_NAV_LINK.format(
+        ak_active="active" if page == "api-keys" else ""
+    ) if super_admin else ""
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
-        tools_link=tools_link,
+        tools_link=tools_link + apikeys_link,
         name=name or "管理员",
     )
 
@@ -737,14 +742,206 @@ async def set_whitelist(request: Request, session: dict = Depends(require_auth))
 # ── API Key Management (super-admin only) ─────────────────────────────────
 
 
-@router.get("/api-keys")
-async def list_api_keys_page(session: dict = Depends(require_auth)):
-    from server.auth import is_super_admin
+@router.get("/api-keys", response_class=HTMLResponse)
+async def list_api_keys_page(request: Request, session: dict = Depends(require_auth)):
     if not is_super_admin(session["open_id"]):
-        return JSONResponse({"ok": False, "error": "Super admin required"}, status_code=403)
+        return HTMLResponse("<h2>403 — Super admin required</h2>", status_code=403)
+
     from server.api_keys import list_api_keys
+    from server.db import get_admin_users
+
     keys = list_api_keys()
-    return JSONResponse({"ok": True, "keys": keys}, headers={"Content-Type": "application/json"})
+    users = {u["open_id"]: u["name"] for u in get_admin_users() if u["whitelisted"]}
+
+    key_rows = ""
+    for k in keys:
+        revoked = k.get("revoked")
+        status = '<span style="color:#c0392b">已撤销</span>' if revoked \
+            else '<span style="color:#27ae60">有效</span>'
+        created = str(k.get("created_at", ""))[:16].replace("T", " ")
+        last_used = str(k.get("last_used_at", ""))[:16].replace("T", " ") if k.get("last_used_at") else "—"
+        owner = k.get("open_id", "")
+        owner_name = users.get(owner, owner)
+        scopes = k.get("scopes", "")
+        label = html.escape(k.get("label", ""))
+        key_id = k.get("id", "")
+        revoke_btn = "" if revoked else f'<button class="btn btn-sm" style="background:#c0392b;color:#fff" onclick="revokeKey({key_id}, this)">撤销</button>'
+        key_rows += f"""<tr>
+            <td>{key_id}</td>
+            <td>{label}</td>
+            <td>{owner_name}</td>
+            <td style="font-size:0.8rem;color:#666">{scopes}</td>
+            <td>{status}</td>
+            <td>{created}</td>
+            <td>{last_used}</td>
+            <td>{revoke_btn}</td>
+        </tr>"""
+
+    if not key_rows:
+        key_rows = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px">暂无API密钥</td></tr>'
+
+    # Build user options for the create form
+    user_options = "".join(
+        f'<option value="{oid}">{name}</option>'
+        for oid, name in users.items()
+    )
+
+    user_name = session.get("name", "管理员")
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>API密钥管理 — 管理后台</title>
+<style>
+  .modal-bg {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }}
+  .modal-bg.open {{ display:flex; }}
+  .modal {{ background:#fff; border-radius:10px; padding:28px 32px; min-width:400px; max-width:520px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2); }}
+  .modal h3 {{ margin:0 0 18px; font-size:1.1rem; }}
+  .form-row {{ margin-bottom:14px; }}
+  .form-row label {{ display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px; color:#555; }}
+  .form-row input, .form-row select {{ width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; }}
+  .key-reveal {{ background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:16px; margin-top:16px; display:none; }}
+  .key-reveal code {{ font-family:monospace; font-size:0.95rem; word-break:break-all; color:#166534; }}
+  .key-reveal .warn {{ color:#b45309; font-size:0.82rem; margin-top:8px; }}
+  .copy-btn {{ margin-top:8px; }}
+</style>
+</head>
+<body>
+{_header("api-keys", user_name, super_admin=True)}
+<div class="container">
+  <div class="card">
+    <div class="toolbar">
+      <h2 style="margin:0;font-size:1.1rem">API 密钥管理</h2>
+      <button class="btn btn-primary btn-sm" onclick="openModal()">＋ 生成新密钥</button>
+      <span id="msg"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>标签</th><th>所属用户</th><th>权限范围</th>
+          <th>状态</th><th>创建时间</th><th>最后使用</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="keys-body">{key_rows}</tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create key modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3>🔑 生成新 API 密钥</h3>
+    <div class="form-row">
+      <label>所属用户</label>
+      <select id="f-user">{user_options}</select>
+    </div>
+    <div class="form-row">
+      <label>标签（备注）</label>
+      <input type="text" id="f-label" placeholder="例：张三-报表访问">
+    </div>
+    <div class="form-row">
+      <label>权限范围</label>
+      <select id="f-scopes">
+        <option value="reports:read,files:read">报表只读 (reports:read, files:read)</option>
+        <option value="runs:trigger">触发运行 (runs:trigger)</option>
+        <option value="reports:read,files:read,runs:trigger">报表只读 + 触发运行</option>
+        <option value="admin">管理员 (admin)</option>
+      </select>
+    </div>
+
+    <div class="key-reveal" id="key-reveal">
+      <strong style="color:#166534">✅ 密钥已生成，请立即复制保存：</strong><br>
+      <code id="key-text"></code>
+      <div class="warn">⚠️ 此密钥仅显示一次，关闭后无法再次获取。</div>
+      <button class="btn btn-sm copy-btn" onclick="copyKey()">📋 复制密钥</button>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn btn-primary" id="create-btn" onclick="createKey()">生成密钥</button>
+      <button class="btn" style="background:#eee" onclick="closeModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showMsg(text, ok) {{
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'err';
+}}
+
+function openModal() {{
+  document.getElementById('key-reveal').style.display = 'none';
+  document.getElementById('key-text').textContent = '';
+  document.getElementById('f-label').value = '';
+  document.getElementById('create-btn').disabled = false;
+  document.getElementById('modal').classList.add('open');
+}}
+
+function closeModal() {{
+  document.getElementById('modal').classList.remove('open');
+  location.reload();
+}}
+
+async function createKey() {{
+  const open_id = document.getElementById('f-user').value;
+  const label = document.getElementById('f-label').value.trim();
+  const scopes = document.getElementById('f-scopes').value;
+
+  if (!label) {{ alert('请填写标签'); return; }}
+
+  document.getElementById('create-btn').disabled = true;
+
+  const r = await fetch('/admin/api-keys/create', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ open_id, label, scopes }})
+  }});
+  const d = await r.json();
+
+  if (d.ok) {{
+    document.getElementById('key-text').textContent = d.key;
+    document.getElementById('key-reveal').style.display = 'block';
+  }} else {{
+    alert('生成失败: ' + (d.error || '未知错误'));
+    document.getElementById('create-btn').disabled = false;
+  }}
+}}
+
+function copyKey() {{
+  const key = document.getElementById('key-text').textContent;
+  navigator.clipboard.writeText(key).then(() => {{
+    showMsg('✓ 已复制到剪贴板', true);
+  }});
+}}
+
+async function revokeKey(id, btn) {{
+  if (!confirm('确认撤销此密钥？操作不可逆。')) return;
+  btn.disabled = true;
+  const r = await fetch('/admin/api-keys/revoke', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ id }})
+  }});
+  const d = await r.json();
+  if (d.ok) {{
+    showMsg('✓ 已撤销', true);
+    setTimeout(() => location.reload(), 800);
+  }} else {{
+    showMsg('✗ 失败: ' + (d.error || ''), false);
+    btn.disabled = false;
+  }}
+}}
+
+// Close modal on backdrop click
+document.getElementById('modal').addEventListener('click', function(e) {{
+  if (e.target === this) closeModal();
+}});
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
 
 
 @router.post("/api-keys/create")
