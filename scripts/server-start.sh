@@ -74,7 +74,8 @@ wait_for_healthy() {
 
     log "Waiting for server to become healthy on :8000..."
     while [ $attempt -lt $max_attempts ]; do
-        if curl -sf http://localhost:8000/api/runs >/dev/null 2>&1; then
+        # /api/reports/daily/status is unauthenticated and read-only — safe health probe
+        if curl -sf "http://localhost:8000/api/reports/daily/2000-01-01/status" >/dev/null 2>&1; then
             log "Server healthy after $((attempt * delay))s"
             return 0
         fi
@@ -250,12 +251,13 @@ set -e
 
 log "Server process exited with code $SERVER_EXIT"
 
-if [ "$SERVER_EXIT" -eq 0 ]; then
-    log "Clean shutdown (code 0) — no crash alert"
+# SIGTERM (143) and SIGINT (130) are launchd/user-initiated clean shutdowns — not crashes.
+# Exit 0 so launchd's KeepAlive+SuccessfulExit=false keeps the throttle counter clean.
+if [ "$SERVER_EXIT" -eq 0 ] || [ "$SERVER_EXIT" -eq 143 ] || [ "$SERVER_EXIT" -eq 130 ]; then
+    log "Clean shutdown (code $SERVER_EXIT) — no crash alert"
+    exit 0
 else
     log_err "Abnormal exit (code $SERVER_EXIT) — alerting"
     send_crash_alert "$SERVER_EXIT"
+    exit "$SERVER_EXIT"
 fi
-
-log "server-start.sh exiting with code $SERVER_EXIT"
-exit $SERVER_EXIT
