@@ -972,8 +972,11 @@ async def create_api_key_route(request: Request, session: dict = Depends(require
     else:
         # Standalone key — use a synthetic agent identifier from the label
         import re
+        from server.db import upsert_admin_user
         slug = re.sub(r"[^a-z0-9_-]", "-", label.lower())[:40]
         open_id = f"agent:{slug}"
+        # Satisfy the FK constraint: upsert a synthetic admin_users row for this agent
+        upsert_admin_user(open_id, f"🤖 {label}", avatar_url="")
 
     try:
         from server.api_keys import create_api_key
