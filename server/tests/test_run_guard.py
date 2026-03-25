@@ -73,10 +73,16 @@ class TestRunGuardEnabled:
         resp2 = unauthed_client.post("/api/commands/daily-report/run", json={"params": {}})
         assert resp2.status_code == 404
 
-    def test_docs_disabled(self, unauthed_client):
-        """Public API docs are disabled."""
+    def test_docs_unauthenticated_blocked(self, unauthed_client):
+        """Old doc paths return 404; new paths at /api/docs require auth."""
         assert unauthed_client.get("/docs").status_code == 404
         assert unauthed_client.get("/openapi.json").status_code == 404
+        assert unauthed_client.get("/api/docs").status_code == 403
+        assert unauthed_client.get("/api/openapi.json").status_code == 403
+
+    def test_docs_authenticated_allowed(self, client):
+        """With valid token, /api/openapi.json is accessible."""
+        assert client.get("/api/openapi.json").status_code == 200
 
 
 class TestRunGuardAlwaysEnforced:
