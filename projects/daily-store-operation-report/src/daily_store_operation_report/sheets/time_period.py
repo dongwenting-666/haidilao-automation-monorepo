@@ -243,15 +243,17 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
         values = [st[col_idx] for st in store_subtotals]
         total = sum(values)
         if col_idx in _CAPACITY_AVG_COLS:
-            if total_seats:
-                # Sum of per-store (turnover × seats) / total_seats
-                # = total_tables / (total_seats × days) since per-store TR = tables/(seats×days)
-                total = sum(
-                    v * s for v, s in zip(values, store_seats) if s > 0
-                ) / total_seats
+            # Only include stores with non-zero values in both numerator and
+            # denominator.  New stores (e.g. Store 8) have 0 for last-year
+            # columns — including their seat count in the denominator would
+            # artificially deflate the regional average.
+            active_pairs = [
+                (v, s) for v, s in zip(values, store_seats) if s > 0 and v != 0
+            ]
+            if active_pairs:
+                total = sum(v * s for v, s in active_pairs) / sum(s for _, s in active_pairs)
             else:
-                nonzero = sum(1 for v in values if v != 0)
-                total = total / (nonzero or 1)
+                total = 0.0
         # else: sum (桌数 columns)
         region_vals[col_idx] = total
 
