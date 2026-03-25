@@ -213,6 +213,16 @@ def create_monthly_sheet(client: LarkClient, template_token: str, folder_token: 
 
         logger.info("  %s: wrote %d date rows", store, days_in_month)
 
+    # Set org-wide edit permission so all store staff can fill in the sheet
+    try:
+        client._patch(
+            f"/drive/v1/permissions/{new_token}/public?type=sheet",
+            {"link_share_entity": "tenant_editable"},
+        )
+        logger.info("Set link_share_entity=tenant_editable for %s", new_token)
+    except Exception:
+        logger.warning("Failed to set permissions on new sheet %s — set manually if needed", new_token)
+
     return new_token
 
 
