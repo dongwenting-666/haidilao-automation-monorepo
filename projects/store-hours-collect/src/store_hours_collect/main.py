@@ -199,6 +199,18 @@ def create_monthly_sheet(client: LarkClient, template_token: str, folder_token: 
         last_row = _HEADER_ROWS + days_in_month
         client._put(f"/sheets/v2/spreadsheets/{new_token}/values",
             {"valueRange": {"range": f"{sheet_id}!B{_HEADER_ROWS+1}:C{last_row}", "values": values}})
+
+        # Clear any extra rows the template may have (template has 31 rows;
+        # shorter months like April/Feb would leave stale dates behind).
+        _TEMPLATE_MAX_DAYS = 31
+        if days_in_month < _TEMPLATE_MAX_DAYS:
+            extra_start = _HEADER_ROWS + days_in_month + 1
+            extra_end = _HEADER_ROWS + _TEMPLATE_MAX_DAYS
+            blank = [["", ""] for _ in range(extra_end - extra_start + 1)]
+            client._put(f"/sheets/v2/spreadsheets/{new_token}/values",
+                {"valueRange": {"range": f"{sheet_id}!B{extra_start}:C{extra_end}", "values": blank}})
+            logger.info("  %s: cleared %d stale template rows", store, extra_end - extra_start + 1)
+
         logger.info("  %s: wrote %d date rows", store, days_in_month)
 
     return new_token
