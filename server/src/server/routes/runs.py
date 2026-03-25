@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, date, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +19,7 @@ from server.config import REPO_ROOT
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 _MAX_HISTORY = 200
+_RUN_LOG_RETENTION_DAYS = 30
 
 # Serial execution queue — automations are not headless and must not overlap.
 _queue: asyncio.Queue[Run] = asyncio.Queue()
@@ -60,6 +63,89 @@ class Run:
 
 
 _runs: collections.OrderedDict[str, Run] = collections.OrderedDict()
+
+
+# ── Run log persistence ───────────────────────────────────────────────────────
+
+def _run_log_dir() -> Path:
+    from server.config import settings
+    d = settings.output_dir.resolve() / "runs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _run_log_path(dt: datetime) -> Path:
+    return _run_log_dir() / f"{dt.date().isoformat()}.jsonl"
+
+
+def _persist_run(run: Run) -> None:
+    """Append a completed run to today's JSONL log file."""
+    try:
+        record = run.to_dict(include_logs=True)
+        with _run_log_path(run.finished_at or datetime.now(timezone.utc)).open("a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to persist run %s: %s", run.id, exc)
+
+
+def _load_recent_runs() -> None:
+    """Load completed runs from the last 30 days into _runs on startup."""
+    import logging
+    log = logging.getLogger(__name__)
+    log_dir = _run_log_dir()
+    cutoff = date.today() - timedelta(days=_RUN_LOG_RETENTION_DAYS)
+    loaded = 0
+
+    for day_offset in range(_RUN_LOG_RETENTION_DAYS, -1, -1):  # oldest first
+        day = date.today() - timedelta(days=day_offset)
+        if day < cutoff:
+            continue
+        path = log_dir / f"{day.isoformat()}.jsonl"
+        if not path.exists():
+            continue
+        try:
+            for line in path.read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                    run = Run(d["command"], d.get("params", {}), notify_chat=d.get("notify_chat", ""))
+                    run.id = d["id"]
+                    run.status = RunStatus(d["status"])
+                    run.logs = d.get("logs", "")
+                    run.started_at = datetime.fromisoformat(d["started_at"])
+                    run.finished_at = datetime.fromisoformat(d["finished_at"]) if d.get("finished_at") else None
+                    run.queue_position = None
+                    _runs[run.id] = run
+                    loaded += 1
+                except Exception:
+                    pass  # skip malformed lines
+        except Exception as exc:
+            log.warning("Failed to load run log %s: %s", path, exc)
+
+    if loaded:
+        log.info("Loaded %d historical runs from the last %d days", loaded, _RUN_LOG_RETENTION_DAYS)
+
+    # Evict to keep memory bounded
+    while len(_runs) > _MAX_HISTORY:
+        _runs.popitem(last=False)
+
+
+def _purge_old_run_logs() -> None:
+    """Delete run log files older than 30 days."""
+    import logging
+    log = logging.getLogger(__name__)
+    cutoff = date.today() - timedelta(days=_RUN_LOG_RETENTION_DAYS)
+    for path in _run_log_dir().glob("*.jsonl"):
+        try:
+            file_date = date.fromisoformat(path.stem)
+            if file_date < cutoff:
+                path.unlink()
+                log.info("Purged old run log: %s", path.name)
+        except (ValueError, OSError):
+            pass
 
 
 def _evict_old_runs() -> None:
@@ -125,6 +211,8 @@ async def execute_run(run: Run) -> None:
     finally:
         run.finished_at = datetime.now(timezone.utc)
         run.queue_position = None
+        # Persist to disk before notifying (so it survives even if notify fails)
+        _persist_run(run)
         # Send Lark notification (non-blocking, errors are swallowed in notify module)
         await asyncio.to_thread(_notify_run, run)
 
@@ -210,9 +298,12 @@ def start_queue_worker() -> None:
 
     Recreates the async queue to bind it to the current event loop — necessary
     when the server restarts (or in tests where each TestClient creates a new loop).
+    Also loads historical runs from disk and purges old log files.
     """
     global _worker_task, _queue
     _queue = asyncio.Queue()
+    _load_recent_runs()
+    _purge_old_run_logs()
     loop = asyncio.get_running_loop()
     _worker_task = loop.create_task(_queue_worker())
 
