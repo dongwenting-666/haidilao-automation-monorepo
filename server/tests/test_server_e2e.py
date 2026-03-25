@@ -2,6 +2,9 @@
 
 WARNING: This test triggers REAL automation commands (KSB1/SAP GUI).
 Only run manually with: pytest -m e2e
+
+PRODUCTION GUARD: This test is skipped unless HAIDILAO_E2E_ENABLED=1 is set.
+This prevents it from running on production machines even if -m e2e is passed.
 """
 
 from __future__ import annotations
@@ -68,6 +71,10 @@ def server():
 
 
 @pytest.mark.e2e
+@pytest.mark.skipif(
+    os.environ.get("HAIDILAO_E2E_ENABLED") != "1",
+    reason="E2E tests disabled on this machine. Set HAIDILAO_E2E_ENABLED=1 to run."
+)
 def test_full_lifecycle(server):
     """Exercise every API endpoint in a single lifecycle test."""
     base = server

@@ -92,6 +92,16 @@ async def execute_run(run: Run) -> None:
         run.queue_position = None
         return
 
+    # Allow commands to block themselves (e.g. SAP disabled on this machine)
+    if hasattr(cmd, "validate"):
+        error = cmd.validate(run.params)
+        if error:
+            run.status = RunStatus.FAILED
+            run.logs = f"Command blocked: {error}"
+            run.finished_at = datetime.now(timezone.utc)
+            run.queue_position = None
+            return
+
     args = cmd.build_args(run.params)
     run.status = RunStatus.RUNNING
     run.queue_position = None

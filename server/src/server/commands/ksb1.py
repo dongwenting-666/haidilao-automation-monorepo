@@ -15,6 +15,16 @@ class KSB1Command(BaseCommand):
     def working_dir(self) -> Path:
         return REPO_ROOT / "projects" / "ksb1-accounting-check"
 
+    def validate(self, params: dict[str, Any]) -> str | None:
+        """Return an error message if the command should not be run, else None."""
+        import os
+        if os.environ.get("HAIDILAO_SAP_ENABLED") != "1":
+            return (
+                "KSB1/SAP automation is disabled on this machine. "
+                "Set HAIDILAO_SAP_ENABLED=1 in .env to enable it."
+            )
+        return None
+
     def build_args(self, params: dict[str, Any]) -> list[str]:
         args = [
             "uv", "run",
