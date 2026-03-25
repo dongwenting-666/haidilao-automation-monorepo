@@ -761,7 +761,10 @@ async def list_api_keys_page(request: Request, session: dict = Depends(require_a
         created = str(k.get("created_at", ""))[:16].replace("T", " ")
         last_used = str(k.get("last_used_at", ""))[:16].replace("T", " ") if k.get("last_used_at") else "—"
         owner = k.get("open_id", "")
-        owner_name = users.get(owner, owner)
+        if owner.startswith("agent:"):
+            owner_name = f"🤖 {owner[6:]}"  # strip "agent:" prefix for display
+        else:
+            owner_name = users.get(owner, owner)
         scopes = k.get("scopes", "")
         label = html.escape(k.get("label", ""))
         key_id = k.get("id", "")
@@ -780,8 +783,8 @@ async def list_api_keys_page(request: Request, session: dict = Depends(require_a
     if not key_rows:
         key_rows = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px">暂无API密钥</td></tr>'
 
-    # Build user options for the create form
-    user_options = "".join(
+    # Build user options for the create form — blank value = standalone key
+    user_options = '<option value="">— 独立密钥（不关联用户）—</option>' + "".join(
         f'<option value="{oid}">{name}</option>'
         for oid, name in users.items()
     )
@@ -951,20 +954,26 @@ async def create_api_key_route(request: Request, session: dict = Depends(require
         return JSONResponse({"ok": False, "error": "Super admin required"}, status_code=403)
 
     body = await request.json()
-    open_id = body.get("open_id", "")
-    label = body.get("label", "")
+    open_id = body.get("open_id", "").strip()
+    label = body.get("label", "").strip()
     scopes = body.get("scopes", "reports:read,files:read")
 
-    if not open_id:
-        return JSONResponse({"ok": False, "error": "open_id required"}, status_code=400)
+    if not label:
+        return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
 
-    # Verify user exists and is whitelisted
-    from server.db import get_admin_users
-    users = {u["open_id"]: u for u in get_admin_users()}
-    if open_id not in users:
-        return JSONResponse({"ok": False, "error": "User not found"}, status_code=404)
-    if not users[open_id].get("whitelisted"):
-        return JSONResponse({"ok": False, "error": "User must be whitelisted first"}, status_code=400)
+    if open_id:
+        # Linked to a real user — verify they exist and are whitelisted
+        from server.db import get_admin_users
+        users = {u["open_id"]: u for u in get_admin_users()}
+        if open_id not in users:
+            return JSONResponse({"ok": False, "error": "User not found"}, status_code=404)
+        if not users[open_id].get("whitelisted"):
+            return JSONResponse({"ok": False, "error": "User must be whitelisted first"}, status_code=400)
+    else:
+        # Standalone key — use a synthetic agent identifier from the label
+        import re
+        slug = re.sub(r"[^a-z0-9_-]", "-", label.lower())[:40]
+        open_id = f"agent:{slug}"
 
     try:
         from server.api_keys import create_api_key
