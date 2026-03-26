@@ -236,6 +236,14 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
     num_days = dates.day_of_month
     total_seats = sum(s for s in store_seats if s > 0)
 
+    # Pre-compute per-store "has last-year data" flags so that paired YoY
+    # columns (3↔4 and 8↔10) always use the same store population.
+    # A store is excluded from both sides of a pair if either side is 0
+    # (e.g. new stores have no last-year data → omit them from 今年 too so
+    # the YoY diff isn't computed against a mismatched denominator).
+    store_has_yoy_mtd = [st[4] != 0 for st in store_subtotals]         # cols 3, 4, 5
+    store_has_yoy_weekday = [st[10] != 0 for st in store_subtotals]    # cols 8, 10
+
     region_vals: dict[int, float] = {}
     for col_idx in range(3, _NCOLS + 1):
         if col_idx in _DIFF_COLS:
@@ -243,12 +251,18 @@ def build_time_period_sheet(wb: Workbook, data: ReportData) -> Worksheet:
         values = [st[col_idx] for st in store_subtotals]
         total = sum(values)
         if col_idx in _CAPACITY_AVG_COLS:
-            # Only include stores with non-zero values in both numerator and
-            # denominator.  New stores (e.g. Store 8) have 0 for last-year
-            # columns — including their seat count in the denominator would
-            # artificially deflate the regional average.
+            # Use matched populations for YoY pairs so diffs are apples-to-apples.
+            # Cols 3 (今年 MTD), 4 (去年 MTD), 5 (目标): only stores with last-year MTD data.
+            # Cols 8 (当日), 10 (去年同周同日): only stores with last-year weekday data.
+            if col_idx in (3, 4, 5):
+                mask = store_has_yoy_mtd
+            elif col_idx in (8, 10):
+                mask = store_has_yoy_weekday
+            else:
+                mask = [v != 0 for v in values]
             active_pairs = [
-                (v, s) for v, s in zip(values, store_seats) if s > 0 and v != 0
+                (v, s) for v, s, ok in zip(values, store_seats, mask)
+                if s > 0 and ok
             ]
             if active_pairs:
                 total = sum(v * s for v, s in active_pairs) / sum(s for _, s in active_pairs)
