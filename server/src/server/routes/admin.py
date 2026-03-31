@@ -118,7 +118,7 @@ _HEADER_TMPL = """
 
 _TOOLS_NAV_LINK = '<a href="/admin/tools" class="{tools_active}">工具</a>'
 _APIKEYS_NAV_LINK = '<a href="/admin/api-keys" class="{ak_active}">API密钥</a>'
-_KSB1_NAV_LINK = '<a href="/admin/ksb1" class="{ksb1_active}">KSB1核查</a>'
+_REPORTS_NAV_LINK = '<a href="/admin/reports" class="{reports_active}">自动化报表</a>'
 
 
 def _header(page: str, name: str = "", super_admin: bool = False) -> str:
@@ -128,13 +128,13 @@ def _header(page: str, name: str = "", super_admin: bool = False) -> str:
     apikeys_link = _APIKEYS_NAV_LINK.format(
         ak_active="active" if page == "api-keys" else ""
     ) if super_admin else ""
-    ksb1_link = _KSB1_NAV_LINK.format(
-        ksb1_active="active" if page == "ksb1" else ""
-    )
+    # "自动化报表" covers /admin/reports and its sub-pages (e.g. ksb1)
+    reports_active = "active" if page in ("reports", "ksb1") else ""
+    reports_link = _REPORTS_NAV_LINK.format(reports_active=reports_active)
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
-        tools_link=ksb1_link + tools_link + apikeys_link,
+        tools_link=reports_link + tools_link + apikeys_link,
         name=name or "管理员",
     )
 
@@ -741,6 +741,58 @@ async def set_whitelist(request: Request, session: dict = Depends(require_auth))
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+# ── 自动化报表 hub ─────────────────────────────────────────────────────────
+
+
+@router.get("/reports", response_class=HTMLResponse)
+async def reports_hub_page(request: Request, session: dict = Depends(require_auth)):
+    name = session.get("name", "管理员")
+    open_id = session.get("open_id", "")
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>自动化报表 — 管理后台</title>
+<style>
+  .report-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }}
+  .report-card {{
+    background: #fff; border-radius: 8px; padding: 22px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1); text-decoration: none; color: inherit;
+    display: flex; flex-direction: column; gap: 8px;
+    border: 2px solid transparent; transition: border-color 0.15s, box-shadow 0.15s;
+  }}
+  .report-card:hover {{ border-color: #c0392b; box-shadow: 0 3px 10px rgba(0,0,0,.15); }}
+  .report-card .icon {{ font-size: 2rem; }}
+  .report-card h3 {{ margin: 0; font-size: 1rem; color: #222; }}
+  .report-card p {{ margin: 0; font-size: 0.85rem; color: #666; line-height: 1.5; }}
+  .report-card .badge {{
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 0.75rem; font-weight: 600; background: #f0f4ff; color: #3549a0;
+    align-self: flex-start;
+  }}
+</style>
+</head>
+<body>
+{_header("reports", name, super_admin=is_super_admin(open_id))}
+<div class="container">
+  <div class="card">
+    <h2 style="margin:0 0 6px;font-size:1.15rem">📋 自动化报表</h2>
+    <p style="color:#666;font-size:0.9rem;margin:0 0 20px">按需触发自动化报表生成，结果将发送至对应飞书群。</p>
+    <div class="report-grid">
+      <a href="/admin/ksb1" class="report-card">
+        <span class="icon">📊</span>
+        <h3>KSB1 账务核查</h3>
+        <p>导出 SAP KSB1 数据，生成逐店科目对比报告，发送至生产核算群并 @ 触发人。</p>
+        <span class="badge">按需触发</span>
+      </a>
+    </div>
+  </div>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
 
 
 # ── KSB1 Accounting Check ─────────────────────────────────────────────────
