@@ -118,6 +118,7 @@ _HEADER_TMPL = """
 
 _TOOLS_NAV_LINK = '<a href="/admin/tools" class="{tools_active}">工具</a>'
 _APIKEYS_NAV_LINK = '<a href="/admin/api-keys" class="{ak_active}">API密钥</a>'
+_KSB1_NAV_LINK = '<a href="/admin/ksb1" class="{ksb1_active}">KSB1核查</a>'
 
 
 def _header(page: str, name: str = "", super_admin: bool = False) -> str:
@@ -127,10 +128,13 @@ def _header(page: str, name: str = "", super_admin: bool = False) -> str:
     apikeys_link = _APIKEYS_NAV_LINK.format(
         ak_active="active" if page == "api-keys" else ""
     ) if super_admin else ""
+    ksb1_link = _KSB1_NAV_LINK.format(
+        ksb1_active="active" if page == "ksb1" else ""
+    )
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
-        tools_link=tools_link + apikeys_link,
+        tools_link=ksb1_link + tools_link + apikeys_link,
         name=name or "管理员",
     )
 
@@ -737,6 +741,211 @@ async def set_whitelist(request: Request, session: dict = Depends(require_auth))
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+# ── KSB1 Accounting Check ─────────────────────────────────────────────────
+
+
+@router.get("/ksb1", response_class=HTMLResponse)
+async def ksb1_page(request: Request, session: dict = Depends(require_auth)):
+    from datetime import date
+
+    today = date.today()
+    # Default to previous month
+    if today.month == 1:
+        default_month, default_year = 12, today.year - 1
+    else:
+        default_month, default_year = today.month - 1, today.year
+
+    # Build month options
+    month_options = "".join(
+        f'<option value="{m}"{" selected" if m == default_month else ""}>{m:02d} 月</option>'
+        for m in range(1, 13)
+    )
+    year_options = "".join(
+        f'<option value="{y}"{" selected" if y == default_year else ""}>{y}</option>'
+        for y in range(today.year - 2, today.year + 1)
+    )
+
+    name = session.get("name", "管理员")
+    open_id = session.get("open_id", "")
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>KSB1核查 — 管理后台</title>
+<style>
+  .status-box {{
+    background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+    padding: 14px 16px; font-family: monospace; font-size: 0.85rem;
+    white-space: pre-wrap; max-height: 320px; overflow-y: auto;
+    color: #333; display: none;
+  }}
+  .status-box.visible {{ display: block; }}
+  .run-badge {{
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.8rem; font-weight: 600;
+  }}
+  .badge-pending  {{ background: #fff3cd; color: #856404; }}
+  .badge-running  {{ background: #cff4fc; color: #0c5460; }}
+  .badge-success  {{ background: #d1e7dd; color: #155724; }}
+  .badge-failed   {{ background: #f8d7da; color: #721c24; }}
+  .spinner {{
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #ccc; border-top-color: #333;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+</style>
+</head>
+<body>
+{_header("ksb1", name, super_admin=is_super_admin(open_id))}
+<div class="container">
+  <div class="card">
+    <h2 style="margin:0 0 6px;font-size:1.15rem">📊 KSB1 账务核查</h2>
+    <p style="color:#666;font-size:0.9rem;margin:0 0 20px">
+      导出 SAP KSB1 数据并生成逐店科目对比报告，完成后自动发送至生产群并 @ 您。
+    </p>
+
+    <div class="toolbar" style="flex-wrap:wrap;gap:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-month">月份</label>
+        <select id="sel-month" style="width:90px">{month_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-year">年份</label>
+        <select id="sel-year" style="width:90px">{year_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label>
+          <input type="checkbox" id="chk-skip-dl">
+          跳过下载（使用已有 KSB1 文件）
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
+      <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ 立即运行</button>
+      <span id="run-status"></span>
+    </div>
+
+    <div id="log-box" class="status-box" style="margin-top:16px"></div>
+  </div>
+
+  <div class="card" style="margin-top:0">
+    <h3 style="margin:0 0 12px;font-size:0.95rem;color:#666">说明</h3>
+    <ul style="margin:0;padding-left:20px;color:#555;font-size:0.88rem;line-height:1.8">
+      <li>运行前请确保 VPN 已连接，SAP 账号已在 <code>.env</code> 中配置</li>
+      <li>报告生成后将以 XLSX 附件形式发送至 <strong>生产核算群</strong></li>
+      <li>飞书群内将 @ 您（当前登录用户：<strong>{html.escape(name)}</strong>）</li>
+      <li>若 SAP 自动化未启用（<code>HAIDILAO_SAP_ENABLED=1</code>），运行将直接失败</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+let _pollTimer = null;
+
+async function triggerRun() {{
+  const month = parseInt(document.getElementById('sel-month').value, 10);
+  const year  = parseInt(document.getElementById('sel-year').value, 10);
+  const skipDl = document.getElementById('chk-skip-dl').checked;
+
+  document.getElementById('run-btn').disabled = true;
+  setStatus('pending', '⏳ 正在提交...');
+  document.getElementById('log-box').classList.remove('visible');
+  document.getElementById('log-box').textContent = '';
+
+  try {{
+    const resp = await fetch('/admin/ksb1/run', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ month, year, skip_download: skipDl }}),
+    }});
+    const data = await resp.json();
+    if (!data.ok) {{
+      setStatus('failed', '✗ 提交失败: ' + (data.error || '未知错误'));
+      document.getElementById('run-btn').disabled = false;
+      return;
+    }}
+    setStatus('running', '<span class="spinner"></span> 运行中 · Run ID: ' + data.run_id);
+    pollRun(data.run_id);
+  }} catch (e) {{
+    setStatus('failed', '✗ 网络错误: ' + e.message);
+    document.getElementById('run-btn').disabled = false;
+  }}
+}}
+
+function setStatus(state, html) {{
+  const el = document.getElementById('run-status');
+  const cls = {{ pending: 'badge-pending', running: 'badge-running', success: 'badge-success', failed: 'badge-failed' }};
+  el.innerHTML = `<span class="run-badge ${{cls[state] || ''}}">${{html}}</span>`;
+}}
+
+async function pollRun(runId) {{
+  if (_pollTimer) clearTimeout(_pollTimer);
+  try {{
+    const resp = await fetch('/api/runs/' + runId);
+    const data = await resp.json();
+    const status = data.status || 'unknown';
+
+    if (status === 'success') {{
+      setStatus('success', '✅ 完成！报告已发送至生产群');
+      showLogs(data.logs || '');
+      document.getElementById('run-btn').disabled = false;
+    }} else if (status === 'failed') {{
+      setStatus('failed', '❌ 运行失败');
+      showLogs(data.logs || '（无输出）');
+      document.getElementById('run-btn').disabled = false;
+    }} else {{
+      // still running / pending — poll again
+      _pollTimer = setTimeout(() => pollRun(runId), 3000);
+    }}
+  }} catch (e) {{
+    _pollTimer = setTimeout(() => pollRun(runId), 5000);
+  }}
+}}
+
+function showLogs(text) {{
+  const box = document.getElementById('log-box');
+  box.textContent = text;
+  box.classList.add('visible');
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
+
+
+@router.post("/ksb1/run")
+async def ksb1_run(request: Request, session: dict = Depends(require_auth)):
+    """Trigger a KSB1 run — sends result to production group and @mentions the caller."""
+    body = await request.json()
+    month = body.get("month")
+    year = body.get("year")
+    skip_download = bool(body.get("skip_download", False))
+
+    params: dict = {}
+    if month:
+        params["month"] = int(month)
+    if year:
+        params["year"] = int(year)
+    if skip_download:
+        params["skip_download"] = True
+
+    # Embed caller identity so _notify_run can @mention them
+    params["triggered_by_open_id"] = session.get("open_id", "")
+    params["triggered_by_name"] = session.get("name", "")
+
+    try:
+        from server.routes.runs import create_run
+        run = create_run("ksb1", params, notify_chat="production_accounting_report_chat")
+        return {"ok": True, "run_id": run.id, "status": run.status.value}
+    except Exception as exc:
+        logger.exception("Failed to create KSB1 run")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
 
 # ── API Key Management (super-admin only) ─────────────────────────────────

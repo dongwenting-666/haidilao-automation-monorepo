@@ -240,6 +240,118 @@ def notify_daily_report_file(report_path: "Path", target_chat: str = "production
         log.exception("Failed to send daily report file to Lark")
 
 
+def notify_ksb1_file(
+    report_path: "Path",
+    *,
+    target_chat: str = "production_accounting_report_chat",
+    triggered_by_open_id: str = "",
+    triggered_by_name: str = "",
+) -> None:
+    """Send the KSB1 report xlsx to a Lark chat and @mention the requester.
+
+    Parameters
+    ----------
+    report_path:
+        Path to the generated KSB1 XLSX report.
+    target_chat:
+        Chat alias from notify.toml [chats].  Defaults to the production group.
+    triggered_by_open_id:
+        open_id of the user who triggered the run.  Used for @mention.
+        Pass empty string to skip the mention.
+    triggered_by_name:
+        Display name for the mention fallback label.
+    """
+    import json
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from server.config import settings
+
+    if not settings.lark_enabled:
+        return
+
+    chat_id = chat_id_for(target_chat)
+    if not chat_id:
+        log.warning(
+            "notify: '%s' alias not found in notify.toml [chats], skipping ksb1 file send",
+            target_chat,
+        )
+        return
+
+    # Parse YYYY-MM from filename: {year_month}_KSB1_检查报告_{timestamp}.XLSX
+    import re
+    year_month = "unknown"
+    m = re.search(r"(\d{4}-\d{2})", report_path.name)
+    if m:
+        year_month = m.group(1)
+
+    now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
+
+    try:
+        client = _client()
+        if client is None:
+            return
+        with client:
+            # Build mention header using Lark rich-text (post) format
+            if triggered_by_open_id:
+                # Send a rich-text message that @mentions the requester
+                mention_content = {
+                    "zh_cn": {
+                        "title": f"📊 KSB1 账务核查报告 · {year_month}",
+                        "content": [
+                            [
+                                {"tag": "text", "text": "报告已生成（"},
+                                {
+                                    "tag": "at",
+                                    "user_id": triggered_by_open_id,
+                                    "user_name": triggered_by_name or "操作员",
+                                },
+                                {
+                                    "tag": "text",
+                                    "text": f" 触发）\n数据周期：{year_month}  ·  生成时间：{now} (Vancouver)\n附件见下方 👇",
+                                },
+                            ]
+                        ],
+                    }
+                }
+                client._post(
+                    f"/im/v1/messages?receive_id_type=chat_id",
+                    {
+                        "receive_id": chat_id,
+                        "msg_type": "post",
+                        "content": json.dumps(mention_content),
+                    },
+                )
+            else:
+                # No requester info — send a plain card header
+                client.send_card(
+                    title=f"📊 KSB1 账务核查报告 · {year_month}",
+                    content=(
+                        f"**报告已生成**，数据周期：**{year_month}**\n\n"
+                        f"生成时间：{now} (Vancouver)\n\n"
+                        "---\n👇 附件见下方"
+                    ),
+                    color="blue",
+                    chat_id=chat_id,
+                )
+
+            # Send the xlsx file
+            client.send_file(
+                report_path,
+                filename=report_path.name,
+                chat_id=chat_id,
+                file_type="xlsx",
+            )
+
+        log.info(
+            "KSB1 report sent to %s: %s (triggered_by=%s)",
+            target_chat,
+            report_path.name,
+            triggered_by_open_id or "—",
+        )
+    except Exception:
+        log.exception("Failed to send KSB1 report to Lark")
+
+
 def notify_text(command: str, text: str) -> None:
     """Send a plain text message to the target configured for *command*.
 
