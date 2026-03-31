@@ -939,7 +939,7 @@ function setStatus(state, html) {{
 async function pollRun(runId) {{
   if (_pollTimer) clearTimeout(_pollTimer);
   try {{
-    const resp = await fetch('/api/runs/' + runId);
+    const resp = await fetch('/admin/ksb1/run/' + runId);
     const data = await resp.json();
     const status = data.status || 'unknown';
 
@@ -998,6 +998,21 @@ async def ksb1_run(request: Request, session: dict = Depends(require_auth)):
     except Exception as exc:
         logger.exception("Failed to create KSB1 run")
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.get("/ksb1/run/{run_id}")
+async def ksb1_run_status(run_id: str, session: dict = Depends(require_auth)):
+    """Session-authed proxy for polling a KSB1 run — avoids exposing X-Run-Token to browser JS."""
+    from server.routes.runs import _runs
+    run = _runs.get(run_id)
+    if run is None:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return {
+        "run_id": run.id,
+        "status": run.status.value,
+        "queue_position": run.queue_position,
+        "logs": run.logs if run.status.value in ("success", "failed") else "",
+    }
 
 
 # ── API Key Management (super-admin only) ─────────────────────────────────
