@@ -37,7 +37,7 @@ async def _run_treasury_loan_watch() -> None:
 async def _run_f13_clearing() -> None:
     """Trigger F.13 automatic clearing via the run system (1st of each month)."""
     from server.routes.runs import create_run
-    create_run("f13-clearing", {}, notify_chat="")
+    create_run("f13-clearing", {}, notify_chat="hongming")
 
 
 async def _run_store_hours_collect() -> None:
