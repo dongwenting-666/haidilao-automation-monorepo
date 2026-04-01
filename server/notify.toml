@@ -31,6 +31,9 @@ chat = "hongming"
 # The XLSX report + @mention is sent to the production group by notify_ksb1_file().
 chat = "hongming"
 
+[f13-clearing]
+chat = "hongming"
+
 [treasury-loan-watch]
 chat = "hongming"
 
