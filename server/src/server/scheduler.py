@@ -34,6 +34,12 @@ async def _run_treasury_loan_watch() -> None:
     create_run("treasury-loan-watch", {}, notify_chat="hongming")
 
 
+async def _run_f13_clearing() -> None:
+    """Trigger F.13 automatic clearing via the run system (1st of each month)."""
+    from server.routes.runs import create_run
+    create_run("f13-clearing", {}, notify_chat="")
+
+
 async def _run_store_hours_collect() -> None:
     """Trigger store-hours-collect command via the run system."""
     from server.routes.runs import create_run
@@ -63,6 +69,15 @@ def setup_default_jobs() -> None:
         CronTrigger(hour=6, minute=0, timezone="America/Vancouver"),
         id="treasury-loan-watch-cron",
         name="Treasury loan maturity watch",
+        replace_existing=True,
+    )
+
+    # F.13 automatic clearing — 1st of every month, 7:00 AM Vancouver time
+    scheduler.add_job(
+        _run_f13_clearing,
+        CronTrigger(day=1, hour=7, minute=0, timezone="America/Vancouver"),
+        id="f13-clearing-cron",
+        name="F.13 automatic clearing (monthly)",
         replace_existing=True,
     )
 
