@@ -75,7 +75,7 @@ def setup_default_jobs() -> None:
     # F.13 automatic clearing — 1st of every month, 7:00 AM Vancouver time
     scheduler.add_job(
         _run_f13_clearing,
-        CronTrigger(day=1, hour=7, minute=0, timezone="America/Vancouver"),
+        CronTrigger(day=10, hour=7, minute=0, timezone="America/Vancouver"),
         id="f13-clearing-cron",
         name="F.13 automatic clearing (monthly)",
         replace_existing=True,
