@@ -308,25 +308,94 @@ def _activate() -> None:
     time.sleep(0.4)
 
 
-def _normalize_window() -> tuple[int, int, int, int]:
-    """Activate CorpLink and normalize its window. Returns (wx, wy, ww, wh)."""
-    try:
-        result = subprocess.run(
-            ["osascript", "-e", _NORMALIZE_SCRIPT],
-            capture_output=True, text=True, timeout=15,
-        )
-    except subprocess.TimeoutExpired:
-        raise VPNConnectionError("Timed out normalizing CorpLink window")
+def _force_open_window() -> None:
+    """Try multiple strategies to force CorpLink to show its main window.
 
-    output = result.stdout.strip()
-    if result.returncode != 0 or output == "NO_WINDOW":
-        raise VPNAppNotFoundError(
-            f"CorpLink window not found: {result.stderr.strip() or output}"
-        )
-    try:
-        return tuple(int(v) for v in output.split(","))  # type: ignore[return-value]
-    except (ValueError, TypeError):
-        raise VPNConnectionError(f"Unexpected window geometry: {output!r}")
+    CorpLink often starts as a menu-bar-only app (especially when the display
+    is asleep or locked).  This function uses escalating techniques:
+    1. ``tell application "CorpLink" to activate`` (standard activation)
+    2. Click the CorpLink menu bar icon via System Events to pop the window
+    3. ``open -a CorpLink`` as a fallback reactivation
+    """
+    strategies: list[tuple[str, list[str]]] = [
+        # Strategy 1: plain AppleScript activate
+        (
+            "AppleScript activate",
+            ["osascript", "-e", 'tell application "CorpLink" to activate'],
+        ),
+        # Strategy 2: click CorpLink menu bar extra to toggle window open
+        (
+            "Menu-bar click",
+            [
+                "osascript", "-e",
+                'tell application "System Events" to tell process "CorpLink"\n'
+                '    try\n'
+                '        click menu bar item 1 of menu bar 2\n'
+                '    end try\n'
+                'end tell',
+            ],
+        ),
+        # Strategy 3: re-open the app (macOS will foreground + show window)
+        (
+            "open -a reactivation",
+            ["open", "-a", str(_find_app())],
+        ),
+    ]
+    for label, cmd in strategies:
+        log.debug("Forcing window open: %s", label)
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=10)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        time.sleep(1.5)
+
+
+def _normalize_window() -> tuple[int, int, int, int]:
+    """Activate CorpLink and normalize its window. Returns (wx, wy, ww, wh).
+
+    If the window is not found on the first attempt, calls
+    :func:`_force_open_window` and retries up to 3 times with increasing
+    delays.  This handles the common case where CorpLink launches as a
+    menu-bar-only app (e.g. screen locked / display asleep).
+    """
+    max_attempts = 4  # 1 initial + 3 retries after forcing window
+    for attempt in range(max_attempts):
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", _NORMALIZE_SCRIPT],
+                capture_output=True, text=True, timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            if attempt < max_attempts - 1:
+                log.warning(
+                    "Timed out normalizing window (attempt %d/%d) — retrying...",
+                    attempt + 1, max_attempts,
+                )
+                _force_open_window()
+                continue
+            raise VPNConnectionError("Timed out normalizing CorpLink window")
+
+        output = result.stdout.strip()
+
+        if result.returncode == 0 and output != "NO_WINDOW":
+            try:
+                return tuple(int(v) for v in output.split(","))  # type: ignore[return-value]
+            except (ValueError, TypeError):
+                raise VPNConnectionError(f"Unexpected window geometry: {output!r}")
+
+        # Window not found — try to force it open and retry.
+        if attempt < max_attempts - 1:
+            log.warning(
+                "CorpLink window not found (attempt %d/%d): %s — forcing window open...",
+                attempt + 1, max_attempts,
+                result.stderr.strip() or output,
+            )
+            _force_open_window()
+        else:
+            raise VPNAppNotFoundError(
+                f"CorpLink window not found after {max_attempts} attempts: "
+                f"{result.stderr.strip() or output}"
+            )
 
 
 def _connect_vpn() -> None:
