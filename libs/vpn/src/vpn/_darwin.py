@@ -80,7 +80,10 @@ _RE_CONNECTED = re.compile(
 )
 
 # Seconds to wait after launching CorpLink before the UI is ready to click.
-_LAUNCH_SETTLE_SECONDS = 6.0
+# The Overview tab VPN toggle needs the React renderer to fully mount.
+# Observed: window appears at ~3s, but toggle is non-interactive until ~12-15s.
+# Previous value of 6s was too short — caused silent click misses.
+_LAUNCH_SETTLE_SECONDS = 15.0
 
 
 # ---------------------------------------------------------------------------
@@ -123,19 +126,29 @@ def _is_running() -> bool:
 
 
 def _quit_app() -> None:
-    """Gracefully quit CorpLink and wait for it to exit."""
+    """Kill CorpLink and all helper processes for a truly clean restart.
+
+    A simple ``quit app`` leaves CorpLink Helper processes alive, which can
+    interfere with the fresh launch (window doesn't appear, toggle is
+    non-interactive).  We ``killall`` both CorpLink and CorpLink Helper to
+    ensure the next ``open -a`` gets a fully clean Electron process tree.
+    """
     if not _is_running():
         return
-    log.info("Quitting CorpLink for a clean restart...")
-    subprocess.run(
-        ["osascript", "-e", 'quit app "CorpLink"'],
-        capture_output=True, timeout=10,
-    )
-    # Wait up to 10 s for the process to disappear.
+    log.info("Killing CorpLink processes for a clean restart...")
+    # Kill all CorpLink-related processes (main + helpers).
+    for proc_name in ("CorpLink", "CorpLink Helper"):
+        subprocess.run(
+            ["killall", proc_name],
+            capture_output=True, timeout=5,
+        )
+    # Wait for the main process to disappear.
     for _ in range(20):
         time.sleep(0.5)
         if not _is_running():
             log.debug("CorpLink exited cleanly")
+            # Extra wait for helpers to fully terminate.
+            time.sleep(1.0)
             return
     # Force-kill if it didn't quit.
     pid = _get_corplink_pid()
