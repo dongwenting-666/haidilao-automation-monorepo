@@ -37,10 +37,12 @@ from server.db import (
     get_all_months,
     get_competitors,
     get_targets,
+    get_travel_budget_targets,
     has_targets,
     is_db_available,
     set_competitor,
     set_targets,
+    set_travel_budget_target,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,6 +121,7 @@ _HEADER_TMPL = """
 _TOOLS_NAV_LINK = '<a href="/admin/tools" class="{tools_active}">工具</a>'
 _APIKEYS_NAV_LINK = '<a href="/admin/api-keys" class="{ak_active}">API密钥</a>'
 _REPORTS_NAV_LINK = '<a href="/admin/reports" class="{reports_active}">自动化报表</a>'
+_TRAVEL_NAV_LINK = '<a href="/admin/travel-budget" class="{travel_active}">差旅预算</a>'
 
 
 def _header(page: str, name: str = "", super_admin: bool = False) -> str:
@@ -129,12 +132,15 @@ def _header(page: str, name: str = "", super_admin: bool = False) -> str:
         ak_active="active" if page == "api-keys" else ""
     ) if super_admin else ""
     # "自动化报表" covers /admin/reports and its sub-pages (e.g. ksb1)
-    reports_active = "active" if page in ("reports", "ksb1") else ""
+    reports_active = "active" if page in ("reports", "ksb1", "travel-expense-budget") else ""
     reports_link = _REPORTS_NAV_LINK.format(reports_active=reports_active)
+    travel_link = _TRAVEL_NAV_LINK.format(
+        travel_active="active" if page == "travel-budget" else ""
+    )
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
-        tools_link=reports_link + tools_link + apikeys_link,
+        tools_link=travel_link + reports_link + tools_link + apikeys_link,
         name=name or "管理员",
     )
 
@@ -787,6 +793,12 @@ async def reports_hub_page(request: Request, session: dict = Depends(require_aut
         <p>导出 SAP KSB1 数据，生成逐店科目对比报告，发送至生产核算群并 @ 触发人。</p>
         <span class="badge">按需触发</span>
       </a>
+      <a href="/admin/travel-expense-budget" class="report-card">
+        <span class="icon">✈️</span>
+        <h3>差旅费预算明细</h3>
+        <p>从 SAP KSB1 导出差旅费数据，按门店/职能部门生成年度预算跟踪报告。</p>
+        <span class="badge">按需触发</span>
+      </a>
     </div>
   </div>
 </div>
@@ -1003,6 +1015,232 @@ async def ksb1_run(request: Request, session: dict = Depends(require_auth)):
 @router.get("/ksb1/run/{run_id}")
 async def ksb1_run_status(run_id: str, session: dict = Depends(require_auth)):
     """Session-authed proxy for polling a KSB1 run — avoids exposing X-Run-Token to browser JS."""
+    from server.routes.runs import _runs
+    run = _runs.get(run_id)
+    if run is None:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return {
+        "run_id": run.id,
+        "status": run.status.value,
+        "queue_position": run.queue_position,
+        "logs": run.logs if run.status.value in ("success", "failed") else "",
+    }
+
+
+# ── Travel Expense Budget Report ─────────────────────────────────────────
+
+
+@router.get("/travel-expense-budget", response_class=HTMLResponse)
+async def travel_expense_budget_page(request: Request, session: dict = Depends(require_auth)):
+    from datetime import date as _date
+
+    today = _date.today()
+    if today.month == 1:
+        default_month, default_year = 12, today.year - 1
+    else:
+        default_month, default_year = today.month - 1, today.year
+
+    month_options = "".join(
+        f'<option value="{m}"{" selected" if m == default_month else ""}>{m:02d} 月</option>'
+        for m in range(1, 13)
+    )
+    year_options = "".join(
+        f'<option value="{y}"{" selected" if y == default_year else ""}>{y}</option>'
+        for y in range(today.year - 2, today.year + 1)
+    )
+
+    name = session.get("name", "管理员")
+    open_id = session.get("open_id", "")
+
+    # Check if DB has targets configured
+    has_targets_configured = bool(get_travel_budget_targets(default_year))
+    targets_warning = "" if has_targets_configured else (
+        '<div class="warning" style="margin-bottom:16px">⚠️ 尚未配置目标营收 — '
+        '请先前往 <a href="/admin/travel-budget" style="color:#c0392b;font-weight:600">差旅预算目标</a> '
+        '设置各店目标营收和上年营收数据。</div>'
+    )
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>差旅费预算明细 — 管理后台</title>
+<style>
+  .status-box {{
+    background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+    padding: 14px 16px; font-family: monospace; font-size: 0.85rem;
+    white-space: pre-wrap; max-height: 320px; overflow-y: auto;
+    color: #333; display: none;
+  }}
+  .status-box.visible {{ display: block; }}
+  .run-badge {{
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.8rem; font-weight: 600;
+  }}
+  .badge-pending  {{ background: #fff3cd; color: #856404; }}
+  .badge-running  {{ background: #cff4fc; color: #0c5460; }}
+  .badge-success  {{ background: #d1e7dd; color: #155724; }}
+  .badge-failed   {{ background: #f8d7da; color: #721c24; }}
+  .spinner {{
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #ccc; border-top-color: #333;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+</style>
+</head>
+<body>
+{_header("reports", name, super_admin=is_super_admin(open_id))}
+<div class="container">
+  {targets_warning}
+  <div class="card">
+    <h2 style="margin:0 0 6px;font-size:1.15rem">✈️ 差旅费预算明细</h2>
+    <p style="color:#666;font-size:0.9rem;margin:0 0 20px">
+      从 SAP KSB1 导出差旅费数据，结合目标营收配置，生成按门店/职能部门的年度差旅预算跟踪报告。
+    </p>
+
+    <div class="toolbar" style="flex-wrap:wrap;gap:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-month">截至月份</label>
+        <select id="sel-month" style="width:90px">{month_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-year">年份</label>
+        <select id="sel-year" style="width:90px">{year_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label>
+          <input type="checkbox" id="chk-skip-dl">
+          跳过下载（使用已有 KSB1 文件）
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
+      <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ 生成报告</button>
+      <span id="run-status"></span>
+    </div>
+
+    <div id="log-box" class="status-box" style="margin-top:16px"></div>
+  </div>
+
+  <div class="card" style="margin-top:0">
+    <h3 style="margin:0 0 12px;font-size:0.95rem;color:#666">说明</h3>
+    <ul style="margin:0;padding-left:20px;color:#555;font-size:0.88rem;line-height:1.8">
+      <li>需要两份 KSB1 数据：<strong>上年全年</strong>和<strong>当年 YTD</strong>（自动从 SAP 下载）</li>
+      <li>目标营收和上年营收在 <a href="/admin/travel-budget">差旅预算目标</a> 页面配置</li>
+      <li>门店用统一占比计算预算，职能部门按上年支出×营收增长系数分配</li>
+      <li>报告生成后将发送至 <strong>hongming</strong> 飞书群</li>
+      <li>若 SAP 自动化未启用（<code>HAIDILAO_SAP_ENABLED=1</code>），请勾选"跳过下载"使用已有文件</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+let _pollTimer = null;
+
+async function triggerRun() {{
+  const month = parseInt(document.getElementById('sel-month').value, 10);
+  const year  = parseInt(document.getElementById('sel-year').value, 10);
+  const skipDl = document.getElementById('chk-skip-dl').checked;
+
+  document.getElementById('run-btn').disabled = true;
+  setStatus('pending', '⏳ 正在提交...');
+  document.getElementById('log-box').classList.remove('visible');
+  document.getElementById('log-box').textContent = '';
+
+  try {{
+    const resp = await fetch('/admin/travel-expense-budget/run', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ report_month: month, year, skip_download: skipDl }}),
+    }});
+    const data = await resp.json();
+    if (!data.ok) {{
+      setStatus('failed', '✗ 提交失败: ' + (data.error || '未知错误'));
+      document.getElementById('run-btn').disabled = false;
+      return;
+    }}
+    setStatus('running', '<span class="spinner"></span> 运行中 · Run ID: ' + data.run_id);
+    pollRun(data.run_id);
+  }} catch (e) {{
+    setStatus('failed', '✗ 网络错误: ' + e.message);
+    document.getElementById('run-btn').disabled = false;
+  }}
+}}
+
+function setStatus(state, html) {{
+  const el = document.getElementById('run-status');
+  const cls = {{ pending: 'badge-pending', running: 'badge-running', success: 'badge-success', failed: 'badge-failed' }};
+  el.innerHTML = `<span class="run-badge ${{cls[state] || ''}}">${{html}}</span>`;
+}}
+
+async function pollRun(runId) {{
+  if (_pollTimer) clearTimeout(_pollTimer);
+  try {{
+    const resp = await fetch('/admin/travel-expense-budget/run/' + runId);
+    const data = await resp.json();
+    const status = data.status || 'unknown';
+
+    if (status === 'success') {{
+      setStatus('success', '✅ 完成！报告已生成');
+      showLogs(data.logs || '');
+      document.getElementById('run-btn').disabled = false;
+    }} else if (status === 'failed') {{
+      setStatus('failed', '❌ 运行失败');
+      showLogs(data.logs || '（无输出）');
+      document.getElementById('run-btn').disabled = false;
+    }} else {{
+      _pollTimer = setTimeout(() => pollRun(runId), 3000);
+    }}
+  }} catch (e) {{
+    _pollTimer = setTimeout(() => pollRun(runId), 5000);
+  }}
+}}
+
+function showLogs(text) {{
+  const box = document.getElementById('log-box');
+  box.textContent = text;
+  box.classList.add('visible');
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
+
+
+@router.post("/travel-expense-budget/run")
+async def travel_expense_budget_run(request: Request, session: dict = Depends(require_auth)):
+    """Trigger a travel expense budget report run."""
+    body = await request.json()
+    report_month = body.get("report_month")
+    year = body.get("year")
+    skip_download = bool(body.get("skip_download", False))
+
+    params: dict = {}
+    if report_month:
+        params["report_month"] = int(report_month)
+    if year:
+        params["year"] = int(year)
+    if skip_download:
+        params["skip_download"] = True
+
+    params["triggered_by_open_id"] = session.get("open_id", "")
+    params["triggered_by_name"] = session.get("name", "")
+
+    try:
+        from server.routes.runs import create_run
+        run = create_run("travel-expense-budget", params, notify_chat="hongming")
+        return {"ok": True, "run_id": run.id, "status": run.status.value}
+    except Exception as exc:
+        logger.exception("Failed to create travel budget run")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.get("/travel-expense-budget/run/{run_id}")
+async def travel_expense_budget_run_status(run_id: str, session: dict = Depends(require_auth)):
+    """Session-authed proxy for polling a travel budget run."""
     from server.routes.runs import _runs
     run = _runs.get(run_id)
     if run is None:
@@ -1281,3 +1519,167 @@ async def revoke_api_key_route(request: Request, session: dict = Depends(require
     from server.api_keys import revoke_api_key
     revoked = revoke_api_key(int(key_id))
     return JSONResponse({"ok": True, "revoked": revoked})
+
+
+# ── Travel Budget Targets ───────────────────────────────────────────────────
+
+TRAVEL_STORES = STORES + ["加拿大九店"]  # 九店 added later, not in original STORES list
+
+
+@router.get("/travel-budget", response_class=HTMLResponse)
+async def travel_budget_page(
+    request: Request,
+    year: int = 2026,
+    session: dict = Depends(require_auth),
+):
+    db_ok = is_db_available()
+    existing = get_travel_budget_targets(year) if db_ok else {}
+
+    table_rows = ""
+    for store in TRAVEL_STORES:
+        data = existing.get(store, {})
+        target = data.get("target_revenue", 0)
+        prev = data.get("prev_year_revenue", 0)
+        rate = data.get("cad_to_usd_rate", 0.729)
+
+        table_rows += f"""
+        <tr>
+          <td><strong>{store}</strong></td>
+          <td><input type="number" step="0.01" min="0" name="target_revenue"
+                     data-store="{store}" value="{target}"></td>
+          <td><input type="number" step="0.01" min="0" name="prev_year_revenue"
+                     data-store="{store}" value="{prev}"></td>
+        </tr>"""
+
+    # Get first store's rate as default (all should be same)
+    first_rate = 0.729
+    if existing:
+        first_data = next(iter(existing.values()))
+        first_rate = first_data.get("cad_to_usd_rate", 0.729)
+
+    db_section = _db_warning() if not db_ok else ""
+    user_name = session.get("name", "管理员")
+    _is_super = is_super_admin(session.get("open_id", ""))
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>差旅费预算目标 — 管理后台</title>
+</head>
+<body>
+{_header("travel-budget", user_name, super_admin=_is_super)}
+<div class="container">
+{db_section}
+<div class="card">
+  <div class="toolbar">
+    <label>年份：</label>
+    <select onchange="window.location='/admin/travel-budget?year='+this.value">
+      <option value="2025" {"selected" if year == 2025 else ""}>2025</option>
+      <option value="2026" {"selected" if year == 2026 else ""}>2026</option>
+      <option value="2027" {"selected" if year == 2027 else ""}>2027</option>
+    </select>
+    <label style="margin-left:16px">CAD→USD汇率：</label>
+    <input type="number" step="0.0001" min="0" id="cad-rate" value="{first_rate}"
+           style="width:100px">
+    <span id="msg"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>门店</th>
+        <th>{year}年目标营收 (USD)</th>
+        <th>{year - 1}年实际营收 (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {table_rows}
+    </tbody>
+  </table>
+
+  <div style="margin-top:14px">
+    <button class="btn btn-primary" onclick="saveAll()"
+            {"disabled" if not db_ok else ""}>保存全部</button>
+  </div>
+</div>
+</div>
+
+<script>
+function showMsg(text, ok) {{
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'err';
+}}
+
+async function saveAll() {{
+  const stores = {repr(TRAVEL_STORES)};
+  const rate = parseFloat(document.getElementById('cad-rate').value) || 0.729;
+  const targets = stores.map(store => {{
+    const get = (name) => {{
+      const el = document.querySelector(`input[name="${{name}}"][data-store="${{store}}"]`);
+      return el ? parseFloat(el.value) || 0 : 0;
+    }};
+    return {{
+      store,
+      target_revenue: get('target_revenue'),
+      prev_year_revenue: get('prev_year_revenue'),
+    }};
+  }});
+
+  showMsg('保存中…', true);
+  try {{
+    const res = await fetch('/admin/travel-budget', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ year: {year}, cad_to_usd_rate: rate, targets }}),
+    }});
+    const data = await res.json();
+    if (data.ok) {{
+      showMsg('✓ 保存成功', true);
+    }} else {{
+      showMsg('✗ 保存失败: ' + (data.error || '未知错误'), false);
+    }}
+  }} catch(e) {{
+    showMsg('✗ 网络错误: ' + e.message, false);
+  }}
+}}
+</script>
+</body>
+</html>"""
+
+    return HTMLResponse(content=page_html)
+
+
+class TravelBudgetRow(BaseModel):
+    store: str
+    target_revenue: float
+    prev_year_revenue: float
+
+
+class SaveTravelBudgetBody(BaseModel):
+    year: int
+    cad_to_usd_rate: float = 0.729
+    targets: list[TravelBudgetRow]
+
+
+@router.post("/travel-budget")
+async def save_travel_budget(
+    body: SaveTravelBudgetBody,
+    session: dict = Depends(require_auth),
+):
+    if not is_db_available():
+        return JSONResponse({"ok": False, "error": "DATABASE_URL not set"}, status_code=503)
+    try:
+        for row in body.targets:
+            set_travel_budget_target(
+                store_name=row.store,
+                year=body.year,
+                target_revenue=row.target_revenue,
+                prev_year_revenue=row.prev_year_revenue,
+                cad_to_usd_rate=body.cad_to_usd_rate,
+            )
+        return {"ok": True}
+    except Exception as exc:
+        logger.exception("Failed to save travel budget targets")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)

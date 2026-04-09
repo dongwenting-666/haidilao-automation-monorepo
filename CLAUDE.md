@@ -15,13 +15,14 @@
 | `server/src/server/app.py` | FastAPI app, router registration, exception handlers |
 | `server/src/server/auth.py` | Session signing, whitelist, super admin checks |
 | `server/src/server/config.py` | Pydantic `Settings` — loads `.env` |
-| `server/src/server/db.py` | DB access layer (targets, competitors, admin users) |
+| `server/src/server/db.py` | DB access layer (targets, competitors, admin users, travel budget) |
 | `server/src/server/routes/tools.py` | MinIO file upload/download + admin UI |
 | `server/src/server/routes/github_webhook.py` | GitHub webhook receiver |
-| `server/src/server/notify.py` | Lark notifications — run-complete cards, daily report file delivery |
+| `server/src/server/notify.py` | Lark notifications — run-complete cards, daily report + KSB1 + travel budget file delivery |
 | `server/src/server/routes/runs.py` | Run queue, execution, post-run notification + file send |
 | `server/notify.toml` | Lark chat ID aliases (`[chats]`) + per-command notification targets |
 | `libs/lark-client/src/lark_client/notify_config.py` | `chat_id_for(alias)` — resolves named chat aliases from notify.toml |
+| `projects/travel-expense-budget/` | Travel expense budget report (差旅费预算明细) — KSB1 travel data + DB targets |
 | `libs/qbi-crawler/src/qbi_crawler/dashboard.py` | QBI report navigation + export |
 | `libs/vpn/src/vpn/_darwin.py` | CorpLink VPN reconnect via cliclick |
 | `scripts/server-start.sh` | Server launcher with crash alerting (Lark + OpenClaw agent wake) |

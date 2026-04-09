@@ -352,6 +352,57 @@ def notify_ksb1_file(
         log.exception("Failed to send KSB1 report to Lark")
 
 
+def notify_travel_budget_file(
+    report_path: "Path",
+    *,
+    target_chat: str = "hongming",
+    report_month: int = 0,
+    year: int = 0,
+) -> None:
+    """Send the travel budget report xlsx to a Lark chat."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from server.config import settings
+
+    if not settings.lark_enabled:
+        return
+
+    chat_id = chat_id_for(target_chat)
+    if not chat_id:
+        log.warning("notify: '%s' alias not found, skipping travel budget send", target_chat)
+        return
+
+    now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
+    period = f"{year}年1-{report_month}月" if year and report_month else "unknown"
+
+    try:
+        client = _client()
+        if client is None:
+            return
+
+        with client:
+            client.send_card(
+                title=f"✈️ 差旅费预算明细 · {period}",
+                content=(
+                    f"**报告已生成**，数据周期：**{period}**\n\n"
+                    f"生成时间：{now} (Vancouver)\n\n"
+                    "---\n👇 附件见下方"
+                ),
+                color="blue",
+                chat_id=chat_id,
+            )
+            client.send_file(
+                report_path,
+                filename=report_path.name,
+                chat_id=chat_id,
+                file_type="xlsx",
+            )
+
+        log.info("Travel budget report sent to %s: %s", target_chat, report_path.name)
+    except Exception:
+        log.exception("Failed to send travel budget report to Lark")
+
+
 def notify_text(command: str, text: str) -> None:
     """Send a plain text message to the target configured for *command*.
 

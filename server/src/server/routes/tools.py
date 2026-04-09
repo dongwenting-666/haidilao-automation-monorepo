@@ -129,19 +129,9 @@ _BASE_STYLE = """
 </style>
 """
 
-_HEADER = """
-<header>
-  <h1>🍲 海底捞兔子Agent加拿大片区管理后台</h1>
-  <nav>
-    <a href="/admin/targets">月度目标</a>
-    <a href="/admin/competitors">假想敌配置</a>
-    <a href="/admin/tools" class="active">工具</a>
-  </nav>
-  <span class="user-info">👤 {name} &nbsp;·&nbsp;
-    <a href="/admin/logout" style="color:rgba(255,255,255,0.75);font-size:0.82rem">退出</a>
-  </span>
-</header>
-"""
+def _tools_header(name: str) -> str:
+    from server.routes.admin import _header
+    return _header("tools", name, super_admin=True)
 
 
 # ── GET /admin/tools ──────────────────────────────────────────────────────────
@@ -157,7 +147,7 @@ async def tools_page(request: Request, session: dict = Depends(_require_super_ad
 <title>工具 — 管理后台</title>
 </head>
 <body>
-{_HEADER.format(name=user_name)}
+{_tools_header(user_name)}
 <div class="container">
   <div class="card">
     <h2 style="margin-top:0">📁 文件上传</h2>

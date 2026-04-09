@@ -366,3 +366,61 @@ def get_admin_users() -> list[dict]:
         "SELECT open_id, name, avatar_url, whitelisted, first_seen_at, last_seen_at "
         "FROM admin_users ORDER BY last_seen_at DESC"
     )
+
+
+# ── Travel budget targets ────────────────────────────────────────────────────
+
+def get_travel_budget_targets(year: int) -> dict[str, dict]:
+    """Return {store_name: {target_revenue, prev_year_revenue, prev_year_travel, q1_revenue, cad_to_usd_rate}}."""
+    db = get_db()
+    if db is None:
+        return {}
+    rows = db.fetchall(
+        "SELECT store_name, target_revenue, prev_year_revenue, prev_year_travel, "
+        "q1_revenue, cad_to_usd_rate "
+        "FROM travel_budget_targets WHERE year = %s ORDER BY store_name",
+        (year,),
+    )
+    return {
+        row["store_name"]: {
+            "target_revenue": float(row["target_revenue"]),
+            "prev_year_revenue": float(row["prev_year_revenue"]),
+            "prev_year_travel": float(row["prev_year_travel"]),
+            "q1_revenue": float(row["q1_revenue"]),
+            "cad_to_usd_rate": float(row["cad_to_usd_rate"]),
+        }
+        for row in rows
+    }
+
+
+def set_travel_budget_target(
+    store_name: str,
+    year: int,
+    target_revenue: float,
+    prev_year_revenue: float,
+    prev_year_travel: float = 0,
+    q1_revenue: float = 0,
+    cad_to_usd_rate: float = 0.695265,
+) -> None:
+    """Upsert a store's travel budget target for a given year."""
+    db = get_db()
+    if db is None:
+        raise RuntimeError("DB not available")
+    db.execute(
+        """
+        INSERT INTO travel_budget_targets
+            (store_name, year, target_revenue, prev_year_revenue,
+             prev_year_travel, q1_revenue, cad_to_usd_rate, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (store_name, year)
+        DO UPDATE SET
+            target_revenue = EXCLUDED.target_revenue,
+            prev_year_revenue = EXCLUDED.prev_year_revenue,
+            prev_year_travel = EXCLUDED.prev_year_travel,
+            q1_revenue = EXCLUDED.q1_revenue,
+            cad_to_usd_rate = EXCLUDED.cad_to_usd_rate,
+            updated_at = NOW()
+        """,
+        (store_name, year, target_revenue, prev_year_revenue,
+         prev_year_travel, q1_revenue, cad_to_usd_rate),
+    )
