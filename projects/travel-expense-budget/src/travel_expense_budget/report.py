@@ -26,8 +26,11 @@ class EntityRow:
     q1_revenue: float         # 26年Q1实际收入
     remaining_target: float   # 26年4-12月目标收入
     q1_budget: float          # Q1差旅费额度 = Q1 revenue × ratio
-    full_year_budget: float   # 全年预算 = full target × ratio
+    full_year_budget: float   # 全年预算 (stores: remaining, depts: full annual)
     ytd_actual: float         # YTD已发生差旅费
+    q1_variance: float        # Q1额度 - YTD (positive = underspent)
+    remaining_available: float  # 全年预算 - YTD (available going forward)
+    monthly_available: float  # remaining_available / months_remaining
 
 
 def compute_report(
@@ -46,6 +49,8 @@ def compute_report(
         db_data: {store_name: {target_revenue, prev_year_revenue, prev_year_travel, q1_revenue}}
         report_month: Month number (1-12) that is the last month included in YTD
     """
+    months_remaining = 12 - report_month
+
     # Gather store-level totals from DB
     total_prev_revenue = sum(
         db_data.get(e.name, {}).get("prev_year_revenue", 0) for e in STORES
@@ -102,6 +107,10 @@ def compute_report(
             # Depts: "全年预算" column shows full annual budget
             remaining_budget = full_annual
 
+        q1_variance = q1_budget - cy_travel
+        remaining_avail = remaining_budget - cy_travel
+        monthly_avail = remaining_avail / months_remaining if months_remaining > 0 else 0
+
         rows.append(EntityRow(
             name=entity.name,
             section=entity.section,
@@ -113,6 +122,9 @@ def compute_report(
             q1_budget=q1_budget,
             full_year_budget=remaining_budget,
             ytd_actual=cy_travel,
+            q1_variance=q1_variance,
+            remaining_available=remaining_avail,
+            monthly_available=monthly_avail,
         ))
 
     return rows
@@ -153,13 +165,19 @@ def generate_excel(
     num_fmt = "#,##0.00"
     pct_fmt = "0.00%"
 
+    months_remaining = 12 - report_month
+    if report_month < 12:
+        remaining_label = f"{report_month + 1}月-12月"
+    else:
+        remaining_label = "（年度已结束）"
+
     # ── Row 1: Title + currency ──────────────────────────────────────────
-    ws.merge_cells("A1:I1")
+    ws.merge_cells("A1:L1")
     ws["A1"] = f"加拿大{curr_year}年差旅费预算明细"
     ws["A1"].font = font_title
-    ws.cell(row=1, column=10, value="货币单位：美元")
-    ws.cell(row=1, column=10).font = font_normal
-    ws.cell(row=1, column=10).alignment = Alignment(horizontal="right")
+    ws.cell(row=1, column=13, value="货币单位：美元")
+    ws.cell(row=1, column=13).font = font_normal
+    ws.cell(row=1, column=13).alignment = Alignment(horizontal="right")
 
     # ── Row 2: Headers ───────────────────────────────────────────────────
     headers = {
@@ -172,6 +190,9 @@ def generate_excel(
         8: f"{curr_year}年1-{report_month}月份差旅费额度",
         9: f"{curr_year}年差旅费预算（按{prev_year}年占比测算）",
         10: f"{curr_year}年1-{report_month}月份已发生差旅费",
+        11: f"截止{curr_year}年{report_month}月使用差异",
+        12: f"{curr_year}年{remaining_label}可用差旅费总额度",
+        13: f"{curr_year}年{remaining_label}每月可用额度",
     }
     ws.merge_cells("A2:B2")
     for col, text in headers.items():
@@ -232,6 +253,15 @@ def generate_excel(
         # Col J: YTD actual
         ws.cell(row=data_row, column=10, value=entity_row.ytd_actual)
 
+        # Col K: Q1 variance (budget - actual)
+        ws.cell(row=data_row, column=11, value=entity_row.q1_variance)
+
+        # Col L: remaining available
+        ws.cell(row=data_row, column=12, value=entity_row.remaining_available)
+
+        # Col M: monthly available
+        ws.cell(row=data_row, column=13, value=entity_row.monthly_available)
+
         data_row += 1
 
     if current_section:
@@ -277,10 +307,13 @@ def generate_excel(
     ws.cell(row=total_row, column=8, value=sum(r.q1_budget for r in stores) + sum(r.q1_budget for r in depts))
     ws.cell(row=total_row, column=9, value=sum(r.full_year_budget for r in stores) + sum(r.full_year_budget for r in depts))
     ws.cell(row=total_row, column=10, value=sum(r.ytd_actual for r in rows))
+    ws.cell(row=total_row, column=11, value=sum(r.q1_variance for r in rows))
+    ws.cell(row=total_row, column=12, value=sum(r.remaining_available for r in rows))
+    ws.cell(row=total_row, column=13, value=sum(r.remaining_available for r in rows) / months_remaining if months_remaining > 0 else 0)
 
     # ── Apply borders, fonts, number formats ─────────────────────────────
     for row_idx in range(data_start, total_row + 1):
-        for col in range(1, 11):
+        for col in range(1, 14):
             cell = ws.cell(row=row_idx, column=col)
             cell.font = font_normal
             cell.border = border_all
@@ -291,13 +324,13 @@ def generate_excel(
                 cell.number_format = num_fmt
 
     double_top = Border(left=thin, right=thin, top=Side(style="double"), bottom=thin)
-    for col in range(1, 11):
+    for col in range(1, 14):
         cell = ws.cell(row=total_row, column=col)
         cell.border = double_top
         cell.font = font_bold
 
     # ── Column widths ────────────────────────────────────────────────────
-    widths = {"A": 12, "B": 27, "C": 15, "D": 18, "E": 16, "F": 20, "G": 24, "H": 28, "I": 37, "J": 28}
+    widths = {"A": 12, "B": 27, "C": 15, "D": 18, "E": 16, "F": 20, "G": 24, "H": 28, "I": 37, "J": 28, "K": 24, "L": 33, "M": 28}
     for letter, w in widths.items():
         ws.column_dimensions[letter].width = w
 
