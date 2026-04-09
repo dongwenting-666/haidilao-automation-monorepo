@@ -132,7 +132,7 @@ def _header(page: str, name: str = "", super_admin: bool = False) -> str:
         ak_active="active" if page == "api-keys" else ""
     ) if super_admin else ""
     # "自动化报表" covers /admin/reports and its sub-pages (e.g. ksb1)
-    reports_active = "active" if page in ("reports", "ksb1", "travel-expense-budget") else ""
+    reports_active = "active" if page in ("reports", "daily-report", "ksb1", "travel-expense-budget") else ""
     reports_link = _REPORTS_NAV_LINK.format(reports_active=reports_active)
     travel_link = _TRAVEL_NAV_LINK.format(
         travel_active="active" if page == "travel-budget" else ""
@@ -787,6 +787,12 @@ async def reports_hub_page(request: Request, session: dict = Depends(require_aut
     <h2 style="margin:0 0 6px;font-size:1.15rem">📋 自动化报表</h2>
     <p style="color:#666;font-size:0.9rem;margin:0 0 20px">按需触发自动化报表生成，结果将发送至对应飞书群。</p>
     <div class="report-grid">
+      <a href="/admin/daily-report" class="report-card">
+        <span class="icon">📈</span>
+        <h3>每日经营日报</h3>
+        <p>下载 QBI 数据，生成门店经营日报（翻台率、营收、同比环比），发送至生产核算群。</p>
+        <span class="badge">每日6AM / 手动补发</span>
+      </a>
       <a href="/admin/ksb1" class="report-card">
         <span class="icon">📊</span>
         <h3>KSB1 账务核查</h3>
@@ -805,6 +811,201 @@ async def reports_hub_page(request: Request, session: dict = Depends(require_aut
 </body>
 </html>"""
     return HTMLResponse(content=page_html)
+
+
+# ── Daily Report ──────────────────────────────────────────────────────────
+
+
+@router.get("/daily-report", response_class=HTMLResponse)
+async def daily_report_page(request: Request, session: dict = Depends(require_auth)):
+    from datetime import date as _date, timedelta
+
+    today = _date.today()
+    default_date = today - timedelta(days=2)  # T-2
+
+    name = session.get("name", "管理员")
+    open_id = session.get("open_id", "")
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>每日经营日报 — 管理后台</title>
+<style>
+  .status-box {{
+    background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+    padding: 14px 16px; font-family: monospace; font-size: 0.85rem;
+    white-space: pre-wrap; max-height: 320px; overflow-y: auto;
+    color: #333; display: none;
+  }}
+  .status-box.visible {{ display: block; }}
+  .run-badge {{
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.8rem; font-weight: 600;
+  }}
+  .badge-pending  {{ background: #fff3cd; color: #856404; }}
+  .badge-running  {{ background: #cff4fc; color: #0c5460; }}
+  .badge-success  {{ background: #d1e7dd; color: #155724; }}
+  .badge-failed   {{ background: #f8d7da; color: #721c24; }}
+  .spinner {{
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #ccc; border-top-color: #333;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+</style>
+</head>
+<body>
+{_header("reports", name, super_admin=is_super_admin(open_id))}
+<div class="container">
+  <div class="card">
+    <h2 style="margin:0 0 6px;font-size:1.15rem">📈 每日经营日报</h2>
+    <p style="color:#666;font-size:0.9rem;margin:0 0 20px">
+      下载 QBI 数据并生成门店经营日报。默认生成 T-2 日期的报告（QBI数据需两天后才完整）。
+      完成后自动发送至生产核算群。
+    </p>
+
+    <div class="toolbar" style="flex-wrap:wrap;gap:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-date">报告日期</label>
+        <input type="date" id="sel-date" value="{default_date.isoformat()}"
+               style="padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.88rem">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label>
+          <input type="checkbox" id="chk-skip-dl">
+          跳过下载（使用已有 QBI 文件）
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
+      <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ 生成日报</button>
+      <span id="run-status"></span>
+    </div>
+
+    <div id="log-box" class="status-box" style="margin-top:16px"></div>
+  </div>
+
+  <div class="card" style="margin-top:0">
+    <h3 style="margin:0 0 12px;font-size:0.95rem;color:#666">说明</h3>
+    <ul style="margin:0;padding-left:20px;color:#555;font-size:0.88rem;line-height:1.8">
+      <li>报告日期受 T-2 规则限制：QBI 数据在 T-2 日才可靠。选择过于近的日期会失败。</li>
+      <li>正常情况下日报会在每日 <strong>6:00 AM (Vancouver)</strong> 自动运行</li>
+      <li>此页面用于<strong>自动任务失败后手动补发</strong></li>
+      <li>报告生成后将以 XLSX 附件形式发送至 <strong>生产核算群</strong></li>
+    </ul>
+  </div>
+</div>
+
+<script>
+let _pollTimer = null;
+
+async function triggerRun() {{
+  const date = document.getElementById('sel-date').value;
+  const skipDl = document.getElementById('chk-skip-dl').checked;
+
+  document.getElementById('run-btn').disabled = true;
+  setStatus('pending', '⏳ 正在提交...');
+  document.getElementById('log-box').classList.remove('visible');
+  document.getElementById('log-box').textContent = '';
+
+  try {{
+    const resp = await fetch('/admin/daily-report/run', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ date, skip_download: skipDl }}),
+    }});
+    const data = await resp.json();
+    if (!data.ok) {{
+      setStatus('failed', '✗ 提交失败: ' + (data.error || '未知错误'));
+      document.getElementById('run-btn').disabled = false;
+      return;
+    }}
+    setStatus('running', '<span class="spinner"></span> 运行中 · Run ID: ' + data.run_id);
+    pollRun(data.run_id);
+  }} catch (e) {{
+    setStatus('failed', '✗ 网络错误: ' + e.message);
+    document.getElementById('run-btn').disabled = false;
+  }}
+}}
+
+function setStatus(state, html) {{
+  const el = document.getElementById('run-status');
+  const cls = {{ pending: 'badge-pending', running: 'badge-running', success: 'badge-success', failed: 'badge-failed' }};
+  el.innerHTML = `<span class="run-badge ${{cls[state] || ''}}">${{html}}</span>`;
+}}
+
+async function pollRun(runId) {{
+  if (_pollTimer) clearTimeout(_pollTimer);
+  try {{
+    const resp = await fetch('/admin/daily-report/run/' + runId);
+    const data = await resp.json();
+    const status = data.status || 'unknown';
+
+    if (status === 'success') {{
+      setStatus('success', '✅ 完成！日报已发送至生产群');
+      showLogs(data.logs || '');
+      document.getElementById('run-btn').disabled = false;
+    }} else if (status === 'failed') {{
+      setStatus('failed', '❌ 运行失败');
+      showLogs(data.logs || '（无输出）');
+      document.getElementById('run-btn').disabled = false;
+    }} else {{
+      _pollTimer = setTimeout(() => pollRun(runId), 3000);
+    }}
+  }} catch (e) {{
+    _pollTimer = setTimeout(() => pollRun(runId), 5000);
+  }}
+}}
+
+function showLogs(text) {{
+  const box = document.getElementById('log-box');
+  box.textContent = text;
+  box.classList.add('visible');
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
+
+
+@router.post("/daily-report/run")
+async def daily_report_run(request: Request, session: dict = Depends(require_auth)):
+    """Trigger a daily report run."""
+    body = await request.json()
+    date_str = body.get("date")
+    skip_download = bool(body.get("skip_download", False))
+
+    params: dict = {}
+    if date_str:
+        params["date"] = str(date_str)
+    if skip_download:
+        params["skip_download"] = True
+
+    try:
+        from server.routes.runs import create_run
+        run = create_run("daily-report", params, notify_chat="production_accounting_report_chat")
+        return {"ok": True, "run_id": run.id, "status": run.status.value}
+    except Exception as exc:
+        logger.exception("Failed to create daily report run")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.get("/daily-report/run/{run_id}")
+async def daily_report_run_status(run_id: str, session: dict = Depends(require_auth)):
+    """Session-authed proxy for polling a daily report run."""
+    from server.routes.runs import _runs
+    run = _runs.get(run_id)
+    if run is None:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return {
+        "run_id": run.id,
+        "status": run.status.value,
+        "queue_position": run.queue_position,
+        "logs": run.logs if run.status.value in ("success", "failed") else "",
+    }
 
 
 # ── KSB1 Accounting Check ─────────────────────────────────────────────────
