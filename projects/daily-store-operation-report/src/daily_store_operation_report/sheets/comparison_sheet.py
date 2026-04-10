@@ -287,9 +287,8 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
     # Section 2 (收入): 9 to revenue_end → section_b
     apply_fill_range(ws, 9, revenue_end, theme.section_b_fill, 1, _NCOLS)
 
-    # Section 3 (单桌消费): sec3_start to sec3_start+5
-    apply_fill_range(ws, sec3_start, sec3_start + 4, theme.section_a_fill, 1, _NCOLS)
-    apply_fill_row(ws, sec3_start + 5, theme.section_a_fill, 1, _NCOLS)
+    # Section 3 (单桌消费)
+    apply_fill_range(ws, sec3_start, sec4_start - 1, theme.section_a_fill, 1, _NCOLS)
 
     # Section 4 (翻台率): alternating
     for i in range(sec4_start, last_row + 1):

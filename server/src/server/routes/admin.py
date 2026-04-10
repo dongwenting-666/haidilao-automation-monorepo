@@ -1431,9 +1431,6 @@ async def travel_expense_budget_run(request: Request, session: dict = Depends(re
     if skip_download:
         params["skip_download"] = True
 
-    params["triggered_by_open_id"] = session.get("open_id", "")
-    params["triggered_by_name"] = session.get("name", "")
-
     try:
         from server.routes.runs import create_run
         run = create_run("travel-expense-budget", params, notify_chat="hongming")
@@ -2106,9 +2103,9 @@ async def message_log_recall(request: Request, session: dict = Depends(require_a
         import httpx
 
         body = await request.json()
-        message_id = body.get("message_id")
-        if not message_id:
-            return {"ok": False, "error": "message_id required"}
+        message_id = body.get("message_id", "")
+        if not message_id or not message_id.startswith("om_"):
+            return {"ok": False, "error": "Invalid message_id"}
 
         client = LarkClient(app_id=settings.lark_app_id, app_secret=settings.lark_app_secret)
         with client:

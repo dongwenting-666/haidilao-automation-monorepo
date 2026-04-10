@@ -235,15 +235,16 @@ def _notify_run(run: Run) -> None:
 
     # If the daily-report succeeded, deliver the xlsx to the target chat.
     if run.command == "daily-report" and run.status.value == "success":
+        report_path = _find_report_from_run(run)
+
         try:
             from server.notify import notify_daily_report_file
-            report_path = _find_report_from_run(run)
             if report_path:
                 notify_daily_report_file(report_path, target_chat=run.notify_chat)
         except Exception:
             pass  # file delivery failures must never affect the run result
 
-        # Send Sheet 1 + Sheet 4 screenshots to finance study group
+        # Send Sheet 3 + Sheet 4 screenshots to finance study group
         try:
             from server.notify import notify_daily_report_screenshots
             if report_path:

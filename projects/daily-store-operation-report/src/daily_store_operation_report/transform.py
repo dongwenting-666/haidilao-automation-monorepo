@@ -168,8 +168,7 @@ def _last_day_two_cols_by_store(rows: list[dict], report_date_str: str, col1: st
     totals: dict[str, float] = {}
     for row in rows:
         store = str(row.get(COL_STORE) or "").strip()
-        date_val = str(row.get(COL_DATE) or "").strip()
-        if not store or date_val != report_date_str:
+        if not store or _normalize_date(row.get(COL_DATE, "")) != report_date_str:
             continue
         val = _safe_float(row.get(col1), context=col1) + _safe_float(row.get(col2), context=col2)
         totals[store] = totals.get(store, 0) + val
