@@ -8,6 +8,7 @@
 hongming     = "oc_78f29489a577f10e36ebf989bccdcc83"   # server alerts / error monitoring
 store_hours  = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"   # store-hours-collect group
 production_accounting_report_chat  = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"   # sending production automation or cron result
+finance_study_group  = "oc_d17d1a57782b3f6cf4de9607eea3c054"   # 财务新学习群 — daily report screenshots only
 
 # ── Per-command targets ────────────────────────────────────────────────────
 # Each key is a command name (matches BaseCommand.name).

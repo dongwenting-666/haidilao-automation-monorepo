@@ -240,6 +240,44 @@ def notify_daily_report_file(report_path: "Path", target_chat: str = "production
         log.exception("Failed to send daily report file to Lark")
 
 
+def notify_daily_report_screenshots(
+    report_path: "Path",
+    target_chat: str = "finance_study_group",
+    sheet_names: tuple[str, ...] = ("对比上月表", "分时段-上报"),
+) -> None:
+    """Send selected sheet screenshots to a secondary chat group.
+
+    Only sends PNG images of the specified sheets — no card, no xlsx file.
+    """
+    from server.config import settings
+
+    if not settings.lark_enabled:
+        return
+
+    chat_id = chat_id_for(target_chat)
+    if not chat_id:
+        log.warning("notify: '%s' alias not found, skipping screenshot send", target_chat)
+        return
+
+    try:
+        from server.sheet_screenshot import render_all_sheets
+
+        client = _client()
+        if client is None:
+            return
+
+        sheets = render_all_sheets(report_path)
+        with client:
+            for sheet_name, png_bytes in sheets:
+                if sheet_name in sheet_names:
+                    client.send_image(png_bytes, chat_id=chat_id)
+                    log.info("Sent '%s' screenshot to %s", sheet_name, target_chat)
+
+        log.info("Daily report screenshots sent to %s", target_chat)
+    except Exception:
+        log.exception("Failed to send daily report screenshots to %s", target_chat)
+
+
 def notify_ksb1_file(
     report_path: "Path",
     *,

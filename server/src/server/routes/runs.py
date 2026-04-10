@@ -243,6 +243,14 @@ def _notify_run(run: Run) -> None:
         except Exception:
             pass  # file delivery failures must never affect the run result
 
+        # Send Sheet 1 + Sheet 4 screenshots to finance study group
+        try:
+            from server.notify import notify_daily_report_screenshots
+            if report_path:
+                notify_daily_report_screenshots(report_path)
+        except Exception:
+            pass
+
     # If ksb1 succeeded, deliver the report xlsx and @mention the requester.
     if run.command == "ksb1" and run.status.value == "success":
         try:
