@@ -1976,14 +1976,28 @@ function renderMessages() {{
     list.innerHTML = '<p style="color:#999;text-align:center;padding:20px">没有机器人消息</p>';
     return;
   }}
-  list.innerHTML = _messages.map((m, i) => `
-    <div class="msg-row" id="msg-${{m.id}}" style="background:${{i%2===0?'#fff':'#fafafa'}}">
-      <span class="msg-time">${{m.time}}</span>
-      <span class="msg-type">${{m.type}}</span>
-      <span style="flex:1;font-weight:500">${{m.preview}}</span>
-      <button class="recall-btn" onclick="recallOne('${{m.id}}', this)">撤回</button>
-    </div>
-  `).join('');
+  list.innerHTML = _messages.map((m, i) => {{
+    let detail = '';
+    if (m.type === 'image' && m.image_key) {{
+      detail = `<div style="margin-top:6px"><img src="/admin/message-log/image/${{m.image_key}}" style="max-width:300px;max-height:200px;border-radius:4px;border:1px solid #ddd"></div>`;
+    }} else if (m.type === 'interactive' && m.card_title) {{
+      detail = `<div style="margin-top:4px;padding:6px 10px;background:#f0f4ff;border-radius:4px;font-size:0.82rem"><strong>${{m.card_title}}</strong><pre style="margin:4px 0 0;white-space:pre-wrap;font-size:0.78rem;color:#555;max-height:120px;overflow:auto">${{m.card_text || ''}}</pre></div>`;
+    }} else if (m.type === 'file' && m.file_name) {{
+      detail = `<div style="margin-top:4px;font-size:0.82rem">📎 <strong>${{m.file_name}}</strong> (${{m.file_size}})</div>`;
+    }} else if (m.type === 'post' && m.post_title) {{
+      detail = `<div style="margin-top:4px;padding:6px 10px;background:#f0fff0;border-radius:4px;font-size:0.82rem"><strong>${{m.post_title}}</strong><div style="margin-top:2px;color:#555;font-size:0.78rem">${{m.post_text || ''}}</div></div>`;
+    }}
+    return `
+    <div class="msg-row" id="msg-${{m.id}}" style="background:${{i%2===0?'#fff':'#fafafa'}};flex-direction:column;align-items:stretch">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="msg-time">${{m.time}}</span>
+        <span class="msg-type">${{m.type}}</span>
+        <span style="flex:1;font-weight:500">${{m.preview}}</span>
+        <button class="recall-btn" onclick="recallOne('${{m.id}}', this)">撤回</button>
+      </div>
+      ${{detail}}
+    </div>`;
+  }}).join('');
 }}
 
 async function recallOne(msgId, btn) {{
@@ -2113,12 +2127,51 @@ async def message_log_list(chat: str, session: dict = Depends(require_auth)):
                 else:
                     preview = f"[{msg_type}]"
 
-                messages.append({
+                entry = {
                     "id": msg.get("message_id", ""),
                     "type": msg_type,
                     "time": time_str,
                     "preview": preview,
-                })
+                }
+                # Add type-specific detail fields
+                try:
+                    import json as _json
+                    parsed = _json.loads(body) if body and body != "This message was recalled" else {}
+                except Exception:
+                    parsed = {}
+
+                if msg_type == "image":
+                    entry["image_key"] = parsed.get("image_key", "")
+                elif msg_type == "file":
+                    entry["file_name"] = parsed.get("file_name", "")
+                    size = int(parsed.get("file_size", 0))
+                    entry["file_size"] = f"{size // 1024}KB" if size else ""
+                elif msg_type == "interactive":
+                    entry["card_title"] = parsed.get("header", {}).get("title", {}).get("content", "") if isinstance(parsed, dict) else ""
+                    # Extract first text element from card
+                    elements = parsed.get("elements", []) if isinstance(parsed, dict) else []
+                    texts = []
+                    for el_group in elements:
+                        if isinstance(el_group, list):
+                            for el in el_group:
+                                if isinstance(el, dict) and el.get("tag") == "text":
+                                    texts.append(el.get("text", "").strip())
+                    entry["card_text"] = "\n".join(texts)[:300]
+                elif msg_type == "post":
+                    for lang in ("zh_cn", "en_us"):
+                        lang_data = parsed.get(lang, {}) if isinstance(parsed, dict) else {}
+                        if lang_data.get("title"):
+                            entry["post_title"] = lang_data["title"]
+                            # Extract text content
+                            texts = []
+                            for para in lang_data.get("content", []):
+                                for el in para:
+                                    if el.get("tag") == "text":
+                                        texts.append(el.get("text", ""))
+                            entry["post_text"] = " ".join(texts)[:200]
+                            break
+
+                messages.append(entry)
 
             return {"ok": True, "messages": messages}
     except Exception as exc:
@@ -2154,3 +2207,33 @@ async def message_log_recall(request: Request, session: dict = Depends(require_a
     except Exception as exc:
         logger.exception("Failed to recall message")
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.get("/message-log/image/{image_key}")
+async def message_log_image(image_key: str, session: dict = Depends(require_auth)):
+    """Proxy a Lark image for inline display in the message log."""
+    import re
+    if not re.match(r"^img_v\d+_[\w-]+$", image_key):
+        return JSONResponse({"error": "Invalid image key"}, status_code=400)
+
+    try:
+        from lark_client import LarkClient
+        from server.config import settings
+        from fastapi.responses import Response
+        import httpx
+
+        client = LarkClient(app_id=settings.lark_app_id, app_secret=settings.lark_app_secret)
+        with client:
+            headers = client._headers()
+            resp = httpx.get(
+                f"https://open.feishu.cn/open-apis/im/v1/images/{image_key}",
+                headers=headers,
+                follow_redirects=True,
+            )
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "image/png")
+                return Response(content=resp.content, media_type=content_type)
+            return JSONResponse({"error": "Image not found"}, status_code=404)
+    except Exception as exc:
+        logger.exception("Failed to fetch image")
+        return JSONResponse({"error": str(exc)}, status_code=500)
