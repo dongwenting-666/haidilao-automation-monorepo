@@ -16,19 +16,51 @@
 | `server/src/server/auth.py` | Session signing, whitelist, super admin checks |
 | `server/src/server/config.py` | Pydantic `Settings` — loads `.env` |
 | `server/src/server/db.py` | DB access layer (targets, competitors, admin users, travel budget) |
+| `server/src/server/routes/admin.py` | Admin UI — all admin pages (targets, reports, message log, etc.) |
 | `server/src/server/routes/tools.py` | MinIO file upload/download + admin UI |
 | `server/src/server/routes/github_webhook.py` | GitHub webhook receiver |
-| `server/src/server/notify.py` | Lark notifications — run-complete cards, daily report + KSB1 + travel budget file delivery |
-| `server/src/server/routes/runs.py` | Run queue, execution, post-run notification + file send |
+| `server/src/server/notify.py` | Lark notifications — cards, file delivery, screenshots |
+| `server/src/server/routes/runs.py` | Run queue, execution, post-run notification hooks |
+| `server/src/server/sheet_screenshot.py` | Render Excel sheets to PNG for Lark delivery |
 | `server/notify.toml` | Lark chat ID aliases (`[chats]`) + per-command notification targets |
-| `libs/lark-client/src/lark_client/notify_config.py` | `chat_id_for(alias)` — resolves named chat aliases from notify.toml |
-| `projects/travel-expense-budget/` | Travel expense budget report (差旅费预算明细) — KSB1 travel data + DB targets |
-| `libs/qbi-crawler/src/qbi_crawler/dashboard.py` | QBI report navigation + export |
-| `libs/vpn/src/vpn/_darwin.py` | CorpLink VPN reconnect via cliclick |
-| `scripts/server-start.sh` | Server launcher with crash alerting (Lark + OpenClaw agent wake) |
-| `scripts/lark-notify.py` | CLI: send Lark message by alias (`python scripts/lark-notify.py hongming "msg"`) |
-| `~/Library/LaunchAgents/com.haidilao.server.plist` | LaunchAgent config (minimal env: HOME, PATH, LARK creds) |
+| `server/src/server/commands/` | Command definitions: daily-report, ksb1, travel-expense-budget, f13-clearing, store-hours-collect, treasury-loan-watch |
+| `libs/lark-client/` | Lark API client (send_text, send_card, send_file, send_image) |
+| `libs/qbi-crawler/` | QBI report download via Playwright |
+| `libs/sap-gui/` | SAP GUI automation (KSB1, F.13) via AppleScript/COM |
+| `libs/vpn/` | CorpLink VPN automation via cliclick |
+| `projects/daily-store-operation-report/` | Daily store operation report (5-sheet Excel from QBI data) |
+| `projects/ksb1-accounting-check/` | KSB1 accounting check (SAP cost center comparison) |
+| `projects/travel-expense-budget/` | Travel expense budget report (差旅费预算明细) |
+| `scripts/server-start.sh` | Server launcher with crash alerting |
+| `scripts/lark-notify.py` | CLI: send Lark message by alias |
+| `~/Library/LaunchAgents/com.haidilao.server.plist` | LaunchAgent config |
 | `/opt/homebrew/etc/nginx/sites-enabled/haidilao.conf` | Nginx reverse proxy config |
+
+## Admin Pages
+
+| Page | URL | Description |
+|------|-----|-------------|
+| 月度目标 | `/admin/targets` | Per-store monthly targets (revenue, turnover rate) |
+| 假想敌配置 | `/admin/competitors` | Competitor store mapping |
+| 差旅预算 | `/admin/travel-budget` | Travel budget targets (revenue, travel, Q1, exchange rate) |
+| 自动化报表 | `/admin/reports` | Reports hub — links to all report triggers |
+| 每日经营日报 | `/admin/daily-report` | Daily report manual trigger (date picker, skip-download) |
+| KSB1核查 | `/admin/ksb1` | KSB1 accounting check trigger |
+| 差旅费预算 | `/admin/travel-expense-budget` | Travel expense budget report trigger |
+| 消息记录 | `/admin/message-log` | Bot message viewer + recall per chat group |
+| 工具 | `/admin/tools` | File upload (MinIO) — super admin only |
+| API密钥 | `/admin/api-keys` | API key management — super admin only |
+
+## Registered Commands
+
+| Command | Project | Schedule | Description |
+|---------|---------|----------|-------------|
+| `daily-report` | `daily-store-operation-report` | Daily 6:00 AM Vancouver | QBI→5-sheet Excel→Lark (production group + finance screenshots) |
+| `ksb1` | `ksb1-accounting-check` | On-demand | SAP KSB1→month-over-month comparison→Lark @mention |
+| `travel-expense-budget` | `travel-expense-budget` | On-demand | KSB1 travel data + DB targets→budget report→Lark |
+| `f13-clearing` | (server command) | Monthly 10th 7:00 AM | SAP F.13 automatic clearing→Lark status |
+| `store-hours-collect` | (server command) | Daily 6:30 AM | Daily report→Feishu sheet auto-fill→Lark alerts |
+| `treasury-loan-watch` | `treasury-loan-watch` | Daily 6:00 AM | Feishu sheet→loan maturity check→Lark alert |
 
 ## Critical Lessons Learned
 
@@ -232,9 +264,21 @@ Each scheduled command has **two independent notification layers**. They must be
 
 | Command | notify.toml (run card) | run.notify_chat (file gate) | Internal (Layer 2) |
 |---------|----------------------|----------------------------|--------------------|
-| `daily-report` | `hongming` | `production_accounting_report_chat` (xlsx delivery) | — |
+| `daily-report` | `hongming` | `production_accounting_report_chat` (card+xlsx+screenshots) | `finance_study_group` (对比上年表+分时段 screenshots only) |
+| `ksb1` | `hongming` | `production_accounting_report_chat` (xlsx+@mention) | — |
+| `travel-expense-budget` | — | `hongming` (xlsx) | — |
+| `f13-clearing` | `hongming` | — | — |
 | `treasury-loan-watch` | `hongming` | `hongming` | `hongming` (loan alerts) |
-| `store-hours-collect` | `hongming` | `hongming` | `store_hours` (data summary) + `hongming` (unfilled alert, silent if ok) |
+| `store-hours-collect` | `hongming` (failure only) | `hongming` | `store_hours` (data summary) + `hongming` (unfilled alert, silent if ok) |
+
+**Chat aliases** (defined in `server/notify.toml [chats]`):
+
+| Alias | Chat ID | Purpose |
+|-------|---------|---------|
+| `hongming` | `oc_78f294...` | Server alerts, errors, admin reports |
+| `production_accounting_report_chat` | `oc_ff2a74...` | Scheduled daily report xlsx + KSB1 reports |
+| `finance_study_group` | `oc_d17d1a...` | Daily report screenshots (对比上年表 + 分时段) |
+| `store_hours` | `oc_9fe9a8...` | Store hours data summaries |
 
 **Rule:** never set `run.notify_chat` to `store_hours` or `production_accounting_report_chat` for anything other than their specific purpose. Those groups receive business outputs only — not server status cards.
 

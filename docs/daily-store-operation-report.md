@@ -82,19 +82,27 @@ database_report_YYYY_MM_DD.xlsx
 
 ### Sheet 1: 对比上月表 (MoM Detail)
 
-Gold theme. Compares current month vs previous month across 4 sections:
+Gold theme. Compares current month vs previous month across 4 sections (34 rows):
 - 桌数(考核) — table counts, today vs MTD vs previous month
-- 收入(不含税-万加元) — revenue in 万, targets, completion rates, discounts
-- 单桌消费(不含税) — per-table and per-capita spending
+- 收入(不含税-万加元) — revenue in 万 with 堂食/外卖 breakdown, targets, completion rates, discounts
+  - 外卖收入 = 营業收入(外卖) + 営業収入(外送) combined (store 6 uses 外送 instead of 外卖)
+  - 堂食 + 外卖 = 今日営業収入
+- 単桌消費(不含税) — per-table and per-capita spending
 - 翻台率 — turnover rate rankings (today + MTD)
 
 ### Sheet 2: 同比数据 (YoY Summary)
 
-Gold theme with region grouping (西部 3 stores, 东部 5 stores). Four comparison sections: tables, turnover rate, revenue, per-table spending. Each section shows current, YoY, diff, and growth rate.
+Gold theme with region grouping (西部 3 stores, 東部 5 stores). Four comparison sections: tables, turnover rate, revenue, per-table spending. Each section shows current, YoY, diff, and growth rate.
 
-### Sheet 3: 对比上年表 (YoY Detail)
+### Sheet 3: 対比上年表 (YoY Detail)
 
-Blue theme. Same layout as Sheet 1 but comparing against previous year instead of previous month. Shares implementation with Sheet 1 via `comparison_sheet.py`.
+Blue theme. Same structure as Sheet 1 but comparing against previous year (34 rows). Key differences from MoM:
+- Revenue rows use 今日堂食営業收入(万) / 今日外卖営業收入(万) labels
+- Includes 上年截止目前堂食/外卖収入 rows (comparison period breakdown)
+- No 同比外卖/堂食変化 rows (only total 同比変化)
+- Shares implementation with Sheet 1 via `comparison_sheet.py` with `is_yoy` flag
+
+**Screenshot delivery:** Sheets 3 + 4 are sent as PNG images to `finance_study_group` after each daily report run.
 
 ### Sheet 5: 假想敌翻台率对比 (Competitor Turnover Comparison)
 

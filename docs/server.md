@@ -117,7 +117,14 @@ All admin pages require authentication (Lark OAuth). Unauthenticated requests re
 | `/admin/logout` | Clear session, redirect to login |
 | `/admin/targets` | Manage monthly store targets (revenue + turnover rate per slot) |
 | `/admin/competitors` | Manage store → competitor mappings |
+| `/admin/travel-budget` | Travel budget targets (revenue, travel, Q1, exchange rate per store) |
+| `/admin/reports` | Reports hub — links to all report triggers |
+| `/admin/daily-report` | Daily report manual trigger (date picker, skip-download, live polling) |
+| `/admin/ksb1` | KSB1 accounting check trigger (month/year, skip-download, live polling) |
+| `/admin/travel-expense-budget` | Travel expense budget report trigger (month/year, live polling) |
+| `/admin/message-log` | Bot message viewer + recall (per chat group) |
 | `/admin/users` | View Lark users who have logged in; toggle whitelist access |
+| `/admin/api-keys` | **Super-admin only** — manage API keys with scoped permissions |
 | `/admin/tools` | **Super-admin only** — upload, list, and delete files in MinIO storage |
 
 ### /admin/targets

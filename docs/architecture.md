@@ -16,6 +16,7 @@ haidilao-automation-monorepo/
 │   ├── ksb1-accounting-check/       # KSB1 month-over-month accounting check (CLI)
 │   ├── ksb1-accounting-check-gui/   # Desktop GUI + PyInstaller EXE
 │   ├── daily-store-operation-report/ # Daily store operations Excel report
+│   ├── travel-expense-budget/        # Travel expense budget report (差旅费预算明细)
 │   ├── treasury-loan-watch/         # Daily TREASURY inter-company loan maturity checker
 │   └── store-hours-collect/         # Daily 6:30 AM Feishu working-hour spreadsheet manager
 ├── docker/                        # Docker Compose for PostgreSQL (port 5432)
