@@ -121,6 +121,7 @@ _HEADER_TMPL = """
 _TOOLS_NAV_LINK = '<a href="/admin/tools" class="{tools_active}">工具</a>'
 _APIKEYS_NAV_LINK = '<a href="/admin/api-keys" class="{ak_active}">API密钥</a>'
 _REPORTS_NAV_LINK = '<a href="/admin/reports" class="{reports_active}">自动化报表</a>'
+_MSGLOG_NAV_LINK = '<a href="/admin/message-log" class="{msglog_active}">消息记录</a>'
 _TRAVEL_NAV_LINK = '<a href="/admin/travel-budget" class="{travel_active}">差旅预算</a>'
 
 
@@ -137,10 +138,13 @@ def _header(page: str, name: str = "", super_admin: bool = False) -> str:
     travel_link = _TRAVEL_NAV_LINK.format(
         travel_active="active" if page == "travel-budget" else ""
     )
+    msglog_link = _MSGLOG_NAV_LINK.format(
+        msglog_active="active" if page == "message-log" else ""
+    )
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
-        tools_link=travel_link + reports_link + tools_link + apikeys_link,
+        tools_link=travel_link + reports_link + msglog_link + tools_link + apikeys_link,
         name=name or "管理员",
     )
 
@@ -1883,4 +1887,241 @@ async def save_travel_budget(
         return {"ok": True}
     except Exception as exc:
         logger.exception("Failed to save travel budget targets")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+# ── Message Log & Recall ─────────────────────────────────────────────────
+
+_MSG_CHATS = [
+    ("hongming", "Hongming (管理员)"),
+    ("production_accounting_report_chat", "生产核算群"),
+    ("finance_study_group", "财务新学习群"),
+    ("store_hours", "门店工时群"),
+]
+
+
+@router.get("/message-log", response_class=HTMLResponse)
+async def message_log_page(request: Request, session: dict = Depends(require_auth)):
+    name = session.get("name", "管理员")
+    open_id = session.get("open_id", "")
+
+    chat_options = "".join(
+        f'<option value="{alias}">{label}</option>' for alias, label in _MSG_CHATS
+    )
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+<title>消息记录 — 管理后台</title>
+<style>
+  .msg-row {{ display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+    border-bottom: 1px solid #eee; font-size: 0.88rem; }}
+  .msg-row:hover {{ background: #f9f9f9; }}
+  .msg-type {{ display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 0.75rem; font-weight: 600; background: #e8f0fe; color: #1a73e8; }}
+  .msg-time {{ color: #888; font-size: 0.82rem; min-width: 160px; }}
+  .msg-id {{ font-family: monospace; font-size: 0.78rem; color: #aaa; }}
+  .recall-btn {{ cursor: pointer; background: #e74c3c; color: #fff; border: none;
+    border-radius: 4px; padding: 3px 10px; font-size: 0.78rem; }}
+  .recall-btn:hover {{ background: #c0392b; }}
+  .recall-btn.done {{ background: #ccc; cursor: default; }}
+  .recall-all {{ margin-top: 12px; }}
+  #msg-list {{ max-height: 500px; overflow-y: auto; }}
+</style>
+</head>
+<body>
+{_header("message-log", name, super_admin=is_super_admin(open_id))}
+<div class="container">
+  <div class="card">
+    <h2 style="margin:0 0 6px;font-size:1.15rem">📨 机器人消息记录</h2>
+    <p style="color:#666;font-size:0.9rem;margin:0 0 16px">
+      查看机器人发送的消息，可以撤回误发的消息。仅显示最近20条。
+    </p>
+
+    <div class="toolbar" style="gap:12px">
+      <label>群组：</label>
+      <select id="sel-chat" style="width:200px">{chat_options}</select>
+      <button class="btn btn-primary btn-sm" onclick="loadMessages()">加载</button>
+      <button class="btn btn-sm recall-all" style="background:#e74c3c;color:#fff"
+              onclick="recallAll()">撤回全部</button>
+      <span id="msg-status" style="font-size:0.85rem"></span>
+    </div>
+
+    <div id="msg-list" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<script>
+let _messages = [];
+
+async function loadMessages() {{
+  const chat = document.getElementById('sel-chat').value;
+  document.getElementById('msg-status').textContent = '加载中...';
+  try {{
+    const resp = await fetch('/admin/message-log/list?chat=' + chat);
+    const data = await resp.json();
+    if (!data.ok) {{
+      document.getElementById('msg-status').textContent = '错误: ' + data.error;
+      return;
+    }}
+    _messages = data.messages;
+    renderMessages();
+    document.getElementById('msg-status').textContent = _messages.length + ' 条消息';
+  }} catch (e) {{
+    document.getElementById('msg-status').textContent = '网络错误';
+  }}
+}}
+
+function renderMessages() {{
+  const list = document.getElementById('msg-list');
+  if (_messages.length === 0) {{
+    list.innerHTML = '<p style="color:#999;text-align:center;padding:20px">没有机器人消息</p>';
+    return;
+  }}
+  list.innerHTML = _messages.map(m => `
+    <div class="msg-row" id="msg-${{m.id}}">
+      <span class="msg-time">${{m.time}}</span>
+      <span class="msg-type">${{m.type}}</span>
+      <span style="flex:1">${{m.preview}}</span>
+      <span class="msg-id">${{m.id.substring(0,15)}}...</span>
+      <button class="recall-btn" onclick="recallOne('${{m.id}}', this)">撤回</button>
+    </div>
+  `).join('');
+}}
+
+async function recallOne(msgId, btn) {{
+  btn.textContent = '...';
+  btn.disabled = true;
+  try {{
+    const resp = await fetch('/admin/message-log/recall', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ message_id: msgId }}),
+    }});
+    const data = await resp.json();
+    if (data.ok) {{
+      btn.textContent = '已撤回';
+      btn.className = 'recall-btn done';
+      document.getElementById('msg-' + msgId).style.opacity = '0.4';
+    }} else {{
+      btn.textContent = '失败';
+      alert(data.error);
+    }}
+  }} catch (e) {{
+    btn.textContent = '错误';
+  }}
+}}
+
+async function recallAll() {{
+  if (!confirm('确定撤回所有机器人消息？')) return;
+  const btns = document.querySelectorAll('.recall-btn:not(.done)');
+  for (const btn of btns) {{
+    const msgId = btn.closest('.msg-row').id.replace('msg-', '');
+    await recallOne(msgId, btn);
+  }}
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
+
+
+@router.get("/message-log/list")
+async def message_log_list(chat: str, session: dict = Depends(require_auth)):
+    """List recent bot messages in a chat."""
+    try:
+        from lark_client import LarkClient
+        from lark_client.notify_config import chat_id_for
+        from server.config import settings
+        import httpx
+        from datetime import datetime
+
+        chat_id = chat_id_for(chat)
+        if not chat_id:
+            return {"ok": False, "error": f"Unknown chat alias: {chat}"}
+
+        client = LarkClient(app_id=settings.lark_app_id, app_secret=settings.lark_app_secret)
+        with client:
+            headers = client._headers()
+            resp = httpx.get(
+                "https://open.feishu.cn/open-apis/im/v1/messages",
+                params={
+                    "container_id_type": "chat",
+                    "container_id": chat_id,
+                    "sort_type": "ByCreateTimeDesc",
+                    "page_size": 20,
+                },
+                headers=headers,
+            )
+            data = resp.json()
+            if data.get("code") != 0:
+                return {"ok": False, "error": data.get("msg", "API error")}
+
+            messages = []
+            for msg in data.get("data", {}).get("items", []):
+                if msg.get("sender", {}).get("sender_type") != "app":
+                    continue
+                ts = int(msg.get("create_time", "0")) / 1000
+                time_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S") if ts else ""
+                msg_type = msg.get("msg_type", "unknown")
+                # Build preview
+                body = msg.get("body", {}).get("content", "")
+                if msg_type == "text":
+                    import json as _json
+                    try:
+                        preview = _json.loads(body).get("text", "")[:60]
+                    except Exception:
+                        preview = body[:60]
+                elif msg_type == "image":
+                    preview = "[图片]"
+                elif msg_type == "file":
+                    preview = "[文件]"
+                elif msg_type == "interactive":
+                    preview = "[卡片消息]"
+                elif msg_type == "post":
+                    preview = "[富文本]"
+                else:
+                    preview = f"[{msg_type}]"
+
+                messages.append({
+                    "id": msg.get("message_id", ""),
+                    "type": msg_type,
+                    "time": time_str,
+                    "preview": preview,
+                })
+
+            return {"ok": True, "messages": messages}
+    except Exception as exc:
+        logger.exception("Failed to list messages")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.post("/message-log/recall")
+async def message_log_recall(request: Request, session: dict = Depends(require_auth)):
+    """Recall a specific bot message."""
+    try:
+        from lark_client import LarkClient
+        from server.config import settings
+        import httpx
+
+        body = await request.json()
+        message_id = body.get("message_id")
+        if not message_id:
+            return {"ok": False, "error": "message_id required"}
+
+        client = LarkClient(app_id=settings.lark_app_id, app_secret=settings.lark_app_secret)
+        with client:
+            headers = client._headers()
+            resp = httpx.delete(
+                f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}",
+                headers=headers,
+            )
+            data = resp.json()
+            if data.get("code") == 0:
+                return {"ok": True}
+            else:
+                return {"ok": False, "error": data.get("msg", "Recall failed")}
+    except Exception as exc:
+        logger.exception("Failed to recall message")
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
