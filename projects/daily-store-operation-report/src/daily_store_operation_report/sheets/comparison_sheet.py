@@ -53,6 +53,8 @@ class ComparisonConfig:
     get_comp_raw_tables: Callable[[StoreMetrics], float]
     get_comp_revenue_wan: Callable[[StoreMetrics], float]
     get_comp_per_table: Callable[[StoreMetrics], float]
+    get_comp_dine_in_wan: Callable[[StoreMetrics], float]
+    get_comp_takeout_wan: Callable[[StoreMetrics], float]
     theme: SheetTheme
 
 
@@ -116,107 +118,123 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
     _write_row(ws, 8, f"对比{comp}同期总桌数", [comp_text(diff) for diff in diffs], region_sum=False)
     ws.cell(row=8, column=_NCOLS, value=comp_text(sum(diffs)))
 
-    # ── Section 2: 收入(不含税-万加元) — rows 9-17 ──
-    ws.merge_cells("A9:A17")
+    # ── Section 2: 收入(不含税-万加元) — rows 9-23 ──
+    ws.merge_cells("A9:A23")
     ws["A9"] = "收入\n(不含税-万加元)"
     ws["A9"].font = BOLD
     ws["A9"].alignment = CENTER
 
     _write_row(ws, 9, "今日营业收入(万)", [data.stores[s].today_revenue_wan for s in stores])
-    _write_row(ws, 10, "本月截止目前营业收入(万)", [data.stores[s].mtd_revenue_wan for s in stores])
+    _write_row(ws, 10, "外卖收入", [data.stores[s].today_takeout_wan for s in stores])
+    _write_row(ws, 11, "堂食收入", [data.stores[s].today_dine_in_wan for s in stores])
+    _write_row(ws, 12, "本月截止目前营业收入(万)", [data.stores[s].mtd_revenue_wan for s in stores])
+    _write_row(ws, 13, "本月截止目前堂食收入(万)", [data.stores[s].mtd_dine_in_wan for s in stores])
+    _write_row(ws, 14, "本月截止目前外卖收入(万)", [data.stores[s].mtd_takeout_wan for s in stores])
     _write_row(
         ws,
-        11,
+        15,
         f"{comp}截止目前营业收入(万)",
         [config.get_comp_revenue_wan(data.stores[s]) for s in stores],
     )
     _write_row(
         ws,
-        12,
+        16,
         f"{comp_type}营业收入变化(万)",
         [data.stores[s].mtd_revenue_wan - config.get_comp_revenue_wan(data.stores[s]) for s in stores],
     )
-    _write_row(ws, 13, "本月营业收入目标(万)", [data.stores[s].revenue_target for s in stores])
+    _write_row(
+        ws,
+        17,
+        f"{comp_type}营业外卖收入变化(万)",
+        [data.stores[s].mtd_takeout_wan - config.get_comp_takeout_wan(data.stores[s]) for s in stores],
+    )
+    _write_row(
+        ws,
+        18,
+        f"{comp_type}营业堂食收入变化(万)",
+        [data.stores[s].mtd_dine_in_wan - config.get_comp_dine_in_wan(data.stores[s]) for s in stores],
+    )
+    _write_row(ws, 19, "本月营业收入目标(万)", [data.stores[s].revenue_target for s in stores])
 
-    # Row 14: target completion %
-    vals14 = [
+    # Row 20: target completion %
+    vals20 = [
         pct_str(div_or_zero(data.stores[s].mtd_revenue_wan, data.stores[s].revenue_target) * 100)
         for s in stores
     ]
-    _write_row(ws, 14, "本月截止目标完成率", vals14, region_sum=False)
+    _write_row(ws, 20, "本月截止目标完成率", vals20, region_sum=False)
     region_mtd = sum(data.stores[s].mtd_revenue_wan for s in stores)
     region_target = sum(data.stores[s].revenue_target for s in stores)
-    ws.cell(row=14, column=_NCOLS, value=pct_str(div_or_zero(region_mtd, region_target) * 100))
+    ws.cell(row=20, column=_NCOLS, value=pct_str(div_or_zero(region_mtd, region_target) * 100))
 
-    # Row 15: standard time progress
+    # Row 21: standard time progress
     tp = pct_str(dates.time_progress * 100)
-    ws.cell(row=15, column=2, value="标准时间进度")
+    ws.cell(row=21, column=2, value="标准时间进度")
     for col in range(3, _NCOLS + 1):
-        ws.cell(row=15, column=col, value=tp)
+        ws.cell(row=21, column=col, value=tp)
 
-    # Row 16-17: discounts
-    _write_row(ws, 16, "当月累计优惠总金额(万)", [data.stores[s].mtd_discount_wan for s in stores])
-    vals17 = [pct_str(data.stores[s].mtd_discount_pct) for s in stores]
-    _write_row(ws, 17, "当月累计优惠占比", vals17, region_sum=False)
+    # Row 22-23: discounts
+    _write_row(ws, 22, "当月累计优惠总金额(万)", [data.stores[s].mtd_discount_wan for s in stores])
+    vals23 = [pct_str(data.stores[s].mtd_discount_pct) for s in stores]
+    _write_row(ws, 23, "当月累计优惠占比", vals23, region_sum=False)
     region_disc = sum(data.stores[s].mtd_discount_wan for s in stores)
-    ws.cell(row=17, column=_NCOLS, value=pct_str(div_or_zero(region_disc, region_mtd) * 100))
+    ws.cell(row=23, column=_NCOLS, value=pct_str(div_or_zero(region_disc, region_mtd) * 100))
 
-    # ── Section 3: 单桌消费(不含税) — rows 18-23 ──
-    ws.merge_cells("A18:A23")
-    ws["A18"] = "单桌消费\n(不含税)"
-    ws["A18"].font = BOLD
-    ws["A18"].alignment = CENTER
+    # ── Section 3: 单桌消费(不含税) — rows 24-29 ──
+    ws.merge_cells("A24:A29")
+    ws["A24"] = "单桌消费\n(不含税)"
+    ws["A24"].font = BOLD
+    ws["A24"].alignment = CENTER
 
-    # Row 18: per capita
+    # Row 24: per capita
     region_rev_today = sum(data.stores[s].today_revenue_wan * WAN_DIVISOR for s in stores)
     region_cust_today = sum(data.stores[s].today_customers for s in stores)
     _write_row(
-        ws, 18, "今日人均消费", [data.stores[s].today_per_capita for s in stores], region_sum=False
+        ws, 24, "今日人均消费", [data.stores[s].today_per_capita for s in stores], region_sum=False
     )
-    ws.cell(row=18, column=_NCOLS, value=div_or_zero(region_rev_today, region_cust_today))
+    ws.cell(row=24, column=_NCOLS, value=div_or_zero(region_rev_today, region_cust_today))
 
-    # Row 19: customers
-    _write_row(ws, 19, "今日消费客数", [data.stores[s].today_customers for s in stores])
+    # Row 25: customers
+    _write_row(ws, 25, "今日消费客数", [data.stores[s].today_customers for s in stores])
 
-    # Row 20: per table today
+    # Row 26: per table today
     region_raw_tables_today = sum(data.stores[s].today_raw_tables for s in stores)
     _write_row(
-        ws, 20, "今日单桌消费", [data.stores[s].today_per_table for s in stores], region_sum=False
+        ws, 26, "今日单桌消费", [data.stores[s].today_per_table for s in stores], region_sum=False
     )
-    ws.cell(row=20, column=_NCOLS, value=div_or_zero(region_rev_today, region_raw_tables_today))
+    ws.cell(row=26, column=_NCOLS, value=div_or_zero(region_rev_today, region_raw_tables_today))
 
-    # Row 21: per table MTD
+    # Row 27: per table MTD
     region_mtd_raw_rev = sum(data.stores[s].mtd_revenue_wan * WAN_DIVISOR for s in stores)
     region_mtd_raw_tables = sum(data.stores[s].mtd_raw_tables for s in stores)
     _write_row(
-        ws, 21, "截止今日单桌消费", [data.stores[s].mtd_per_table for s in stores], region_sum=False
+        ws, 27, "截止今日单桌消费", [data.stores[s].mtd_per_table for s in stores], region_sum=False
     )
-    ws.cell(row=21, column=_NCOLS, value=div_or_zero(region_mtd_raw_rev, region_mtd_raw_tables))
+    ws.cell(row=27, column=_NCOLS, value=div_or_zero(region_mtd_raw_rev, region_mtd_raw_tables))
 
-    # Row 22: comparison period per table
+    # Row 28: comparison period per table
     region_comp_rev = sum(
         config.get_comp_revenue_wan(data.stores[s]) * WAN_DIVISOR for s in stores
     )
     region_comp_raw_tables = sum(config.get_comp_raw_tables(data.stores[s]) for s in stores)
     _write_row(
         ws,
-        22,
+        28,
         f"{comp}单桌消费",
         [config.get_comp_per_table(data.stores[s]) for s in stores],
         region_sum=False,
     )
-    ws.cell(row=22, column=_NCOLS, value=div_or_zero(region_comp_rev, region_comp_raw_tables))
+    ws.cell(row=28, column=_NCOLS, value=div_or_zero(region_comp_rev, region_comp_raw_tables))
 
-    # Row 23: per table change
+    # Row 29: per table change
     _write_row(
         ws,
-        23,
+        29,
         f"{comp_type}{comp}变化",
         [data.stores[s].mtd_per_table - config.get_comp_per_table(data.stores[s]) for s in stores],
         region_sum=False,
     )
     ws.cell(
-        row=23,
+        row=29,
         column=_NCOLS,
         value=(
             div_or_zero(region_mtd_raw_rev, region_mtd_raw_tables)
@@ -224,77 +242,77 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         ),
     )
 
-    # ── Section 4: 翻台率 — rows 24-28 ──
-    ws.merge_cells("A24:A28")
-    ws["A24"] = "翻台率"
-    ws["A24"].font = BOLD
-    ws["A24"].alignment = CENTER
+    # ── Section 4: 翻台率 — rows 30-34 ──
+    ws.merge_cells("A30:A34")
+    ws["A30"] = "翻台率"
+    ws["A30"].font = BOLD
+    ws["A30"].alignment = CENTER
 
-    ws.cell(row=24, column=2, value="名次")
+    ws.cell(row=30, column=2, value="名次")
     for i in range(len(stores)):
-        ws.cell(row=24, column=3 + i, value=f"第{i + 1}名")
-    ws.cell(row=24, column=_NCOLS, value="当月累计平均翻台率")
+        ws.cell(row=30, column=3 + i, value=f"第{i + 1}名")
+    ws.cell(row=30, column=_NCOLS, value="当月累计平均翻台率")
 
     # Today ranking
     today_tr = [(s, data.stores[s].today_turnover_rate) for s in stores]
     today_tr.sort(key=lambda x: x[1], reverse=True)
-    ws.cell(row=25, column=2, value=f"{month}月{day}日翻台率排名店铺")
-    ws.cell(row=26, column=2, value=f"{month}月{day}日翻台率排名")
+    ws.cell(row=31, column=2, value=f"{month}月{day}日翻台率排名店铺")
+    ws.cell(row=32, column=2, value=f"{month}月{day}日翻台率排名")
     for i, (store, tr) in enumerate(today_tr):
-        ws.cell(row=25, column=3 + i, value=store)
-        ws.cell(row=26, column=3 + i, value=tr)
+        ws.cell(row=31, column=3 + i, value=store)
+        ws.cell(row=32, column=3 + i, value=tr)
 
-    # K25:K28 merged — region weighted-average turnover rate
+    # K31:K34 merged — region weighted-average turnover rate
     # Weighted average = sum(mtd_tables) / sum(seats × days)
     # This matches the QBI dashboard's 当月累计平均翻台率 calculation
-    ws.merge_cells("K25:K28")
+    ws.merge_cells("K31:K34")
     region_mtd_tables_total = sum(data.stores[s].mtd_tables for s in stores)
     region_seats_total = sum(data.stores[s].seats for s in stores if data.stores[s].seats > 0)
     num_days = dates.day_of_month
     region_avg_tr = div_or_zero(region_mtd_tables_total, region_seats_total * num_days) if region_seats_total else 0
-    ws["K25"] = region_avg_tr
-    ws["K25"].font = BOLD_LARGE
-    ws["K25"].alignment = CENTER
+    ws["K31"] = region_avg_tr
+    ws["K31"].font = BOLD_LARGE
+    ws["K31"].alignment = CENTER
 
     # MTD ranking
     mtd_tr = [(s, data.stores[s].mtd_turnover_rate) for s in stores]
     mtd_tr.sort(key=lambda x: x[1], reverse=True)
-    ws.cell(row=27, column=2, value=f"{month}月平均翻台率排名店铺")
-    ws.cell(row=28, column=2, value=f"{month}月平均翻台率排名")
+    ws.cell(row=33, column=2, value=f"{month}月平均翻台率排名店铺")
+    ws.cell(row=34, column=2, value=f"{month}月平均翻台率排名")
     for i, (store, tr) in enumerate(mtd_tr):
-        ws.cell(row=27, column=3 + i, value=store)
-        ws.cell(row=28, column=3 + i, value=tr)
+        ws.cell(row=33, column=3 + i, value=store)
+        ws.cell(row=34, column=3 + i, value=tr)
 
     # ── Styling ──
     apply_fill_row(ws, 1, theme.header_fill, 1, _NCOLS)
     apply_fill_row(ws, 2, theme.header_fill, 1, _NCOLS)
 
     apply_fill_range(ws, 3, 7, theme.section_a_fill, 1, _NCOLS)
-    apply_fill_range(ws, 18, 22, theme.section_a_fill, 1, _NCOLS)
+    apply_fill_range(ws, 24, 28, theme.section_a_fill, 1, _NCOLS)
 
     apply_fill_row(ws, 8, theme.highlight_fill, 1, _NCOLS)
-    apply_fill_row(ws, 14, theme.highlight_fill, 1, _NCOLS)
+    apply_fill_row(ws, 20, theme.highlight_fill, 1, _NCOLS)
 
-    apply_fill_range(ws, 9, 13, theme.section_b_fill, 1, _NCOLS)
-    apply_fill_range(ws, 15, 17, theme.section_b_fill, 1, _NCOLS)
+    apply_fill_range(ws, 9, 19, theme.section_b_fill, 1, _NCOLS)
+    apply_fill_range(ws, 21, 23, theme.section_b_fill, 1, _NCOLS)
 
-    apply_fill_row(ws, 23, theme.section_a_fill, 1, _NCOLS)
+    apply_fill_row(ws, 29, theme.section_a_fill, 1, _NCOLS)
 
     # Turnover section: alternating highlight / section_b
-    apply_fill_row(ws, 24, theme.highlight_fill, 1, _NCOLS)
-    apply_fill_row(ws, 25, theme.section_b_fill, 1, _NCOLS)
-    apply_fill_row(ws, 26, theme.highlight_fill, 1, _NCOLS)
-    apply_fill_row(ws, 27, theme.section_b_fill, 1, _NCOLS)
-    apply_fill_row(ws, 28, theme.highlight_fill, 1, _NCOLS)
+    apply_fill_row(ws, 30, theme.highlight_fill, 1, _NCOLS)
+    apply_fill_row(ws, 31, theme.section_b_fill, 1, _NCOLS)
+    apply_fill_row(ws, 32, theme.highlight_fill, 1, _NCOLS)
+    apply_fill_row(ws, 33, theme.section_b_fill, 1, _NCOLS)
+    apply_fill_row(ws, 34, theme.highlight_fill, 1, _NCOLS)
 
-    # K25 white fill override (after row styling)
-    ws["K25"].fill = WHITE_FILL
+    # K31 white fill override (after row styling)
+    ws["K31"].fill = WHITE_FILL
 
     # Borders
-    apply_border(ws, 1, 28, 1, _NCOLS)
+    apply_border(ws, 1, 34, 1, _NCOLS)
 
     # Alignment
-    for row in ws.iter_rows(min_row=2, max_row=28, min_col=1, max_col=_NCOLS):
+    for row in ws.iter_rows(min_row=2, max_row=34, min_col=1, max_col=_NCOLS):
         for cell in row:
             cell.alignment = CENTER
 

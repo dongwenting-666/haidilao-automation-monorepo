@@ -37,6 +37,8 @@ _MOM_CONFIG = ComparisonConfig(
     get_comp_raw_tables=lambda m: m.prev_mtd_raw_tables,
     get_comp_revenue_wan=lambda m: m.prev_mtd_revenue_wan,
     get_comp_per_table=lambda m: m.prev_mtd_per_table,
+    get_comp_dine_in_wan=lambda m: m.prev_mtd_dine_in_wan,
+    get_comp_takeout_wan=lambda m: m.prev_mtd_takeout_wan,
     theme=_GOLD_THEME,
 )
 

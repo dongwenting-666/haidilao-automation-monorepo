@@ -21,6 +21,8 @@ from daily_store_operation_report.constants import (
     COL_DATE,
     COL_DISCOUNT,
     COL_REVENUE,
+    COL_REVENUE_DINE_IN,
+    COL_REVENUE_TAKEOUT,
     COL_SEATS,
     COL_STORE,
     COL_TABLES_ASSESSED,
@@ -309,6 +311,8 @@ class StoreMetrics:
     today_per_capita: float = 0
     today_customers: int = 0
     today_per_table: float = 0
+    today_dine_in_wan: float = 0
+    today_takeout_wan: float = 0
     today_turnover_rate: float = 0
     seats: int = 0  # 所有餐位数 (total seat count, constant per store)
 
@@ -316,6 +320,8 @@ class StoreMetrics:
     mtd_tables: float = 0
     mtd_raw_tables: float = 0
     mtd_revenue_wan: float = 0
+    mtd_dine_in_wan: float = 0
+    mtd_takeout_wan: float = 0
     mtd_turnover_rate: float = 0
     mtd_per_table: float = 0
     mtd_discount_wan: float = 0
@@ -325,6 +331,8 @@ class StoreMetrics:
     prev_mtd_tables: float = 0
     prev_mtd_raw_tables: float = 0
     prev_mtd_revenue_wan: float = 0
+    prev_mtd_dine_in_wan: float = 0
+    prev_mtd_takeout_wan: float = 0
     prev_mtd_per_table: float = 0
     prev_mtd_turnover_rate: float = 0   # full prev-month avg turnover (for competitor sheet)
 
@@ -332,6 +340,8 @@ class StoreMetrics:
     yoy_mtd_tables: float = 0
     yoy_mtd_raw_tables: float = 0
     yoy_mtd_revenue_wan: float = 0
+    yoy_mtd_dine_in_wan: float = 0
+    yoy_mtd_takeout_wan: float = 0
     yoy_mtd_turnover_rate: float = 0
     yoy_mtd_per_table: float = 0
 
@@ -372,23 +382,31 @@ class RawData:
     today_raw_tables: dict[str, float]
     today_takeout: dict[str, float]
     today_revenue: dict[str, float]
+    today_dine_in: dict[str, float]
+    today_takeout_rev: dict[str, float]
     today_customers: dict[str, float]
     today_turnover: dict[str, float]
     # MTD current
     mtd_tables: dict[str, float]
     mtd_raw_tables: dict[str, float]
     mtd_revenue: dict[str, float]
+    mtd_dine_in: dict[str, float]
+    mtd_takeout_rev: dict[str, float]
     mtd_discount: dict[str, float]
     mtd_avg_turnover: dict[str, float]
     # Previous month
     prev_tables: dict[str, float]
     prev_raw_tables: dict[str, float]
     prev_revenue: dict[str, float]
+    prev_dine_in: dict[str, float]
+    prev_takeout_rev: dict[str, float]
     prev_avg_turnover: dict[str, float]   # full prev-month average turnover rate
     # YoY
     yoy_tables: dict[str, float]
     yoy_raw_tables: dict[str, float]
     yoy_revenue: dict[str, float]
+    yoy_dine_in: dict[str, float]
+    yoy_takeout_rev: dict[str, float]
     yoy_avg_turnover: dict[str, float]
     # Time-period: {store: {slot: value}}
     tp_turnover_cur: dict[str, dict[str, float]]
@@ -437,23 +455,31 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         today_raw_tables=_last_day_by_store(cur_rows, date_str, COL_TABLES_RAW),
         today_takeout=_last_day_by_store(cur_rows, date_str, COL_TABLES_TAKEOUT),
         today_revenue=_last_day_by_store(cur_rows, date_str, COL_REVENUE),
+        today_dine_in=_last_day_by_store(cur_rows, date_str, COL_REVENUE_DINE_IN),
+        today_takeout_rev=_last_day_by_store(cur_rows, date_str, COL_REVENUE_TAKEOUT),
         today_customers=_last_day_by_store(cur_rows, date_str, COL_CUSTOMERS),
         today_turnover=_last_day_by_store(cur_rows, date_str, COL_TURNOVER),
         # MTD current
         mtd_tables=_sum_by_store(cur_rows, COL_TABLES_ASSESSED),
         mtd_raw_tables=_sum_by_store(cur_rows, COL_TABLES_RAW),
         mtd_revenue=_sum_by_store(cur_rows, COL_REVENUE),
+        mtd_dine_in=_sum_by_store(cur_rows, COL_REVENUE_DINE_IN),
+        mtd_takeout_rev=_sum_by_store(cur_rows, COL_REVENUE_TAKEOUT),
         mtd_discount=_sum_by_store(cur_rows, COL_DISCOUNT),
         mtd_avg_turnover=_avg_turnover_by_store(cur_rows),
         # Previous month
         prev_tables=_sum_by_store(prev_rows, COL_TABLES_ASSESSED),
         prev_raw_tables=_sum_by_store(prev_rows, COL_TABLES_RAW),
         prev_revenue=_sum_by_store(prev_rows, COL_REVENUE),
+        prev_dine_in=_sum_by_store(prev_rows, COL_REVENUE_DINE_IN),
+        prev_takeout_rev=_sum_by_store(prev_rows, COL_REVENUE_TAKEOUT),
         prev_avg_turnover=_avg_turnover_by_store(prev_rows),
         # YoY
         yoy_tables=_sum_by_store(yoy_rows, COL_TABLES_ASSESSED),
         yoy_raw_tables=_sum_by_store(yoy_rows, COL_TABLES_RAW),
         yoy_revenue=_sum_by_store(yoy_rows, COL_REVENUE),
+        yoy_dine_in=_sum_by_store(yoy_rows, COL_REVENUE_DINE_IN),
+        yoy_takeout_rev=_sum_by_store(yoy_rows, COL_REVENUE_TAKEOUT),
         yoy_avg_turnover=_avg_turnover_by_store(yoy_rows),
         # Time-period
         tp_turnover_cur=_avg_time_period(cur_tp_rows, COL_TURNOVER),
@@ -481,6 +507,8 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.today_non_assessed_tables = m.today_raw_tables - m.today_tables
     rev_today = raw.today_revenue.get(store, 0)
     m.today_revenue_wan = rev_today / WAN_DIVISOR
+    m.today_dine_in_wan = raw.today_dine_in.get(store, 0) / WAN_DIVISOR
+    m.today_takeout_wan = raw.today_takeout_rev.get(store, 0) / WAN_DIVISOR
     cust_today = int(raw.today_customers.get(store, 0))
     m.today_customers = cust_today
     m.today_per_capita = div_or_zero(rev_today, cust_today)
@@ -493,6 +521,8 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.mtd_tables = raw.mtd_tables.get(store, 0)
     m.mtd_raw_tables = raw.mtd_raw_tables.get(store, 0)
     m.mtd_revenue_wan = mtd_r / WAN_DIVISOR
+    m.mtd_dine_in_wan = raw.mtd_dine_in.get(store, 0) / WAN_DIVISOR
+    m.mtd_takeout_wan = raw.mtd_takeout_rev.get(store, 0) / WAN_DIVISOR
     m.mtd_turnover_rate = raw.mtd_avg_turnover.get(store, 0)
     m.mtd_per_table = div_or_zero(mtd_r, m.mtd_raw_tables)
     m.mtd_discount_wan = raw.mtd_discount.get(store, 0) / WAN_DIVISOR
@@ -503,6 +533,8 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.prev_mtd_tables = raw.prev_tables.get(store, 0)
     m.prev_mtd_raw_tables = raw.prev_raw_tables.get(store, 0)
     m.prev_mtd_revenue_wan = prev_r / WAN_DIVISOR
+    m.prev_mtd_dine_in_wan = raw.prev_dine_in.get(store, 0) / WAN_DIVISOR
+    m.prev_mtd_takeout_wan = raw.prev_takeout_rev.get(store, 0) / WAN_DIVISOR
     m.prev_mtd_per_table = div_or_zero(prev_r, m.prev_mtd_raw_tables)
     m.prev_mtd_turnover_rate = raw.prev_avg_turnover.get(store, 0)
 
@@ -511,6 +543,8 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.yoy_mtd_tables = raw.yoy_tables.get(store, 0)
     m.yoy_mtd_raw_tables = raw.yoy_raw_tables.get(store, 0)
     m.yoy_mtd_revenue_wan = yoy_r / WAN_DIVISOR
+    m.yoy_mtd_dine_in_wan = raw.yoy_dine_in.get(store, 0) / WAN_DIVISOR
+    m.yoy_mtd_takeout_wan = raw.yoy_takeout_rev.get(store, 0) / WAN_DIVISOR
     m.yoy_mtd_turnover_rate = raw.yoy_avg_turnover.get(store, 0)
     m.yoy_mtd_per_table = div_or_zero(yoy_r, m.yoy_mtd_raw_tables)
 

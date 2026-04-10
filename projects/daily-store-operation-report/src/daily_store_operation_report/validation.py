@@ -337,40 +337,40 @@ def validate_report_output(output_path: Path, stores: list[str] | None = None) -
         zero_stores = [stores[i] for i, v in enumerate(row6_vals) if not (isinstance(v, (int, float)) and v != 0)]
         warnings.append(f"对比上年表 row 6 (月总桌数): {len(zero_stores)} store(s) are zero: {zero_stores}")
 
-    #  Row 10 = "本月截止目前营业收入(万)"
-    row10_vals = [ws_yoy.cell(row=10, column=c).value for c in store_cols]
-    row10_numeric = [v for v in row10_vals if isinstance(v, (int, float))]
-    row10_nonzero = [v for v in row10_numeric if v != 0]
+    #  Row 12 = "本月截止目前营业收入(万)" (shifted +2 from old row 10 by dine-in/takeout rows)
+    row12_vals = [ws_yoy.cell(row=12, column=c).value for c in store_cols]
+    row12_numeric = [v for v in row12_vals if isinstance(v, (int, float))]
+    row12_nonzero = [v for v in row12_numeric if v != 0]
 
-    if not row10_nonzero:
-        errors.append("对比上年表 row 10 (本月截止目前营业收入): all stores are zero")
-    elif len(row10_nonzero) < n_stores:
-        zero_stores = [stores[i] for i, v in enumerate(row10_vals) if not (isinstance(v, (int, float)) and v != 0)]
-        warnings.append(f"对比上年表 row 10 (营业收入): {len(zero_stores)} store(s) are zero: {zero_stores}")
+    if not row12_nonzero:
+        errors.append("对比上年表 row 12 (本月截止目前营业收入): all stores are zero")
+    elif len(row12_nonzero) < n_stores:
+        zero_stores = [stores[i] for i, v in enumerate(row12_vals) if not (isinstance(v, (int, float)) and v != 0)]
+        warnings.append(f"对比上年表 row 12 (营业收入): {len(zero_stores)} store(s) are zero: {zero_stores}")
 
-    # Region total check for row 10
-    region_val = ws_yoy.cell(row=10, column=region_col).value
-    store_sum = sum(v for v in row10_numeric if v != 0)
+    # Region total check for row 12
+    region_val = ws_yoy.cell(row=12, column=region_col).value
+    store_sum = sum(v for v in row12_numeric if v != 0)
     if isinstance(region_val, (int, float)) and store_sum > 0:
         ratio = abs(region_val - store_sum) / store_sum
         if ratio > 0.01:
             warnings.append(
-                f"对比上年表 row 10: region total ({region_val:.4f}) "
+                f"对比上年表 row 12: region total ({region_val:.4f}) "
                 f"≠ sum of stores ({store_sum:.4f}), diff={ratio:.2%} — "
                 "region total may be computed incorrectly"
             )
         else:
             logger.info(
-                "[Self-test] 对比上年表 row 10: region total matches store sum (diff=%.4f%%) ✓",
+                "[Self-test] 对比上年表 row 12: region total matches store sum (diff=%.4f%%) ✓",
                 ratio * 100,
             )
 
-    #  Row 11 = "上年截止目前营业收入(万)" (YoY comparison — should also be non-zero)
-    row11_vals = [ws_yoy.cell(row=11, column=c).value for c in store_cols]
-    row11_nonzero = [v for v in row11_vals if isinstance(v, (int, float)) and v != 0]
-    if not row11_nonzero:
+    #  Row 15 = "上年截止目前营业收入(万)" (shifted +4 from old row 11 by dine-in/takeout rows)
+    row15_vals = [ws_yoy.cell(row=15, column=c).value for c in store_cols]
+    row15_nonzero = [v for v in row15_vals if isinstance(v, (int, float)) and v != 0]
+    if not row15_nonzero:
         warnings.append(
-            "对比上年表 row 11 (上年营业收入): all stores are zero — "
+            "对比上年表 row 15 (上年营业收入): all stores are zero — "
             "check that yoy_daily file contains data for the comparison period"
         )
 
