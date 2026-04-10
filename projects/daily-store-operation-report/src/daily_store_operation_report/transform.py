@@ -23,6 +23,7 @@ from daily_store_operation_report.constants import (
     COL_REVENUE,
     COL_REVENUE_DINE_IN,
     COL_REVENUE_TAKEOUT,
+    COL_REVENUE_DELIVERY,
     COL_SEATS,
     COL_STORE,
     COL_TABLES_ASSESSED,
@@ -146,6 +147,31 @@ def _sum_by_store(rows: list[dict], col: str) -> dict[str, float]:
         if not store:
             continue
         val = _safe_float(row.get(col), context=col)
+        totals[store] = totals.get(store, 0) + val
+    return totals
+
+
+def _sum_two_cols_by_store(rows: list[dict], col1: str, col2: str) -> dict[str, float]:
+    """Sum two columns per store (e.g., 外卖+外送 = total non-dine-in)."""
+    totals: dict[str, float] = {}
+    for row in rows:
+        store = str(row.get(COL_STORE) or "").strip()
+        if not store:
+            continue
+        val = _safe_float(row.get(col1), context=col1) + _safe_float(row.get(col2), context=col2)
+        totals[store] = totals.get(store, 0) + val
+    return totals
+
+
+def _last_day_two_cols_by_store(rows: list[dict], report_date_str: str, col1: str, col2: str) -> dict[str, float]:
+    """Get last day value for two columns combined per store."""
+    totals: dict[str, float] = {}
+    for row in rows:
+        store = str(row.get(COL_STORE) or "").strip()
+        date_val = str(row.get(COL_DATE) or "").strip()
+        if not store or date_val != report_date_str:
+            continue
+        val = _safe_float(row.get(col1), context=col1) + _safe_float(row.get(col2), context=col2)
         totals[store] = totals.get(store, 0) + val
     return totals
 
@@ -456,7 +482,7 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         today_takeout=_last_day_by_store(cur_rows, date_str, COL_TABLES_TAKEOUT),
         today_revenue=_last_day_by_store(cur_rows, date_str, COL_REVENUE),
         today_dine_in=_last_day_by_store(cur_rows, date_str, COL_REVENUE_DINE_IN),
-        today_takeout_rev=_last_day_by_store(cur_rows, date_str, COL_REVENUE_TAKEOUT),
+        today_takeout_rev=_last_day_two_cols_by_store(cur_rows, date_str, COL_REVENUE_TAKEOUT, COL_REVENUE_DELIVERY),
         today_customers=_last_day_by_store(cur_rows, date_str, COL_CUSTOMERS),
         today_turnover=_last_day_by_store(cur_rows, date_str, COL_TURNOVER),
         # MTD current
@@ -464,7 +490,7 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         mtd_raw_tables=_sum_by_store(cur_rows, COL_TABLES_RAW),
         mtd_revenue=_sum_by_store(cur_rows, COL_REVENUE),
         mtd_dine_in=_sum_by_store(cur_rows, COL_REVENUE_DINE_IN),
-        mtd_takeout_rev=_sum_by_store(cur_rows, COL_REVENUE_TAKEOUT),
+        mtd_takeout_rev=_sum_two_cols_by_store(cur_rows, COL_REVENUE_TAKEOUT, COL_REVENUE_DELIVERY),
         mtd_discount=_sum_by_store(cur_rows, COL_DISCOUNT),
         mtd_avg_turnover=_avg_turnover_by_store(cur_rows),
         # Previous month
@@ -472,14 +498,14 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         prev_raw_tables=_sum_by_store(prev_rows, COL_TABLES_RAW),
         prev_revenue=_sum_by_store(prev_rows, COL_REVENUE),
         prev_dine_in=_sum_by_store(prev_rows, COL_REVENUE_DINE_IN),
-        prev_takeout_rev=_sum_by_store(prev_rows, COL_REVENUE_TAKEOUT),
+        prev_takeout_rev=_sum_two_cols_by_store(prev_rows, COL_REVENUE_TAKEOUT, COL_REVENUE_DELIVERY),
         prev_avg_turnover=_avg_turnover_by_store(prev_rows),
         # YoY
         yoy_tables=_sum_by_store(yoy_rows, COL_TABLES_ASSESSED),
         yoy_raw_tables=_sum_by_store(yoy_rows, COL_TABLES_RAW),
         yoy_revenue=_sum_by_store(yoy_rows, COL_REVENUE),
         yoy_dine_in=_sum_by_store(yoy_rows, COL_REVENUE_DINE_IN),
-        yoy_takeout_rev=_sum_by_store(yoy_rows, COL_REVENUE_TAKEOUT),
+        yoy_takeout_rev=_sum_two_cols_by_store(yoy_rows, COL_REVENUE_TAKEOUT, COL_REVENUE_DELIVERY),
         yoy_avg_turnover=_avg_turnover_by_store(yoy_rows),
         # Time-period
         tp_turnover_cur=_avg_time_period(cur_tp_rows, COL_TURNOVER),
