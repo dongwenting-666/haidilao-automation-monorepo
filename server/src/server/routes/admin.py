@@ -1976,12 +1976,11 @@ function renderMessages() {{
     list.innerHTML = '<p style="color:#999;text-align:center;padding:20px">没有机器人消息</p>';
     return;
   }}
-  list.innerHTML = _messages.map(m => `
-    <div class="msg-row" id="msg-${{m.id}}">
+  list.innerHTML = _messages.map((m, i) => `
+    <div class="msg-row" id="msg-${{m.id}}" style="background:${{i%2===0?'#fff':'#fafafa'}}">
       <span class="msg-time">${{m.time}}</span>
       <span class="msg-type">${{m.type}}</span>
-      <span style="flex:1">${{m.preview}}</span>
-      <span class="msg-id">${{m.id.substring(0,15)}}...</span>
+      <span style="flex:1;font-weight:500">${{m.preview}}</span>
       <button class="recall-btn" onclick="recallOne('${{m.id}}', this)">撤回</button>
     </div>
   `).join('');
@@ -2067,17 +2066,50 @@ async def message_log_list(chat: str, session: dict = Depends(require_auth)):
                 if msg_type == "text":
                     import json as _json
                     try:
-                        preview = _json.loads(body).get("text", "")[:60]
+                        preview = _json.loads(body).get("text", "")[:80]
                     except Exception:
-                        preview = body[:60]
+                        preview = body[:80]
                 elif msg_type == "image":
-                    preview = "[图片]"
+                    preview = "📷 图片"
                 elif msg_type == "file":
-                    preview = "[文件]"
+                    try:
+                        import json as _json
+                        fd = _json.loads(body)
+                        fname = fd.get("file_name", "")
+                        fsize = fd.get("file_size", 0)
+                        size_kb = int(fsize) // 1024 if fsize else 0
+                        preview = f"📎 {fname} ({size_kb}KB)" if fname else "📎 文件"
+                    except Exception:
+                        preview = "📎 文件"
                 elif msg_type == "interactive":
-                    preview = "[卡片消息]"
+                    try:
+                        import json as _json
+                        card = _json.loads(body)
+                        title = card.get("header", {}).get("title", {}).get("content", "")
+                        preview = f"🃏 {title}" if title else "🃏 卡片消息"
+                    except Exception:
+                        preview = "🃏 卡片消息"
                 elif msg_type == "post":
-                    preview = "[富文本]"
+                    try:
+                        import json as _json
+                        post = _json.loads(body)
+                        preview = "📝 富文本消息"
+                        for lang in ("zh_cn", "en_us"):
+                            lang_data = post.get(lang, {})
+                            title = lang_data.get("title", "")
+                            if title:
+                                preview = f"📝 {title}"
+                                break
+                            # Fallback: first text element
+                            for para in lang_data.get("content", []):
+                                for el in para:
+                                    if el.get("tag") == "text" and el.get("text", "").strip():
+                                        preview = f"📝 {el['text'][:60]}"
+                                        break
+                                if not preview.endswith("富文本消息"):
+                                    break
+                    except Exception:
+                        preview = "📝 富文本消息"
                 else:
                     preview = f"[{msg_type}]"
 
