@@ -165,9 +165,6 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         _write_row(ws, r, f"{comp_type}营业堂食收入变化(万)",
                    [data.stores[s].mtd_dine_in_wan - config.get_comp_dine_in_wan(data.stores[s]) for s in stores]); r += 1
 
-    revenue_end = r - 1
-    ws.merge_cells(f"A9:A{revenue_end}")
-
     _write_row(ws, r, "本月营业收入目标(万)", [data.stores[s].revenue_target for s in stores]); r += 1
 
     # Target completion %
@@ -193,6 +190,10 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
     _write_row(ws, r, "当月累计优惠占比", vals_disc, region_sum=False)
     region_disc = sum(data.stores[s].mtd_discount_wan for s in stores)
     ws.cell(row=r, column=_NCOLS, value=pct_str(div_or_zero(region_disc, region_mtd) * 100)); r += 1
+
+    # Merge revenue section label (A9 through end of discount row)
+    revenue_end = r - 1
+    ws.merge_cells(f"A9:A{revenue_end}")
 
     # ── Section 3: 单桌消费(不含税) ──
     sec3_start = r

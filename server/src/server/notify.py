@@ -243,7 +243,7 @@ def notify_daily_report_file(report_path: "Path", target_chat: str = "production
 def notify_daily_report_screenshots(
     report_path: "Path",
     target_chat: str = "finance_study_group",
-    sheet_names: tuple[str, ...] = ("对比上月表", "分时段-上报"),
+    sheet_names: tuple[str, ...] = ("对比上年表", "分时段-上报"),
 ) -> None:
     """Send selected sheet screenshots to a secondary chat group.
 
