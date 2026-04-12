@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Haidilao Automation Server — launchd service
+  Label:   com.haidilao.server
+  Managed: ~/Library/LaunchAgents/com.haidilao.server.plist
+
+  Behaviour:
+    - Starts at login (RunAtLoad)
+    - Restarts automatically on crash (KeepAlive)
+    - Crash wrapper script sends Lark alert + wakes OpenClaw agent
+    - stdout + stderr go to server.log
+    - ThrottleInterval: don't spin-restart faster than every 30s
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.haidilao.server</string>
+
+    <!-- Launch the crash-alerting wrapper, not uv directly -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/hongming-claw/haidilao-automation-monorepo/scripts/server-start.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hongming-claw/haidilao-automation-monorepo</string>
+
+    <!-- Restart on crash; clean exit (code 0) does NOT restart -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Start when the user logs in -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Minimum 30 seconds between restarts (prevent tight crash loops) -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- Both stdout and stderr go to logs/server.log -->
+    <key>StandardOutPath</key>
+    <string>/Users/hongming-claw/haidilao-automation-monorepo/logs/server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/hongming-claw/haidilao-automation-monorepo/logs/server.log</string>
+
+    <!--
+      Environment: only what launchd can't inherit from the shell.
+      App secrets live in .env (loaded by server at startup via python-dotenv).
+      PATH must be explicit — launchd runs in a minimal environment.
+    -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/hongming-claw</string>
+        <key>PATH</key>
+        <string>/Users/hongming-claw/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- Lark credentials needed by the crash-alert script before dotenv loads -->
+        <key>LARK_APP_ID</key>
+        <string>cli_a915e566ba389bd8</string>
+        <key>LARK_APP_SECRET</key>
+        <string>HfuiV26xz4tCQ6XuoEnpOeJMTOfepHYs</string>
+        <!-- Enable SAP/KSB1 automation on this machine -->
+        <key>HAIDILAO_SAP_ENABLED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

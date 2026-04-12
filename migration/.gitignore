@@ -1,0 +1,10 @@
+# Sensitive files — NOT committed, copy manually from old machine
+dot_env
+ssh_keys/
+claude_dot_json
+haidilao_db_dump.sql
+letsencrypt/
+bi_env.json
+nginx_haidilao.conf
+migration-bundle.tar.gz
+haidilao-business-intelligent/

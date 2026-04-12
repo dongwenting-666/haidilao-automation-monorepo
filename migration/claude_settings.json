@@ -1,0 +1,27 @@
+{
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/hongming-claw/haidilao-business-intelligent/hooks/block-dangerous-bash.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/hongming-claw/haidilao-business-intelligent/hooks/protect-configs.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
