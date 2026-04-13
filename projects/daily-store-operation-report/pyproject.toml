@@ -7,6 +7,7 @@ dependencies = [
     "qbi-crawler",
     "excel-utils",
     "vpn",
+    "snappy-client",
     "python-dotenv>=1.0.0",
     "openpyxl>=3.1.0",
 ]
@@ -22,3 +23,4 @@ packages = ["src/daily_store_operation_report"]
 qbi-crawler = { workspace = true }
 excel-utils = { workspace = true }
 vpn = { workspace = true }
+snappy-client = { workspace = true }

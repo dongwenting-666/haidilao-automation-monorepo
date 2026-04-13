@@ -387,12 +387,77 @@ class StoreMetrics:
 
 
 @dataclass
+class SnappySales:
+    """Snappy POS sales data (in dollars CAD)."""
+
+    mtd_net_sales: float = 0.0  # MTD net sales in dollars
+    mtd_order_count: int = 0
+    prev_mtd_net_sales: float = 0.0  # Previous month MTD net sales in dollars
+    prev_mtd_order_count: int = 0
+
+
+def fetch_snappy_sales(dates: ReportDates) -> SnappySales:
+    """Fetch current and previous month MTD sales from Snappy POS API.
+
+    Reads credentials from environment variables (SNAPPY_USERNAME, etc.).
+    Returns a zeroed-out SnappySales on any failure — never crashes the report.
+    """
+    import os
+
+    username = os.getenv("SNAPPY_USERNAME", "")
+    password = os.getenv("SNAPPY_PASSWORD", "")
+    store_id = os.getenv("SNAPPY_STORE_ID", "")
+
+    if not username or not password or not store_id:
+        logger.warning("Snappy credentials not configured — skipping Snappy data")
+        return SnappySales()
+
+    try:
+        from snappy_client import SnappyClient
+
+        with SnappyClient(username=username, password=password, store_id=store_id) as client:
+            client.login()
+
+            # Current month MTD
+            cur_mtd = client.get_mtd_sales(
+                dates.report_date.year,
+                dates.report_date.month,
+                dates.report_date,
+            )
+
+            # Previous month MTD (same day count)
+            prev_mtd = client.get_mtd_sales(
+                dates.prev_start.year,
+                dates.prev_start.month,
+                dates.prev_end,
+            )
+
+        result = SnappySales(
+            mtd_net_sales=cur_mtd["net_sales"],
+            mtd_order_count=cur_mtd["order_count"],
+            prev_mtd_net_sales=prev_mtd["net_sales"],
+            prev_mtd_order_count=prev_mtd["order_count"],
+        )
+        logger.info(
+            "Snappy data loaded: cur MTD $%.2f (%d orders), prev MTD $%.2f (%d orders)",
+            result.mtd_net_sales, result.mtd_order_count,
+            result.prev_mtd_net_sales, result.prev_mtd_order_count,
+        )
+        return result
+
+    except Exception:
+        logger.exception("Failed to fetch Snappy sales data — using zeros")
+        return SnappySales()
+
+
+@dataclass
 class ReportData:
     """All computed data needed to build the report."""
 
     dates: ReportDates
     stores: dict[str, StoreMetrics] = field(default_factory=dict)
     competitor: dict[str, str] = field(default_factory=dict)  # store → competitor store
+    snappy: SnappySales = field(default_factory=SnappySales)
 
 
 # ── Metric computation ────────────────────────────────────────────────────────
@@ -625,7 +690,9 @@ def compute_metrics(
         logger.warning("Failed to load competitor config: %s — competitor sheet will be empty", e)
         competitor = {}
 
-    data = ReportData(dates=dates, competitor=competitor)
+    snappy = fetch_snappy_sales(dates)
+
+    data = ReportData(dates=dates, competitor=competitor, snappy=snappy)
     for store in STORES:
         try:
             data.stores[store] = _build_store_metrics(store, raw, targets)

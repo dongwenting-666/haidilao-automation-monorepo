@@ -5,7 +5,8 @@ Layout
 Row 1 : Title spanning all 6 columns
 Row 2 : Column headers
 Rows 3–10 : One row per store (8 stores total)
-Row 11 : Footer note
+Row 11 : Snappy vs Store 4 takeout revenue comparison row
+Row 12 : Footer note
 
 Columns
 -------
@@ -15,6 +16,14 @@ C  2月份翻台率差异            Prev-month full-month turnover delta (store
 D  3月截止目前门店翻台率       MTD turnover rate (current store)
 E  3月截止目前假想敌翻台率     MTD turnover rate (competitor store)
 F  差异对比                  MTD delta (D − E)
+
+Row 11 (Snappy):
+A  七店子店 (Snappy)
+B  四店外卖
+C  prev month revenue difference (Snappy prev MTD - Store 4 prev takeout, in 万)
+D  Snappy current MTD revenue (万 CAD)
+E  Store 4 current MTD takeout revenue (万, from QBI)
+F  difference (D - E)
 
 Note: "2月" is dynamic — it always refers to the *previous* calendar month.
       "3月" refers to the *current* month MTD.
@@ -26,7 +35,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
 
-from daily_store_operation_report.constants import STORES
+from daily_store_operation_report.constants import STORES, WAN_DIVISOR
 from daily_store_operation_report.sheets.styles import (
     BOLD,
     CENTER,
@@ -133,8 +142,48 @@ def build_competitor_sheet(wb: Workbook, data: ReportData) -> None:
 
         apply_border(ws, row_idx, row_idx, 1, 6)
 
-    # ── Row 11: Footer note ──────────────────────────────────────────────────
-    footer_row = len(STORES) + 3
+    # ── Row 11: Snappy vs Store 4 takeout revenue comparison ────────────────
+    snappy_row = len(STORES) + 3  # row 11
+    ws.row_dimensions[snappy_row].height = 20
+
+    snappy = data.snappy
+    store4_metrics = data.stores.get("加拿大四店")
+
+    # Snappy values: cents → dollars → 万 (divide by 100 then by 10000 = / 1_000_000)
+    snappy_cur_mtd_wan = snappy.mtd_net_sales / WAN_DIVISOR
+    snappy_prev_mtd_wan = snappy.prev_mtd_net_sales / WAN_DIVISOR
+
+    # Store 4 takeout revenue is already in 万 from QBI
+    store4_cur_takeout_wan = store4_metrics.mtd_takeout_wan if store4_metrics else 0.0
+    store4_prev_takeout_wan = store4_metrics.prev_mtd_takeout_wan if store4_metrics else 0.0
+
+    prev_diff_wan = snappy_prev_mtd_wan - store4_prev_takeout_wan
+    cur_diff_wan = snappy_cur_mtd_wan - store4_cur_takeout_wan
+
+    snappy_values = [
+        "七店子店 (Snappy)",
+        "四店外卖",
+        prev_diff_wan,
+        snappy_cur_mtd_wan,
+        store4_cur_takeout_wan,
+        cur_diff_wan,
+    ]
+    fill = _ALT_FILL if snappy_row % 2 == 0 else None
+
+    for col, val in enumerate(snappy_values, start=1):
+        cell = ws.cell(row=snappy_row, column=col, value=val)
+        cell.alignment = CENTER
+        cell.font = BOLD
+        if fill:
+            cell.fill = fill
+        # Colour negative differences red
+        if col in (3, 6) and isinstance(val, float) and val < 0:
+            cell.font = Font(bold=True, color="FFFF0000", size=11)
+
+    apply_border(ws, snappy_row, snappy_row, 1, 6)
+
+    # ── Footer note ──────────────────────────────────────────────────────────
+    footer_row = snappy_row + 1
     ws.row_dimensions[footer_row].height = 18
     ws.merge_cells(f"A{footer_row}:F{footer_row}")
     note = ws[f"A{footer_row}"]

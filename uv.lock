@@ -20,6 +20,7 @@ members = [
     "qbi-crawler",
     "sap-gui",
     "server",
+    "snappy-client",
     "store-hours-collect",
     "travel-expense-budget",
     "treasury-loan-watch",
@@ -282,6 +283,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "python-dotenv" },
     { name = "qbi-crawler" },
+    { name = "snappy-client" },
     { name = "vpn" },
 ]
 
@@ -291,6 +293,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "qbi-crawler", editable = "libs/qbi-crawler" },
+    { name = "snappy-client", editable = "libs/snappy-client" },
     { name = "vpn", editable = "libs/vpn" },
 ]
 
@@ -1181,6 +1184,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
+
+[[package]]
+name = "snappy-client"
+version = "0.1.0"
+source = { editable = "libs/snappy-client" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "starlette"
