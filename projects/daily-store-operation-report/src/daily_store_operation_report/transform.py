@@ -358,6 +358,7 @@ class StoreMetrics:
     prev_mtd_revenue_wan: float = 0
     prev_mtd_dine_in_wan: float = 0
     prev_mtd_takeout_wan: float = 0
+    prev_full_takeout_wan: float = 0
     prev_mtd_per_table: float = 0
     prev_mtd_turnover_rate: float = 0   # full prev-month avg turnover (for competitor sheet)
 
@@ -394,6 +395,8 @@ class SnappySales:
     mtd_order_count: int = 0
     prev_mtd_net_sales: float = 0.0  # Previous month MTD net sales in dollars
     prev_mtd_order_count: int = 0
+    prev_full_net_sales: float = 0.0  # Previous month full-month net sales in dollars
+    prev_full_order_count: int = 0
 
 
 def fetch_snappy_sales(dates: ReportDates) -> SnappySales:
@@ -432,16 +435,25 @@ def fetch_snappy_sales(dates: ReportDates) -> SnappySales:
                 dates.prev_end,
             )
 
+            prev_full = client.get_mtd_sales(
+                dates.prev_start.year,
+                dates.prev_start.month,
+                dates.prev_full_end,
+            )
+
         result = SnappySales(
             mtd_net_sales=cur_mtd["net_sales"],
             mtd_order_count=cur_mtd["order_count"],
             prev_mtd_net_sales=prev_mtd["net_sales"],
             prev_mtd_order_count=prev_mtd["order_count"],
+            prev_full_net_sales=prev_full["net_sales"],
+            prev_full_order_count=prev_full["order_count"],
         )
         logger.info(
-            "Snappy data loaded: cur MTD $%.2f (%d orders), prev MTD $%.2f (%d orders)",
+            "Snappy data loaded: cur MTD $%.2f (%d orders), prev MTD $%.2f (%d orders), prev full $%.2f (%d orders)",
             result.mtd_net_sales, result.mtd_order_count,
             result.prev_mtd_net_sales, result.prev_mtd_order_count,
+            result.prev_full_net_sales, result.prev_full_order_count,
         )
         return result
 
@@ -490,6 +502,7 @@ class RawData:
     prev_revenue: dict[str, float]
     prev_dine_in: dict[str, float]
     prev_takeout_rev: dict[str, float]
+    prev_full_takeout_rev: dict[str, float]
     prev_avg_turnover: dict[str, float]   # full prev-month average turnover rate
     # YoY
     yoy_tables: dict[str, float]
@@ -527,6 +540,7 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
     """Load and aggregate all raw QBI data into a typed bundle."""
     cur_rows = _load_daily(files.cur_daily)
     prev_rows = _load_daily(files.prev_daily)
+    prev_full_rows = _load_daily(files.prev_full_daily)
     yoy_rows_all = _load_daily(files.yoy_daily)
     cur_tp_rows = _load_time_period(files.cur_time_period)
     yoy_tp_rows_all = _load_time_period(files.yoy_time_period)
@@ -563,6 +577,7 @@ def _load_all_raw_data(dates: ReportDates, files: DownloadedFiles) -> RawData:
         prev_revenue=_sum_by_store(prev_rows, COL_REVENUE),
         prev_dine_in=_sum_by_store(prev_rows, COL_REVENUE_DINE_IN),
         prev_takeout_rev=_sum_two_cols_by_store(prev_rows, COL_REVENUE_TAKEOUT, COL_REVENUE_DELIVERY),
+        prev_full_takeout_rev=_sum_two_cols_by_store(prev_full_rows, COL_REVENUE_TAKEOUT, COL_REVENUE_DELIVERY),
         prev_avg_turnover=_avg_turnover_by_store(prev_rows),
         # YoY
         yoy_tables=_sum_by_store(yoy_rows, COL_TABLES_ASSESSED),
@@ -625,6 +640,7 @@ def _build_store_metrics(store: str, raw: RawData, targets: Targets) -> StoreMet
     m.prev_mtd_revenue_wan = prev_r / WAN_DIVISOR
     m.prev_mtd_dine_in_wan = raw.prev_dine_in.get(store, 0) / WAN_DIVISOR
     m.prev_mtd_takeout_wan = raw.prev_takeout_rev.get(store, 0) / WAN_DIVISOR
+    m.prev_full_takeout_wan = raw.prev_full_takeout_rev.get(store, 0) / WAN_DIVISOR
     m.prev_mtd_per_table = div_or_zero(prev_r, m.prev_mtd_raw_tables)
     m.prev_mtd_turnover_rate = raw.prev_avg_turnover.get(store, 0)
 

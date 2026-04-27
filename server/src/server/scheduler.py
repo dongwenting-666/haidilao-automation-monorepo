@@ -28,6 +28,12 @@ async def _run_daily_report() -> None:
     create_run("daily-report", {}, notify_chat="production_accounting_report_chat")
 
 
+async def _run_competitor_takeout_report() -> None:
+    """Trigger weekly competitor takeout comparison export."""
+    from server.routes.runs import create_run
+    create_run("competitor-takeout-report", {}, notify_chat="production_accounting_report_chat")
+
+
 async def _run_treasury_loan_watch() -> None:
     """Trigger treasury-loan-watch command via the run system."""
     from server.routes.runs import create_run
@@ -60,6 +66,14 @@ def setup_default_jobs() -> None:
         trigger=trigger,
         id="daily-report-cron",
         name="Daily store operation report",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _run_competitor_takeout_report,
+        CronTrigger(**_parse_cron(settings.competitor_takeout_report_cron), timezone="America/Vancouver"),
+        id="competitor-takeout-report-cron",
+        name="Weekly competitor takeout revenue comparison export",
         replace_existing=True,
     )
 

@@ -1,6 +1,8 @@
 # KSB1 Accounting Check GUI (`projects/ksb1-accounting-check-gui`)
 
-Desktop GUI application for the KSB1 accounting check. Packages as a standalone Windows EXE — no Python installation required.
+Desktop GUI application for the KSB1 accounting check. Can be packaged as:
+- macOS `.app`
+- Windows `.exe`
 
 ## Module Structure
 
@@ -13,8 +15,9 @@ projects/ksb1-accounting-check-gui/
 │   ├── worker.py        # Background worker functions (SAP download + report generation)
 │   ├── paths.py         # Resource path resolution (PyInstaller frozen vs dev mode)
 │   └── log_handler.py   # Thread-safe logging to tkinter Text widget
-├── ksb1_gui.spec        # PyInstaller spec (single-file EXE)
-├── dist/                # Built EXE output (gitignored)
+├── ksb1_gui.spec        # PyInstaller spec
+├── build-macos-app.sh   # Build macOS .app via uv + PyInstaller
+├── dist/                # Built app/exe output (gitignored)
 ├── build/               # PyInstaller build artifacts (gitignored)
 └── pyproject.toml
 ```
@@ -28,7 +31,23 @@ python -m ksb1_accounting_check_gui
 
 Requires workspace packages to be installed (`pip install -e` or via `uv`).
 
-## Building the EXE
+## Building
+
+### macOS `.app`
+
+```bash
+cd projects/ksb1-accounting-check-gui
+./build-macos-app.sh
+```
+
+Output: `dist/KSB1会计检查.app`
+
+Notes:
+- Requires SAP GUI for Java on macOS
+- First run may require allowing the app under `Privacy & Security`
+- To reveal the generated report, the app opens Finder automatically
+
+### Windows `.exe`
 
 ```bash
 cd projects/ksb1-accounting-check-gui
@@ -39,7 +58,7 @@ Output: `dist/KSB1会计检查.exe` (~34 MB single file)
 
 ### Bundled Data Files
 
-The EXE bundles these data files into a `data/` directory inside the archive:
+The packaged app bundles these data files into a `data/` directory inside the archive:
 
 | File | Source Location |
 |------|----------------|
@@ -100,7 +119,7 @@ Main thread (tkinter)          Background thread (worker)
 
 | Mode | `resource_path()` | `exe_dir()` |
 |------|-------------------|-------------|
-| **Frozen** (EXE) | `sys._MEIPASS/data/<filename>` | Directory containing the EXE |
+| **Frozen** (app/exe) | `sys._MEIPASS/data/<filename>` | Directory containing the app/exe |
 | **Development** | Actual monorepo source locations | Repo root (found by walking up to `pyproject.toml` with `[tool.uv.workspace]`) |
 
 `_find_repo_root()` is cached with `@functools.cache` to avoid repeated filesystem walks.
@@ -121,16 +140,22 @@ Main thread (tkinter)          Background thread (worker)
 
 All errors include the original exception message for debugging.
 
-## Rebuilding the EXE
+## Rebuilding
 
-The EXE is a frozen snapshot of the code. **Any code change requires rebuilding.**
+The packaged app is a frozen snapshot of the code. **Any code change requires rebuilding.**
 
 ```bash
 cd projects/ksb1-accounting-check-gui
+./build-macos-app.sh
+```
+
+On Windows, use:
+
+```bash
 python -m PyInstaller ksb1_gui.spec --noconfirm
 ```
 
-Takes ~45 seconds. The new EXE replaces the old one in `dist/`.
+The new build replaces the old one in `dist/`.
 
 ### What triggers a rebuild
 
@@ -146,8 +171,14 @@ Takes ~45 seconds. The new EXE replaces the old one in `dist/`.
 
 ## Distribution
 
-To distribute the EXE:
-1. Build with PyInstaller (see above)
+To distribute on macOS:
+1. Build with `./build-macos-app.sh`
+2. Copy `dist/KSB1会计检查.app` to the target machine
+3. Optionally place a `.env` file next to the app bundle with `SAP_USERNAME` and `SAP_PASSWORD`
+4. SAP GUI for Java must be installed and open before running
+
+To distribute on Windows:
+1. Build with PyInstaller
 2. Copy `dist/KSB1会计检查.exe` to the target machine
 3. Optionally place a `.env` file next to the EXE with `SAP_USERNAME` and `SAP_PASSWORD`
 4. SAP GUI must be installed and open before running

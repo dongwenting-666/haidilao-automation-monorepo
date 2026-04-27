@@ -311,7 +311,14 @@ def validate_report_output(output_path: Path, stores: list[str] | None = None) -
     warnings: list[str] = []
 
     # ── 1. Check all expected sheets exist ───────────────────────────────────
-    for sheet in ["对比上年表", "分时段-上报", "同比数据", "对比上月表", "假想敌翻台率对比"]:
+    for sheet in [
+        "对比上年表",
+        "分时段-上报",
+        "同比数据",
+        "对比上月表",
+        "加拿大片区假想敌翻台率对比",
+        "加拿大片区假想敌外卖收入对比",
+    ]:
         if sheet not in actual_sheets:
             errors.append(f"Missing sheet: {sheet!r}")
 

@@ -19,6 +19,7 @@ class DownloadedFiles:
 
     cur_daily: Path
     prev_daily: Path
+    prev_full_daily: Path
     yoy_daily: Path
     cur_time_period: Path
     yoy_time_period: Path
@@ -58,6 +59,14 @@ def download_all(
             download_dir=download_dir,
         )
 
+        logger.info("Downloading previous month full daily report...")
+        prev_full_daily = download_report(
+            page, REPORT_DAILY,
+            start_date=dates.prev_start.isoformat(),
+            end_date=dates.prev_full_end.isoformat(),
+            download_dir=download_dir,
+        )
+
         logger.info("Downloading YoY daily report...")
         yoy_daily = download_report(
             page, REPORT_DAILY,
@@ -85,6 +94,7 @@ def download_all(
     return DownloadedFiles(
         cur_daily=cur_daily,
         prev_daily=prev_daily,
+        prev_full_daily=prev_full_daily,
         yoy_daily=yoy_daily,
         cur_time_period=cur_tp,
         yoy_time_period=yoy_tp,

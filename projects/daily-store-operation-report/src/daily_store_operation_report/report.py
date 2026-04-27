@@ -7,7 +7,10 @@ from pathlib import Path
 from excel_utils import create_workbook
 from openpyxl.workbook import Workbook
 
-from daily_store_operation_report.sheets.competitor import build_competitor_sheet
+from daily_store_operation_report.sheets.competitor import (
+    build_competitor_sheet,
+    build_competitor_takeout_sheet,
+)
 from daily_store_operation_report.sheets.mom import build_mom_sheet
 from daily_store_operation_report.sheets.time_period import build_time_period_sheet
 from daily_store_operation_report.sheets.yoy_detail import build_yoy_detail_sheet
@@ -38,6 +41,7 @@ def generate_report(data: ReportData, output_dir: Path) -> Path:
     build_yoy_detail_sheet(wb, data)
     build_time_period_sheet(wb, data)
     build_competitor_sheet(wb, data)
+    build_competitor_takeout_sheet(wb, data)
     _format_numbers(wb)
 
     output_dir.mkdir(parents=True, exist_ok=True)

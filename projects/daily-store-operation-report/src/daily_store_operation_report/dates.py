@@ -20,6 +20,7 @@ class ReportDates:
     # Previous month same period: 1st of prev month → prev month same day
     prev_start: date
     prev_end: date
+    prev_full_end: date
 
     # Previous year same period: 1st of same month last year → same day last year
     yoy_start: date
@@ -64,6 +65,7 @@ def compute_dates(report_date: date) -> ReportDates:
     prev_day = min(report_date.day, prev_days)
     prev_start = date(prev_month_year, prev_month, 1)
     prev_end = date(prev_month_year, prev_month, prev_day)
+    prev_full_end = date(prev_month_year, prev_month, prev_days)
 
     # Previous year same period
     yoy_year = report_date.year - 1
@@ -82,6 +84,7 @@ def compute_dates(report_date: date) -> ReportDates:
         cur_end=cur_end,
         prev_start=prev_start,
         prev_end=prev_end,
+        prev_full_end=prev_full_end,
         yoy_start=yoy_start,
         yoy_end=yoy_end,
         yoy_same_weekday=yoy_same_weekday,

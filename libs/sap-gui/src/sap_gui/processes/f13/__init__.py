@@ -76,7 +76,10 @@ def _run_darwin(
     """macOS F.13 flow. Returns result summary."""
     fiscal_year = fiscal_year or date_from.year
 
-    with SAPSession(auto_launch=True, quit_after=True) as sap:
+    # Reuse the current SAP GUI session on macOS instead of force-relaunching.
+    # F.13 is often run while the user already has a healthy SAP session open,
+    # and the relaunch path is the main source of "session not reachable" flakiness.
+    with SAPSession() as sap:
         nav = SAPNavigator(sap.session)
 
         log.info("Logging in as %s...", username)

@@ -123,17 +123,30 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
     for p, key in tp_with_keys:
         logger.info("  sort_key=%-20s  file=%s", key, p.name)
 
+    if len(daily_files) >= 4:
+        cur_daily = daily_files[-4]
+        prev_daily = daily_files[-3]
+        prev_full_daily = daily_files[-2]
+        yoy_daily = daily_files[-1]
+    else:
+        cur_daily = daily_files[-3]
+        prev_daily = daily_files[-2]
+        prev_full_daily = daily_files[-2]
+        yoy_daily = daily_files[-1]
+
     files = DownloadedFiles(
-        cur_daily=daily_files[-3],
-        prev_daily=daily_files[-2],
-        yoy_daily=daily_files[-1],
+        cur_daily=cur_daily,
+        prev_daily=prev_daily,
+        prev_full_daily=prev_full_daily,
+        yoy_daily=yoy_daily,
         cur_time_period=tp_files[-2],
         yoy_time_period=tp_files[-1],
     )
     logger.info(
-        "Selected data files: cur=%s, prev=%s, yoy=%s, cur_tp=%s, yoy_tp=%s",
+        "Selected data files: cur=%s, prev=%s, prev_full=%s, yoy=%s, cur_tp=%s, yoy_tp=%s",
         files.cur_daily.name,
         files.prev_daily.name,
+        files.prev_full_daily.name,
         files.yoy_daily.name,
         files.cur_time_period.name,
         files.yoy_time_period.name,
@@ -143,6 +156,7 @@ def _resolve_data_files(data_dir: Path) -> DownloadedFiles:
     selected_with_keys = [
         (files.cur_daily, _date_from_filename(files.cur_daily)),
         (files.prev_daily, _date_from_filename(files.prev_daily)),
+        (files.prev_full_daily, _date_from_filename(files.prev_full_daily)),
         (files.yoy_daily, _date_from_filename(files.yoy_daily)),
         (files.cur_time_period, _date_from_filename(files.cur_time_period)),
         (files.yoy_time_period, _date_from_filename(files.yoy_time_period)),
@@ -210,7 +224,7 @@ def _check_config(month_key: str) -> None:
 
 
 def main() -> None:
-    load_dotenv()
+    load_dotenv(_find_repo_root() / ".env")
 
     parser = argparse.ArgumentParser(
         description="Generate daily store operation report from QBI data",
@@ -230,6 +244,7 @@ def main() -> None:
     # Explicit file paths for --skip-download
     parser.add_argument("--cur-daily", type=Path, help="Current month daily report file")
     parser.add_argument("--prev-daily", type=Path, help="Previous month daily report file")
+    parser.add_argument("--prev-full-daily", type=Path, help="Previous month full daily report file")
     parser.add_argument("--yoy-daily", type=Path, help="Previous year daily report file")
     parser.add_argument("--cur-tp", type=Path, help="Current month time-period report file")
     parser.add_argument("--yoy-tp", type=Path, help="Previous year time-period report file")
@@ -294,6 +309,7 @@ def main() -> None:
         files = DownloadedFiles(
             cur_daily=args.cur_daily,
             prev_daily=args.prev_daily,
+            prev_full_daily=args.prev_full_daily or args.prev_daily,
             yoy_daily=args.yoy_daily,
             cur_time_period=args.cur_tp,
             yoy_time_period=args.yoy_tp,
@@ -326,6 +342,7 @@ def main() -> None:
     file_checks = [
         (files.cur_daily, "cur_daily", QBI_SHEET_DAILY),
         (files.prev_daily, "prev_daily", QBI_SHEET_DAILY),
+        (files.prev_full_daily, "prev_full_daily", QBI_SHEET_DAILY),
         (files.yoy_daily, "yoy_daily", QBI_SHEET_DAILY),
         (files.cur_time_period, "cur_time_period", QBI_SHEET_TIME_PERIOD),
         (files.yoy_time_period, "yoy_time_period", QBI_SHEET_TIME_PERIOD),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import subprocess
 import threading
 import tkinter as tk
@@ -17,6 +18,18 @@ from ksb1_accounting_check_gui.worker import run_download_and_generate, run_gene
 
 WINDOW_TITLE = "KSB1 会计检查"
 WINDOW_SIZE = "700x720"
+
+
+def _reveal_in_file_manager(path: Path) -> None:
+    """Open the containing folder and reveal the generated report."""
+    system = platform.system()
+    if system == "Darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+        return
+    if system == "Windows":
+        subprocess.Popen(["explorer", "/select,", str(path)])
+        return
+    subprocess.Popen(["xdg-open", str(path.parent)])
 
 
 def _prev_month_year() -> tuple[int, int]:
@@ -205,8 +218,7 @@ class App:
                 "完成",
                 f"报告已生成！\n\n{report_path.name}\n\n是否打开所在文件夹？",
             ):
-                # Windows-only: SAP GUI COM requires Windows
-                subprocess.Popen(["explorer", "/select,", str(report_path)])
+                _reveal_in_file_manager(report_path)
         else:
             logging.error("=" * 40)
             logging.error("失败: %s", message)

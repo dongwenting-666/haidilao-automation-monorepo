@@ -441,6 +441,109 @@ def notify_travel_budget_file(
         log.exception("Failed to send travel budget report to Lark")
 
 
+def notify_zfi0049_file(
+    report_path: "Path",
+    *,
+    target_chat: str = "production_accounting_report_chat",
+    company_code: str = "",
+    fiscal_year: int = 0,
+    posting_period: int = 0,
+) -> None:
+    """Send the ZFI0049 export xlsx to a Lark chat."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from server.config import settings
+
+    if not settings.lark_enabled:
+        return
+
+    chat_id = chat_id_for(target_chat)
+    if not chat_id:
+        log.warning("notify: '%s' alias not found, skipping ZFI0049 send", target_chat)
+        return
+
+    now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
+    period = f"{fiscal_year}年/{posting_period:02d}期" if fiscal_year and posting_period else "unknown"
+    company = company_code or "unknown"
+
+    try:
+        client = _client()
+        if client is None:
+            return
+
+        with client:
+            client.send_card(
+                title=f"📘 ZFI0049 总账导出 · {company} · {period}",
+                content=(
+                    f"**报表已生成**\n\n"
+                    f"公司代码：**{company}**\n"
+                    f"期间：**{period}**\n"
+                    f"生成时间：{now} (Vancouver)\n\n"
+                    "---\n👇 附件见下方"
+                ),
+                color="blue",
+                chat_id=chat_id,
+            )
+            client.send_file(
+                report_path,
+                filename=report_path.name,
+                chat_id=chat_id,
+                file_type="xlsx",
+            )
+
+        log.info("ZFI0049 report sent to %s: %s", target_chat, report_path.name)
+    except Exception:
+        log.exception("Failed to send ZFI0049 report to Lark")
+
+
+def notify_competitor_takeout_report_file(
+    report_path: "Path",
+    *,
+    target_chat: str = "production_accounting_report_chat",
+) -> None:
+    """Send the weekly competitor takeout revenue comparison xlsx to a Lark chat."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from server.config import settings
+
+    if not settings.lark_enabled:
+        return
+
+    chat_id = chat_id_for(target_chat)
+    if not chat_id:
+        log.warning("notify: '%s' alias not found, skipping competitor takeout report send", target_chat)
+        return
+
+    now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
+
+    try:
+        client = _client()
+        if client is None:
+            return
+
+        with client:
+            client.send_card(
+                title="📈 加拿大片区假想敌外卖收入对比",
+                content=(
+                    f"**每周一自动导出已生成**\n\n"
+                    f"生成时间：{now} (Vancouver)\n\n"
+                    "---\n👇 附件见下方"
+                ),
+                color="blue",
+                chat_id=chat_id,
+            )
+            client.send_file(
+                report_path,
+                filename=report_path.name,
+                chat_id=chat_id,
+                file_type="xlsx",
+            )
+
+        log.info("Competitor takeout report sent to %s: %s", target_chat, report_path.name)
+    except Exception:
+        log.exception("Failed to send competitor takeout report to Lark")
+
+
 def notify_text(command: str, text: str) -> None:
     """Send a plain text message to the target configured for *command*.
 

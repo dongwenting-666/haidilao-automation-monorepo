@@ -22,8 +22,9 @@
 
 set -euo pipefail
 
-REPO_ROOT="/Users/hongming-claw/haidilao-automation-monorepo"
+REPO_ROOT="/Users/mu/Documents/GitHub/haidilao-automation-monorepo"
 CRASH_FLAG_FILE="/tmp/haidilao-server-crashed.flag"
+UV_BIN="/opt/homebrew/bin/uv"
 
 # ---------------------------------------------------------------------------
 # Logging — stdout only; launchd routes it to server.log via StandardOutPath
@@ -41,7 +42,7 @@ log_err() {
 # ---------------------------------------------------------------------------
 lark_send() {
     local message="$1"
-    /Users/hongming-claw/.local/bin/uv run \
+    "$UV_BIN" run \
         --project "$REPO_ROOT/server" \
         python -c "
 import os, sys
@@ -209,7 +210,7 @@ except OSError:
 log "========================================="
 log "Starting Haidilao automation server"
 log "Repo:   $REPO_ROOT"
-log "uv:     $(/Users/hongming-claw/.local/bin/uv --version 2>/dev/null || echo 'unknown')"
+log "uv:     $($UV_BIN --version 2>/dev/null || echo 'unknown')"
 log "PID:    $$"
 
 # Detect crash recovery
@@ -229,7 +230,7 @@ wait_for_port_free
 
 # Run the server — capture exit code without triggering set -e
 set +e
-/Users/hongming-claw/.local/bin/uv run --project server python -m server &
+"$UV_BIN" run --project server python -m server &
 SERVER_PID=$!
 
 # If this is a recovery restart, wait for healthy then notify
