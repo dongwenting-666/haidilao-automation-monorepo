@@ -54,6 +54,22 @@ def test_default_filename_extension_is_xlsx():
     assert default_filename(date(2026, 2, 1)).endswith(".xlsx")
 
 
+def test_default_filename_has_no_path_separator():
+    """Returned value is a bare filename, not a path. Callers compose
+    it onto a directory; embedding a separator would break that."""
+    name = default_filename(date(2026, 2, 1))
+    assert "/" not in name
+    assert "\\" not in name
+
+
+def test_package_import_smoke():
+    """Top-level package re-exports the run() entry point. If a refactor
+    breaks the public surface, callers like zfi0156_app.py break too."""
+    from sap_gui.processes.zfi0156 import run as run_fn
+
+    assert callable(run_fn)
+
+
 # ── previous_month_range ───────────────────────────────────────────────
 
 
@@ -312,6 +328,151 @@ def test_run_darwin_builds_js_with_correct_field_ids(tmp_path):
         assert fragment in js_payload, (
             f"missing fragment in built JS: {fragment!r}"
         )
+
+
+def test_run_darwin_js_executes_via_f8(tmp_path):
+    """The macOS JS must include sendVKey(8) — F8 / Execute. If someone
+    refactors to a menu-based execute and the menu path differs by
+    version, F8 is the universal fallback."""
+    from sap_gui.processes.zfi0156 import _run_darwin
+
+    fake_session_obj = MagicMock()
+    fake_session_obj.session.execute_js.return_value = str(tmp_path)
+
+    output = tmp_path / "x.xlsx"
+    output.touch()
+
+    with patch("sap_gui.processes.zfi0156.SAPSession") as mock_sap_cls:
+        mock_sap_cls.return_value.__enter__.return_value = fake_session_obj
+        mock_sap_cls.return_value.__exit__.return_value = False
+        _run_darwin(
+            username="u", password="p",
+            output_path=output,
+            plant_low="CA01", plant_high="CA09",
+            date_from=date(2026, 2, 1), date_to=date(2026, 2, 28),
+            language="ZH", export_timeout=5.0,
+        )
+
+    js_payload = fake_session_obj.session.execute_js.call_args.args[0]
+    assert "sendVKey(8)" in js_payload
+
+
+def test_run_darwin_js_resets_to_session_manager(tmp_path):
+    """A leftover save dialog or result window after a failed export
+    will confuse the next run. Pin the cleanup."""
+    from sap_gui.processes.zfi0156 import _run_darwin
+
+    fake_session_obj = MagicMock()
+    fake_session_obj.session.execute_js.return_value = str(tmp_path)
+
+    output = tmp_path / "x.xlsx"
+    output.touch()
+
+    with patch("sap_gui.processes.zfi0156.SAPSession") as mock_sap_cls:
+        mock_sap_cls.return_value.__enter__.return_value = fake_session_obj
+        mock_sap_cls.return_value.__exit__.return_value = False
+        _run_darwin(
+            username="u", password="p",
+            output_path=output,
+            plant_low="CA01", plant_high="CA09",
+            date_from=date(2026, 2, 1), date_to=date(2026, 2, 28),
+            language="ZH", export_timeout=5.0,
+        )
+
+    js_payload = fake_session_obj.session.execute_js.call_args.args[0]
+    assert 'startTransaction("SESSION_MANAGER")' in js_payload
+
+
+def test_run_darwin_js_dismisses_overwrite_popup(tmp_path):
+    """A monthly re-run hits an existing file → SAP shows a 'replace?'
+    popup at wnd[2]. Pin the try/sendVKey(0)/catch so a refactor doesn't
+    silently drop it (would hang the export indefinitely)."""
+    from sap_gui.processes.zfi0156 import _run_darwin
+
+    fake_session_obj = MagicMock()
+    fake_session_obj.session.execute_js.return_value = str(tmp_path)
+
+    output = tmp_path / "x.xlsx"
+    output.touch()
+
+    with patch("sap_gui.processes.zfi0156.SAPSession") as mock_sap_cls:
+        mock_sap_cls.return_value.__enter__.return_value = fake_session_obj
+        mock_sap_cls.return_value.__exit__.return_value = False
+        _run_darwin(
+            username="u", password="p",
+            output_path=output,
+            plant_low="CA01", plant_high="CA09",
+            date_from=date(2026, 2, 1), date_to=date(2026, 2, 28),
+            language="ZH", export_timeout=5.0,
+        )
+
+    js_payload = fake_session_obj.session.execute_js.call_args.args[0]
+    # Loose match — the exact whitespace varies but wnd[2] + sendVKey(0)
+    # in a try-block is the contract.
+    assert 'wnd[2]' in js_payload
+    assert 'try' in js_payload and 'sendVKey(0)' in js_payload
+
+
+def test_run_darwin_logs_in_before_executing_js(tmp_path):
+    """nav.login() MUST run before execute_js — otherwise the JS hits
+    the login screen instead of SAP Easy Access and the startTransaction
+    call silently fails."""
+    from sap_gui.processes import zfi0156 as zfi_mod
+
+    fake_session_obj = MagicMock()
+    # Track call order across nav.login() and execute_js() via a shared list.
+    call_order: list[str] = []
+    fake_session_obj.session.execute_js.side_effect = (
+        lambda *a, **kw: call_order.append("execute_js") or str(tmp_path)
+    )
+
+    fake_nav = MagicMock()
+    fake_nav.login.side_effect = lambda *a, **kw: call_order.append("login")
+
+    output = tmp_path / "x.xlsx"
+    output.touch()
+
+    with patch.object(zfi_mod, "SAPSession") as mock_sap_cls, \
+         patch.object(zfi_mod, "SAPNavigator", return_value=fake_nav):
+        mock_sap_cls.return_value.__enter__.return_value = fake_session_obj
+        mock_sap_cls.return_value.__exit__.return_value = False
+        zfi_mod._run_darwin(
+            username="u", password="p",
+            output_path=output,
+            plant_low="CA01", plant_high="CA09",
+            date_from=date(2026, 2, 1), date_to=date(2026, 2, 28),
+            language="ZH", export_timeout=5.0,
+        )
+
+    assert call_order == ["login", "execute_js"]
+
+
+def test_run_darwin_skips_move_when_save_path_matches(tmp_path):
+    """If SAP happens to save directly to the target path (e.g. when
+    ~/Downloads is the requested output dir), shutil.move would be a
+    no-op-and-fail because src == dst. Verify we skip it."""
+    from sap_gui.processes import zfi0156 as zfi_mod
+
+    fake_session_obj = MagicMock()
+    fake_session_obj.session.execute_js.return_value = str(tmp_path)
+
+    output = (tmp_path / "x.xlsx").resolve()
+    output.touch()
+
+    with patch.object(zfi_mod, "SAPSession") as mock_sap_cls, \
+         patch.object(zfi_mod, "shutil") as fake_shutil:
+        mock_sap_cls.return_value.__enter__.return_value = fake_session_obj
+        mock_sap_cls.return_value.__exit__.return_value = False
+        result = zfi_mod._run_darwin(
+            username="u", password="p",
+            output_path=output,
+            plant_low="CA01", plant_high="CA09",
+            date_from=date(2026, 2, 1), date_to=date(2026, 2, 28),
+            language="ZH", export_timeout=5.0,
+        )
+
+    fake_shutil.move.assert_not_called()
+    assert result == output
 
 
 def test_run_darwin_does_not_select_format_radio(tmp_path):
