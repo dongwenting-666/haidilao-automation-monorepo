@@ -4,7 +4,10 @@ Usage:
     ./mb5b                                    # previous month, default companies
     ./mb5b --from 2026.03.01 --to 2026.03.31
     ./mb5b --company-low 9451 --company-high 9452
-    ./mb5b --output ./output/sap/mb5b202603.xlsx
+    ./mb5b --output ./output/sap/mb5b202603.xls
+
+Note: output is UTF-16 LE tab-separated text (SAP "Spreadsheet" format),
+not real .xlsx. See sap_gui.processes.mb5b module docstring.
 """
 from __future__ import annotations
 
@@ -31,7 +34,7 @@ def main() -> None:
     parser.add_argument("--company-high", default="9452", help="Company code high (default: 9452)")
     parser.add_argument("--from", dest="date_from", type=parse_date, help="Start date (YYYY.MM.DD)")
     parser.add_argument("--to", dest="date_to", type=parse_date, help="End date (YYYY.MM.DD)")
-    parser.add_argument("--output", type=Path, help="Output xlsx path (default: output/sap/mb5b{YYYYMM}.xlsx)")
+    parser.add_argument("--output", type=Path, help="Output path (default: output/sap/mb5b{YYYYMM}.xls — UTF-16 TSV, see module docstring)")
     parser.add_argument("--no-vpn", action="store_true", help="Skip VPN check")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     args = parser.parse_args()

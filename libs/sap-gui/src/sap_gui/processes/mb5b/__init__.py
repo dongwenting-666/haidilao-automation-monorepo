@@ -8,6 +8,13 @@ Automates the MB5B transaction in SAP GUI:
 5. Save via menu System -> List -> Save -> Local File (mbar/menu[0]/menu[1]/menu[2])
 6. Pick "Spreadsheet" in the SAPLSPO5 format dialog (radSPOPLI-SELFLAG[1,0])
 7. Set filename in the SAPLSFES save dialog and confirm
+
+Output format note: MB5B's result is a classic ABAP list (not an ALV
+grid), and SAP's "Spreadsheet" branch in SAPLSPO5 writes UTF-16 LE
+tab-separated text — NOT a real .xlsx zip. We default the extension to
+.xls (Excel's "loose" mode opens it via the import wizard) and the
+content is text. Don't try to read this with openpyxl; decode it as
+UTF-16 LE and split on tabs/newlines.
 """
 
 from __future__ import annotations
@@ -52,8 +59,12 @@ def format_sap_text_date(d: date) -> str:
 
 
 def default_filename(d: date) -> str:
-    """Default xlsx filename for a given month, e.g. mb5b202603.xlsx."""
-    return f"mb5b{d.strftime('%Y%m')}.xlsx"
+    """Default filename for a given month, e.g. mb5b202603.xls.
+
+    Extension is .xls (not .xlsx) because SAPLSPO5's Spreadsheet branch
+    writes UTF-16 LE TSV, not real Excel — see module docstring.
+    """
+    return f"mb5b{d.strftime('%Y%m')}.xls"
 
 
 # ---------------------------------------------------------------------------

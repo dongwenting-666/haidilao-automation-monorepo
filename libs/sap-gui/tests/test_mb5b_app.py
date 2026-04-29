@@ -124,10 +124,10 @@ def test_main_passes_custom_company_codes(app, monkeypatch, tmp_path):
 def test_main_default_output_uses_default_filename_in_output_sap(
     app, monkeypatch,
 ):
-    """No --output: the path falls back to output/sap/mb5b{YYYYMM}.xlsx."""
+    """No --output: the path falls back to output/sap/mb5b{YYYYMM}.xls."""
     with patch.object(app, "load_dotenv"), \
          patch("sap_gui.processes.mb5b.run") as fake_run:
-        fake_run.return_value = Path("/tmp/x.xlsx")
+        fake_run.return_value = Path("/tmp/x.xls")
         _run_main(
             app, monkeypatch,
             ["mb5b", "--no-vpn", "--from", "2026.03.01", "--to", "2026.03.31"],
@@ -135,7 +135,7 @@ def test_main_default_output_uses_default_filename_in_output_sap(
     kwargs = fake_run.call_args.kwargs
     out: Path = kwargs["output_path"]
     assert out.parent.parts[-2:] == ("output", "sap")
-    assert out.name == "mb5b202603.xlsx"
+    assert out.name == "mb5b202603.xls"
 
 
 def test_main_calls_ensure_vpn_by_default(app, monkeypatch, tmp_path):

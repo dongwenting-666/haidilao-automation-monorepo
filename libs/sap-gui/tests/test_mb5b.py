@@ -48,16 +48,21 @@ def test_format_sap_text_date(d, expected):
 
 
 def test_default_filename_uses_yyyymm_of_input_date():
-    # The user-stated convention is mb5b{YYYYMM}.xlsx — pin it.
-    assert default_filename(date(2026, 3, 15)) == "mb5b202603.xlsx"
-    assert default_filename(date(2026, 1, 1)) == "mb5b202601.xlsx"
-    assert default_filename(date(2025, 12, 31)) == "mb5b202512.xlsx"
+    # The user-stated convention is mb5b{YYYYMM}; extension is .xls
+    # (NOT .xlsx) because SAPLSPO5's Spreadsheet branch writes UTF-16
+    # TSV, not a real xlsx zip.
+    assert default_filename(date(2026, 3, 15)) == "mb5b202603.xls"
+    assert default_filename(date(2026, 1, 1)) == "mb5b202601.xls"
+    assert default_filename(date(2025, 12, 31)) == "mb5b202512.xls"
 
 
-def test_default_filename_extension_is_xlsx():
-    # Default filename must end in .xlsx so Excel/LibreOffice opens it
-    # without a manual rename — the SAPLSPO5 spreadsheet branch writes xlsx.
-    assert default_filename(date(2026, 3, 1)).endswith(".xlsx")
+def test_default_filename_extension_is_xls_not_xlsx():
+    # Regression guard against an "obvious" cleanup that switches to
+    # .xlsx — the file is UTF-16 TSV, not real Excel; openpyxl can't
+    # open it. e2e validation 2026-04-29 confirmed this.
+    name = default_filename(date(2026, 3, 1))
+    assert name.endswith(".xls")
+    assert not name.endswith(".xlsx")
 
 
 # ── previous_month_range ───────────────────────────────────────────────
@@ -364,8 +369,8 @@ def test_run_darwin_builds_js_with_correct_field_ids(tmp_path):
     fake_session_obj = MagicMock()
     fake_session_obj.session.execute_js.return_value = str(tmp_path)
 
-    output = tmp_path / "mb5b202603.xlsx"
-    (tmp_path / "mb5b202603.xlsx").touch()  # so the wait-for-file returns
+    output = tmp_path / "mb5b202603.xls"
+    (tmp_path / "mb5b202603.xls").touch()  # so the wait-for-file returns
 
     with patch("sap_gui.processes.mb5b.SAPSession") as mock_sap_cls:
         mock_sap_cls.return_value.__enter__.return_value = fake_session_obj
@@ -398,7 +403,7 @@ def test_run_darwin_builds_js_with_correct_field_ids(tmp_path):
         SAVE_MENU_PATH,
         FORMAT_RADIO_SPREADSHEET,
         "ctxtDY_FILENAME",
-        '"mb5b202603.xlsx"',
+        '"mb5b202603.xls"',
     ]:
         assert fragment in js_payload, (
             f"missing fragment in built JS: {fragment!r}"
