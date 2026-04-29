@@ -12,10 +12,12 @@ members = [
     "db-client",
     "excel-utils",
     "haidilao-automation-monorepo",
+    "ipms-crawler",
     "ksb1-accounting-check",
     "ksb1-accounting-check-gui",
     "lark-client",
     "ollama-client",
+    "pos-crawler",
     "qbi-crawler",
     "sap-gui",
     "server",
@@ -475,6 +477,21 @@ wheels = [
 ]
 
 [[package]]
+name = "ipms-crawler"
+version = "0.1.0"
+source = { editable = "libs/ipms-crawler" }
+dependencies = [
+    { name = "playwright" },
+    { name = "vpn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "playwright", specifier = ">=1.40" },
+    { name = "vpn", editable = "libs/vpn" },
+]
+
+[[package]]
 name = "itsdangerous"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -705,6 +722,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
 ]
+
+[[package]]
+name = "pos-crawler"
+version = "0.1.0"
+source = { editable = "libs/pos-crawler" }
+dependencies = [
+    { name = "playwright" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "playwright", specifier = ">=1.40" }]
 
 [[package]]
 name = "psycopg"
