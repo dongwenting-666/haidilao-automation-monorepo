@@ -22,10 +22,6 @@
 
 set -euo pipefail
 
-REPO_ROOT="/Users/hongming-claw/haidilao-automation-monorepo"
-CRASH_FLAG_FILE="/tmp/haidilao-server-crashed.flag"
-UV_BIN="/Users/hongming-claw/.local/bin/uv"
-
 # ---------------------------------------------------------------------------
 # Logging — stdout only; launchd routes it to server.log via StandardOutPath
 # ---------------------------------------------------------------------------
@@ -36,6 +32,46 @@ log() {
 log_err() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [server-start] ERROR: $*" >&2
 }
+
+# ---------------------------------------------------------------------------
+# Path discovery — keep this script portable across machines.
+#
+#   REPO_ROOT  — env var override > parent of this script's directory.
+#                Resolves symlinks so the path matches what `git` sees.
+#   UV_BIN     — env var override > `command -v uv` > common install paths.
+#
+# Both can be set in the launchd plist's EnvironmentVariables to pin a
+# specific binary; otherwise the script discovers them. Past PRs got bitten
+# by hardcoded /Users/<someone>/... paths landing on a different host —
+# auto-detection avoids that whole class of breakage.
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+
+if [ -n "${UV_BIN:-}" ] && [ -x "$UV_BIN" ]; then
+    : # caller pinned UV_BIN; use it
+elif command -v uv >/dev/null 2>&1; then
+    UV_BIN="$(command -v uv)"
+elif [ -x "$HOME/.local/bin/uv" ]; then
+    UV_BIN="$HOME/.local/bin/uv"
+elif [ -x "/opt/homebrew/bin/uv" ]; then
+    UV_BIN="/opt/homebrew/bin/uv"
+elif [ -x "/usr/local/bin/uv" ]; then
+    UV_BIN="/usr/local/bin/uv"
+else
+    log_err "uv not found — install via curl https://astral.sh/uv/install.sh | sh"
+    log_err "  or pin via UV_BIN= in the launchd plist"
+    exit 127
+fi
+
+# Sanity-check that REPO_ROOT actually points at the server source.
+if [ ! -f "$REPO_ROOT/server/pyproject.toml" ]; then
+    log_err "REPO_ROOT does not look right: $REPO_ROOT (no server/pyproject.toml)"
+    log_err "  Set REPO_ROOT explicitly in the launchd plist if needed"
+    exit 78
+fi
+
+CRASH_FLAG_FILE="/tmp/haidilao-server-crashed.flag"
 
 # ---------------------------------------------------------------------------
 # Send a Lark text message to the hongming chat
