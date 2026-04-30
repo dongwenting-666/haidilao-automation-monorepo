@@ -23,17 +23,25 @@ _PRODUCT_ID = "1fcba94f-c81d-4595-80cc-dac5462e0d24"
 REPORT_DAILY = "门店经营日报数据"
 REPORT_TIME_PERIOD = "分时段营业数据"
 REPORT_24H = "24小时营业数据"
+# 菜品专题 → 菜品销售 → 海外套餐销售明细 — has additional 国家 filter
+REPORT_OVERSEAS_SET_MEAL = "海外套餐销售明细"
 
 _REPORT_MENU_IDS: dict[str, str] = {
     REPORT_DAILY: "89809ff6-a4fe-4fd7-853d-49315e51b2ec",
     REPORT_TIME_PERIOD: "4ee6d680-5b6c-4b35-ac8f-b9851be038da",
     REPORT_24H: "2090b625-1a31-4dcb-adc8-f4e5b7d33339",
+    # Discovered live 2026-04-29 (login → 菜品专题 → 菜品销售 → leaf click,
+    # then verified via tools/verify_qbi_ids.py — body header reads
+    # "海外套餐销售明细"). NOTE: the menuId here is the 菜品专题 *tab*
+    # menuId, not a leaf-specific one — that's how QBI routes this leaf.
+    REPORT_OVERSEAS_SET_MEAL: "3a4a0da7-f754-4b79-a662-5b49def5b716",
 }
 
 # pageIds for direct dashboard view navigation (bypasses SPA iframe loading)
 _REPORT_PAGE_IDS: dict[str, str] = {
     REPORT_DAILY: "1c4b2f41-a491-4568-bedc-67d7fd4cf93d",
     REPORT_TIME_PERIOD: "3bd957ee-c5f4-431a-a8a3-26d83f705f59",
+    REPORT_OVERSEAS_SET_MEAL: "55c5d6ee-297c-44ad-842c-51e2a279c690",
 }
 
 # Timing constants (seconds) — tuned for the Quick BI SPA rendering speed
@@ -229,13 +237,93 @@ def _navigate_and_click_date(page: Page, target_date: str) -> None:
     raise QBIError(f"Could not find date cell for {target_date} in calendar")
 
 
-def set_date_range(iframe: Frame, start: str, end: str) -> None:
-    """Set the date range filter and click 查询.
+def set_country(iframe: Frame, country: str) -> None:
+    """Pick a country in the 国家 dropdown.
+
+    Used by reports like 海外套餐销售明细 that have a country filter alongside
+    the date range. The Quick BI country dropdown is an Ant Design Select with
+    placeholder ``请选择`` (or ``请选择（多选）`` for multi-select). We locate
+    it by finding a Select whose preceding label text contains "国家", click it
+    open, then click the option whose text equals *country*.
+
+    Args:
+        iframe: The dashboard content iframe.
+        country: Display name of the country (e.g. "加拿大", "美国").
+    """
+    page = iframe.page
+
+    # The 国家 selector is identified by the form-item label "国家". Quick BI
+    # renders form-item labels as <span> or <label> next to the .ant-select.
+    # We find the select by walking from the label.
+    logger.info("Setting country filter: %s", country)
+    label_to_select_js = """
+        () => {
+            // Walk every label/span and look for one whose text starts with "国家"
+            const labels = Array.from(document.querySelectorAll('label, span, div'));
+            for (const el of labels) {
+                const txt = (el.innerText || el.textContent || '').trim();
+                if (txt === '国家' || txt === '国家:' || txt.startsWith('国家')) {
+                    // Find the next Ant Select sibling within the same form-item ancestor
+                    let p = el.parentElement;
+                    for (let depth = 0; depth < 5 && p; depth++, p = p.parentElement) {
+                        const sel = p.querySelector('.ant-select');
+                        if (sel) {
+                            sel.setAttribute('data-qbi-country', '1');
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+    """
+    found = page.evaluate(label_to_select_js)
+    if not found:
+        # The selector is in the iframe, not the outer page
+        found = iframe.evaluate(label_to_select_js)
+    if not found:
+        raise QBIError("国家 dropdown not found")
+
+    # Click to open
+    select_locator = iframe.locator('.ant-select[data-qbi-country="1"]')
+    if select_locator.count() == 0:
+        select_locator = page.locator('.ant-select[data-qbi-country="1"]')
+    select_locator.first.click()
+    time.sleep(0.5)
+
+    # Options render in a portal at body root — look on page, not iframe
+    option = page.locator(
+        f'.ant-select-item-option:has-text("{country}")'
+    ).first
+    if option.count() == 0:
+        # Fallback: option lives inside the iframe's portal
+        option = iframe.locator(
+            f'.ant-select-item-option:has-text("{country}")'
+        ).first
+    if option.count() == 0:
+        raise QBIError(f"Country option {country!r} not in dropdown")
+    option.click()
+    time.sleep(0.5)
+    # Close dropdown so it doesn't overlap the 查询 button
+    page.keyboard.press("Escape")
+    time.sleep(_DATE_INPUT_DELAY)
+
+
+def set_date_range(
+    iframe: Frame,
+    start: str,
+    end: str,
+    *,
+    country: str | None = None,
+) -> None:
+    """Set the date range filter (and optionally a country) then click 查询.
 
     Args:
         iframe: The dashboard content iframe.
         start: Start date as YYYY-MM-DD (e.g. "2026-02-01").
         end: End date as YYYY-MM-DD (e.g. "2026-02-28").
+        country: Optional country name (e.g. "加拿大") for reports that have
+            a 国家 dropdown alongside the date range (e.g. 海外套餐销售明细).
     """
     if not _DATE_PATTERN.match(start) or not _DATE_PATTERN.match(end):
         raise QBIError(f"Dates must be YYYY-MM-DD, got start={start!r} end={end!r}")
@@ -271,6 +359,10 @@ def set_date_range(iframe: Frame, start: str, end: str) -> None:
     # Dismiss any remaining picker popup
     page.keyboard.press("Escape")
     time.sleep(_DATE_INPUT_DELAY)
+
+    # Optional country filter (must run before 查询)
+    if country:
+        set_country(iframe, country)
 
     # Click 查询 button
     query_btn = iframe.query_selector("button.query-button, button:has-text('查 询')")
@@ -414,6 +506,7 @@ def download_report(
     start_date: str,
     end_date: str,
     download_dir: Path,
+    country: str | None = None,
 ) -> Path:
     """Navigate to a report, set date range, and export as EXCEL.
 
@@ -421,10 +514,14 @@ def download_report(
 
     Args:
         page: The main Quick BI page (after login).
-        report_name: One of REPORT_DAILY, REPORT_TIME_PERIOD, REPORT_24H.
+        report_name: One of REPORT_DAILY, REPORT_TIME_PERIOD, REPORT_24H,
+            REPORT_OVERSEAS_SET_MEAL.
         start_date: Start date as YYYY-MM-DD.
         end_date: End date as YYYY-MM-DD.
         download_dir: Directory to save the exported file.
+        country: Optional country filter (e.g. "加拿大"). Required for
+            reports with a 国家 dropdown (REPORT_OVERSEAS_SET_MEAL); ignored
+            otherwise. Will raise if the dropdown isn't on the page.
 
     Returns:
         Path to the downloaded XLSX file.
@@ -432,5 +529,5 @@ def download_report(
     if start_date > end_date:
         raise QBIError(f"start_date ({start_date}) must be <= end_date ({end_date})")
     iframe = navigate_to_report(page, report_name)
-    set_date_range(iframe, start_date, end_date)
+    set_date_range(iframe, start_date, end_date, country=country)
     return export_excel(iframe, download_dir)
