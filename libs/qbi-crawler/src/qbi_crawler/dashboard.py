@@ -241,10 +241,21 @@ def set_country(iframe: Frame, country: str) -> None:
     """Pick a country in the 国家 dropdown.
 
     Used by reports like 海外套餐销售明细 that have a country filter alongside
-    the date range. The Quick BI country dropdown is an Ant Design Select with
-    placeholder ``请选择`` (or ``请选择（多选）`` for multi-select). We locate
-    it by finding a Select whose preceding label text contains "国家", click it
-    open, then click the option whose text equals *country*.
+    the date range.
+
+    The Quick BI 国家 dropdown is **NOT** Ant Design — it's a custom shuttle
+    picker. Trigger element: ``.query-field`` containing
+    ``.query-field-label-name-text`` (label "国家") + ``.query-item`` →
+    ``.enum-select``. Clicking the trigger opens ``.advance-select-popup``,
+    which has a left pane of ``.advance-select-item`` rows and a footer with
+    ``.advance-select-footer-cancel`` / ``.advance-select-footer-confirm``.
+
+    Strategy: locate the 国家 ``.enum-select``, click it to open the popup,
+    poll up to 15s for option rows to render, click the option whose
+    ``.advance-select-item-text`` equals *country*, then click 确定 to commit
+    and close. Pressing Escape or clicking the popover-mask does NOT close
+    this popup — the 确定 click is required, and skipping it leaves
+    ``.advance-select-popover-mask`` blocking subsequent 查询 clicks.
 
     Args:
         iframe: The dashboard content iframe.
@@ -252,21 +263,23 @@ def set_country(iframe: Frame, country: str) -> None:
     """
     page = iframe.page
 
-    # The 国家 selector is identified by the form-item label "国家". Quick BI
-    # renders form-item labels as <span> or <label> next to the .ant-select.
-    # We find the select by walking from the label.
     logger.info("Setting country filter: %s", country)
-    label_to_select_js = """
+
+    # Mark the .enum-select that belongs to the 国家 query-field.
+    tag_js = """
         () => {
-            // Walk every label/span and look for one whose text starts with "国家"
-            const labels = Array.from(document.querySelectorAll('label, span, div'));
-            for (const el of labels) {
-                const txt = (el.innerText || el.textContent || '').trim();
-                if (txt === '国家' || txt === '国家:' || txt.startsWith('国家')) {
-                    // Find the next Ant Select sibling within the same form-item ancestor
-                    let p = el.parentElement;
-                    for (let depth = 0; depth < 5 && p; depth++, p = p.parentElement) {
-                        const sel = p.querySelector('.ant-select');
+            // Clear any prior tag from a re-run within the same page
+            document.querySelectorAll('[data-qbi-country]').forEach(el => {
+                el.removeAttribute('data-qbi-country');
+            });
+            const labels = document.querySelectorAll('.query-field-label-name-text');
+            for (const lbl of labels) {
+                if ((lbl.textContent || '').trim() !== '国家') continue;
+                // Walk up to the .query-field then find the .enum-select inside.
+                let p = lbl;
+                for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
+                    if (p.classList && p.classList.contains('query-field')) {
+                        const sel = p.querySelector('.enum-select');
                         if (sel) {
                             sel.setAttribute('data-qbi-country', '1');
                             return true;
@@ -277,35 +290,85 @@ def set_country(iframe: Frame, country: str) -> None:
             return false;
         }
     """
-    found = page.evaluate(label_to_select_js)
-    if not found:
-        # The selector is in the iframe, not the outer page
-        found = iframe.evaluate(label_to_select_js)
-    if not found:
-        raise QBIError("国家 dropdown not found")
+    if not iframe.evaluate(tag_js):
+        # Fallback to outer page in case the filter rendered there
+        if not page.evaluate(tag_js):
+            raise QBIError("国家 dropdown not found (no .query-field with label 国家)")
 
-    # Click to open
-    select_locator = iframe.locator('.ant-select[data-qbi-country="1"]')
-    if select_locator.count() == 0:
-        select_locator = page.locator('.ant-select[data-qbi-country="1"]')
-    select_locator.first.click()
-    time.sleep(0.5)
+    select = iframe.locator('.enum-select[data-qbi-country="1"]')
+    if select.count() == 0:
+        select = page.locator('.enum-select[data-qbi-country="1"]')
+    select.first.scroll_into_view_if_needed(timeout=5_000)
+    select.first.click(timeout=10_000)
 
-    # Options render in a portal at body root — look on page, not iframe
-    option = page.locator(
-        f'.ant-select-item-option:has-text("{country}")'
-    ).first
-    if option.count() == 0:
-        # Fallback: option lives inside the iframe's portal
-        option = iframe.locator(
-            f'.ant-select-item-option:has-text("{country}")'
-        ).first
-    if option.count() == 0:
-        raise QBIError(f"Country option {country!r} not in dropdown")
-    option.click()
-    time.sleep(0.5)
-    # Close dropdown so it doesn't overlap the 查询 button
-    page.keyboard.press("Escape")
+    # Wait for the popup AND its option list. The popup container can mount
+    # before the option rows finish rendering (the inspector showed ~4s is
+    # enough). Poll up to 15s for at least one .advance-select-item-text.
+    deadline = time.monotonic() + 15.0
+    item_locator = None
+    while time.monotonic() < deadline:
+        for ctx in (iframe, page):
+            cand = ctx.locator(
+                '.advance-select-popup .advance-select-item .advance-select-item-text'
+            )
+            if cand.count() > 0:
+                item_locator = cand
+                break
+        if item_locator is not None:
+            break
+        time.sleep(0.5)
+
+    if item_locator is None:
+        # Dump full popup HTML and class outline for debugging.
+        try:
+            popup_html = iframe.evaluate(
+                "() => {"
+                "  const p = document.querySelector('.advance-select-popup');"
+                "  return p ? p.outerHTML.slice(0, 3000) : '(no .advance-select-popup found)';"
+                "}"
+            )
+        except Exception as e:
+            popup_html = f"(eval failed: {e})"
+        raise QBIError(
+            f"国家 dropdown popup never rendered options. Popup HTML: {popup_html!r}"
+        )
+
+    # Pick the option row whose text == country.
+    target = item_locator.filter(has_text=country).first
+    if target.count() == 0:
+        try:
+            available = item_locator.all_inner_texts()
+        except Exception:
+            available = []
+        raise QBIError(
+            f"Country option {country!r} not in 国家 dropdown. Available: {available!r}"
+        )
+    # Click the parent .advance-select-item (the actual click target with the
+    # icon-check toggle), not the text span.
+    item_row = target.locator(
+        'xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," advance-select-item ")][1]'
+    )
+    item_row.click(timeout=10_000)
+    time.sleep(0.3)
+
+    # Commit the selection. The popup is a shuttle picker with a footer that
+    # has 取消 / 确定 buttons; clicking 确定 (.advance-select-footer-confirm)
+    # closes the popup AND applies the filter. Without this click, the
+    # .advance-select-popover-mask stays in the DOM and intercepts subsequent
+    # clicks on 查询.
+    confirm_btn = None
+    for ctx in (iframe, page):
+        cand = ctx.locator(
+            '.advance-select-popup .advance-select-footer-confirm'
+        )
+        if cand.count() > 0:
+            confirm_btn = cand.first
+            break
+    if confirm_btn is None:
+        raise QBIError(
+            "国家 dropdown 确定 button (.advance-select-footer-confirm) not found"
+        )
+    confirm_btn.click(timeout=10_000)
     time.sleep(_DATE_INPUT_DELAY)
 
 
