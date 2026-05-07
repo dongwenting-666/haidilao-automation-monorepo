@@ -12,6 +12,7 @@ members = [
     "db-client",
     "excel-utils",
     "haidilao-automation-monorepo",
+    "inventory-check",
     "ipms-crawler",
     "ksb1-accounting-check",
     "ksb1-accounting-check-gui",
@@ -19,6 +20,7 @@ members = [
     "ollama-client",
     "pos-crawler",
     "qbi-crawler",
+    "sap-fiori-crawler",
     "sap-gui",
     "server",
     "snappy-client",
@@ -477,6 +479,29 @@ wheels = [
 ]
 
 [[package]]
+name = "inventory-check"
+version = "0.1.0"
+source = { editable = "projects/inventory-check" }
+dependencies = [
+    { name = "openpyxl" },
+    { name = "pos-crawler" },
+    { name = "python-dotenv" },
+    { name = "sap-fiori-crawler" },
+    { name = "sap-gui" },
+    { name = "vpn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "pos-crawler", editable = "libs/pos-crawler" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "sap-fiori-crawler", editable = "libs/sap-fiori-crawler" },
+    { name = "sap-gui", editable = "libs/sap-gui" },
+    { name = "vpn", editable = "libs/vpn" },
+]
+
+[[package]]
 name = "ipms-crawler"
 version = "0.1.0"
 source = { editable = "libs/ipms-crawler" }
@@ -728,11 +753,15 @@ name = "pos-crawler"
 version = "0.1.0"
 source = { editable = "libs/pos-crawler" }
 dependencies = [
+    { name = "openpyxl" },
     { name = "playwright" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "playwright", specifier = ">=1.40" }]
+requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "playwright", specifier = ">=1.40" },
+]
 
 [[package]]
 name = "psycopg"
@@ -1120,6 +1149,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "playwright", specifier = ">=1.40" }]
+
+[[package]]
+name = "sap-fiori-crawler"
+version = "0.1.0"
+source = { editable = "libs/sap-fiori-crawler" }
+dependencies = [
+    { name = "openpyxl" },
+    { name = "playwright" },
+    { name = "python-dotenv" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "playwright", specifier = ">=1.40" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+]
 
 [[package]]
 name = "sap-gui"
