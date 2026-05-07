@@ -23,17 +23,25 @@ _PRODUCT_ID = "1fcba94f-c81d-4595-80cc-dac5462e0d24"
 REPORT_DAILY = "门店经营日报数据"
 REPORT_TIME_PERIOD = "分时段营业数据"
 REPORT_24H = "24小时营业数据"
+# 菜品专题 → 菜品销售 → 海外套餐销售明细 — has additional 国家 filter
+REPORT_OVERSEAS_SET_MEAL = "海外套餐销售明细"
 
 _REPORT_MENU_IDS: dict[str, str] = {
     REPORT_DAILY: "89809ff6-a4fe-4fd7-853d-49315e51b2ec",
     REPORT_TIME_PERIOD: "4ee6d680-5b6c-4b35-ac8f-b9851be038da",
     REPORT_24H: "2090b625-1a31-4dcb-adc8-f4e5b7d33339",
+    # Discovered live 2026-04-29 (login → 菜品专题 → 菜品销售 → leaf click,
+    # then verified via tools/verify_qbi_ids.py — body header reads
+    # "海外套餐销售明细"). NOTE: the menuId here is the 菜品专题 *tab*
+    # menuId, not a leaf-specific one — that's how QBI routes this leaf.
+    REPORT_OVERSEAS_SET_MEAL: "3a4a0da7-f754-4b79-a662-5b49def5b716",
 }
 
 # pageIds for direct dashboard view navigation (bypasses SPA iframe loading)
 _REPORT_PAGE_IDS: dict[str, str] = {
     REPORT_DAILY: "1c4b2f41-a491-4568-bedc-67d7fd4cf93d",
     REPORT_TIME_PERIOD: "3bd957ee-c5f4-431a-a8a3-26d83f705f59",
+    REPORT_OVERSEAS_SET_MEAL: "55c5d6ee-297c-44ad-842c-51e2a279c690",
 }
 
 # Timing constants (seconds) — tuned for the Quick BI SPA rendering speed
@@ -229,13 +237,156 @@ def _navigate_and_click_date(page: Page, target_date: str) -> None:
     raise QBIError(f"Could not find date cell for {target_date} in calendar")
 
 
-def set_date_range(iframe: Frame, start: str, end: str) -> None:
-    """Set the date range filter and click 查询.
+def set_country(iframe: Frame, country: str) -> None:
+    """Pick a country in the 国家 dropdown.
+
+    Used by reports like 海外套餐销售明细 that have a country filter alongside
+    the date range.
+
+    The Quick BI 国家 dropdown is **NOT** Ant Design — it's a custom shuttle
+    picker. Trigger element: ``.query-field`` containing
+    ``.query-field-label-name-text`` (label "国家") + ``.query-item`` →
+    ``.enum-select``. Clicking the trigger opens ``.advance-select-popup``,
+    which has a left pane of ``.advance-select-item`` rows and a footer with
+    ``.advance-select-footer-cancel`` / ``.advance-select-footer-confirm``.
+
+    Strategy: locate the 国家 ``.enum-select``, click it to open the popup,
+    poll up to 15s for option rows to render, click the option whose
+    ``.advance-select-item-text`` equals *country*, then click 确定 to commit
+    and close. Pressing Escape or clicking the popover-mask does NOT close
+    this popup — the 确定 click is required, and skipping it leaves
+    ``.advance-select-popover-mask`` blocking subsequent 查询 clicks.
+
+    Args:
+        iframe: The dashboard content iframe.
+        country: Display name of the country (e.g. "加拿大", "美国").
+    """
+    page = iframe.page
+
+    logger.info("Setting country filter: %s", country)
+
+    # Mark the .enum-select that belongs to the 国家 query-field.
+    tag_js = """
+        () => {
+            // Clear any prior tag from a re-run within the same page
+            document.querySelectorAll('[data-qbi-country]').forEach(el => {
+                el.removeAttribute('data-qbi-country');
+            });
+            const labels = document.querySelectorAll('.query-field-label-name-text');
+            for (const lbl of labels) {
+                if ((lbl.textContent || '').trim() !== '国家') continue;
+                // Walk up to the .query-field then find the .enum-select inside.
+                let p = lbl;
+                for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
+                    if (p.classList && p.classList.contains('query-field')) {
+                        const sel = p.querySelector('.enum-select');
+                        if (sel) {
+                            sel.setAttribute('data-qbi-country', '1');
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+    """
+    if not iframe.evaluate(tag_js):
+        # Fallback to outer page in case the filter rendered there
+        if not page.evaluate(tag_js):
+            raise QBIError("国家 dropdown not found (no .query-field with label 国家)")
+
+    select = iframe.locator('.enum-select[data-qbi-country="1"]')
+    if select.count() == 0:
+        select = page.locator('.enum-select[data-qbi-country="1"]')
+    select.first.scroll_into_view_if_needed(timeout=5_000)
+    select.first.click(timeout=10_000)
+
+    # Wait for the popup AND its option list. The popup container can mount
+    # before the option rows finish rendering (the inspector showed ~4s is
+    # enough). Poll up to 15s for at least one .advance-select-item-text.
+    deadline = time.monotonic() + 15.0
+    item_locator = None
+    while time.monotonic() < deadline:
+        for ctx in (iframe, page):
+            cand = ctx.locator(
+                '.advance-select-popup .advance-select-item .advance-select-item-text'
+            )
+            if cand.count() > 0:
+                item_locator = cand
+                break
+        if item_locator is not None:
+            break
+        time.sleep(0.5)
+
+    if item_locator is None:
+        # Dump full popup HTML and class outline for debugging.
+        try:
+            popup_html = iframe.evaluate(
+                "() => {"
+                "  const p = document.querySelector('.advance-select-popup');"
+                "  return p ? p.outerHTML.slice(0, 3000) : '(no .advance-select-popup found)';"
+                "}"
+            )
+        except Exception as e:
+            popup_html = f"(eval failed: {e})"
+        raise QBIError(
+            f"国家 dropdown popup never rendered options. Popup HTML: {popup_html!r}"
+        )
+
+    # Pick the option row whose text == country.
+    target = item_locator.filter(has_text=country).first
+    if target.count() == 0:
+        try:
+            available = item_locator.all_inner_texts()
+        except Exception:
+            available = []
+        raise QBIError(
+            f"Country option {country!r} not in 国家 dropdown. Available: {available!r}"
+        )
+    # Click the parent .advance-select-item (the actual click target with the
+    # icon-check toggle), not the text span.
+    item_row = target.locator(
+        'xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," advance-select-item ")][1]'
+    )
+    item_row.click(timeout=10_000)
+    time.sleep(0.3)
+
+    # Commit the selection. The popup is a shuttle picker with a footer that
+    # has 取消 / 确定 buttons; clicking 确定 (.advance-select-footer-confirm)
+    # closes the popup AND applies the filter. Without this click, the
+    # .advance-select-popover-mask stays in the DOM and intercepts subsequent
+    # clicks on 查询.
+    confirm_btn = None
+    for ctx in (iframe, page):
+        cand = ctx.locator(
+            '.advance-select-popup .advance-select-footer-confirm'
+        )
+        if cand.count() > 0:
+            confirm_btn = cand.first
+            break
+    if confirm_btn is None:
+        raise QBIError(
+            "国家 dropdown 确定 button (.advance-select-footer-confirm) not found"
+        )
+    confirm_btn.click(timeout=10_000)
+    time.sleep(_DATE_INPUT_DELAY)
+
+
+def set_date_range(
+    iframe: Frame,
+    start: str,
+    end: str,
+    *,
+    country: str | None = None,
+) -> None:
+    """Set the date range filter (and optionally a country) then click 查询.
 
     Args:
         iframe: The dashboard content iframe.
         start: Start date as YYYY-MM-DD (e.g. "2026-02-01").
         end: End date as YYYY-MM-DD (e.g. "2026-02-28").
+        country: Optional country name (e.g. "加拿大") for reports that have
+            a 国家 dropdown alongside the date range (e.g. 海外套餐销售明细).
     """
     if not _DATE_PATTERN.match(start) or not _DATE_PATTERN.match(end):
         raise QBIError(f"Dates must be YYYY-MM-DD, got start={start!r} end={end!r}")
@@ -271,6 +422,10 @@ def set_date_range(iframe: Frame, start: str, end: str) -> None:
     # Dismiss any remaining picker popup
     page.keyboard.press("Escape")
     time.sleep(_DATE_INPUT_DELAY)
+
+    # Optional country filter (must run before 查询)
+    if country:
+        set_country(iframe, country)
 
     # Click 查询 button
     query_btn = iframe.query_selector("button.query-button, button:has-text('查 询')")
@@ -414,6 +569,7 @@ def download_report(
     start_date: str,
     end_date: str,
     download_dir: Path,
+    country: str | None = None,
 ) -> Path:
     """Navigate to a report, set date range, and export as EXCEL.
 
@@ -421,10 +577,14 @@ def download_report(
 
     Args:
         page: The main Quick BI page (after login).
-        report_name: One of REPORT_DAILY, REPORT_TIME_PERIOD, REPORT_24H.
+        report_name: One of REPORT_DAILY, REPORT_TIME_PERIOD, REPORT_24H,
+            REPORT_OVERSEAS_SET_MEAL.
         start_date: Start date as YYYY-MM-DD.
         end_date: End date as YYYY-MM-DD.
         download_dir: Directory to save the exported file.
+        country: Optional country filter (e.g. "加拿大"). Required for
+            reports with a 国家 dropdown (REPORT_OVERSEAS_SET_MEAL); ignored
+            otherwise. Will raise if the dropdown isn't on the page.
 
     Returns:
         Path to the downloaded XLSX file.
@@ -432,5 +592,5 @@ def download_report(
     if start_date > end_date:
         raise QBIError(f"start_date ({start_date}) must be <= end_date ({end_date})")
     iframe = navigate_to_report(page, report_name)
-    set_date_range(iframe, start_date, end_date)
+    set_date_range(iframe, start_date, end_date, country=country)
     return export_excel(iframe, download_dir)

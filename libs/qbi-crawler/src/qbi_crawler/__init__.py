@@ -8,10 +8,12 @@ from qbi_crawler.dashboard import (
     DEFAULT_OUTPUT_SUBDIR,
     REPORT_24H,
     REPORT_DAILY,
+    REPORT_OVERSEAS_SET_MEAL,
     REPORT_TIME_PERIOD,
     download_report,
     export_excel,
     navigate_to_report,
+    set_country,
     set_date_range,
 )
 from qbi_crawler.errors import QBIError, QBILoginError, QBITimeoutError
@@ -27,9 +29,11 @@ __all__ = [
     "QBITimeoutError",
     "REPORT_24H",
     "REPORT_DAILY",
+    "REPORT_OVERSEAS_SET_MEAL",
     "REPORT_TIME_PERIOD",
     "download_report",
     "export_excel",
     "navigate_to_report",
+    "set_country",
     "set_date_range",
 ]

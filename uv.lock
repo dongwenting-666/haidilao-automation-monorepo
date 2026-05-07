@@ -12,11 +12,15 @@ members = [
     "db-client",
     "excel-utils",
     "haidilao-automation-monorepo",
+    "inventory-check",
+    "ipms-crawler",
     "ksb1-accounting-check",
     "ksb1-accounting-check-gui",
     "lark-client",
     "ollama-client",
+    "pos-crawler",
     "qbi-crawler",
+    "sap-fiori-crawler",
     "sap-gui",
     "server",
     "snappy-client",
@@ -475,6 +479,44 @@ wheels = [
 ]
 
 [[package]]
+name = "inventory-check"
+version = "0.1.0"
+source = { editable = "projects/inventory-check" }
+dependencies = [
+    { name = "openpyxl" },
+    { name = "pos-crawler" },
+    { name = "python-dotenv" },
+    { name = "sap-fiori-crawler" },
+    { name = "sap-gui" },
+    { name = "vpn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "pos-crawler", editable = "libs/pos-crawler" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "sap-fiori-crawler", editable = "libs/sap-fiori-crawler" },
+    { name = "sap-gui", editable = "libs/sap-gui" },
+    { name = "vpn", editable = "libs/vpn" },
+]
+
+[[package]]
+name = "ipms-crawler"
+version = "0.1.0"
+source = { editable = "libs/ipms-crawler" }
+dependencies = [
+    { name = "playwright" },
+    { name = "vpn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "playwright", specifier = ">=1.40" },
+    { name = "vpn", editable = "libs/vpn" },
+]
+
+[[package]]
 name = "itsdangerous"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -704,6 +746,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "pos-crawler"
+version = "0.1.0"
+source = { editable = "libs/pos-crawler" }
+dependencies = [
+    { name = "openpyxl" },
+    { name = "playwright" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "playwright", specifier = ">=1.40" },
 ]
 
 [[package]]
@@ -1092,6 +1149,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "playwright", specifier = ">=1.40" }]
+
+[[package]]
+name = "sap-fiori-crawler"
+version = "0.1.0"
+source = { editable = "libs/sap-fiori-crawler" }
+dependencies = [
+    { name = "openpyxl" },
+    { name = "playwright" },
+    { name = "python-dotenv" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "playwright", specifier = ">=1.40" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+]
 
 [[package]]
 name = "sap-gui"
