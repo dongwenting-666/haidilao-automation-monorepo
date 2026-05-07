@@ -457,10 +457,15 @@ def notify_zfi0049_file(
     if not settings.lark_enabled:
         return
 
-    chat_id = chat_id_for(target_chat)
-    if not chat_id:
-        log.warning("notify: '%s' alias not found, skipping ZFI0049 send", target_chat)
-        return
+    chat_id = None
+    user_id = None
+    if target_chat.startswith("ou_"):
+        user_id = target_chat
+    else:
+        chat_id = chat_id_for(target_chat)
+        if not chat_id:
+            log.warning("notify: '%s' alias not found, skipping ZFI0049 send", target_chat)
+            return
 
     now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
     period = f"{fiscal_year}年/{posting_period:02d}期" if fiscal_year and posting_period else "unknown"
@@ -483,17 +488,81 @@ def notify_zfi0049_file(
                 ),
                 color="blue",
                 chat_id=chat_id,
+                user_id=user_id,
             )
             client.send_file(
                 report_path,
                 filename=report_path.name,
                 chat_id=chat_id,
+                user_id=user_id,
                 file_type="xlsx",
             )
 
         log.info("ZFI0049 report sent to %s: %s", target_chat, report_path.name)
     except Exception:
         log.exception("Failed to send ZFI0049 report to Lark")
+
+
+def notify_gross_margin_file(
+    report_path: "Path",
+    *,
+    target_chat: str = "production_accounting_report_chat",
+    company_code: str = "",
+    fiscal_year: int = 0,
+    posting_period: int = 0,
+) -> None:
+    """Send the gross margin workbook xlsx to a Lark chat."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from server.config import settings
+
+    if not settings.lark_enabled:
+        return
+
+    chat_id = None
+    user_id = None
+    if target_chat.startswith("ou_"):
+        user_id = target_chat
+    else:
+        chat_id = chat_id_for(target_chat)
+        if not chat_id:
+            log.warning("notify: '%s' alias not found, skipping gross margin send", target_chat)
+            return
+
+    now = datetime.now(ZoneInfo("America/Vancouver")).strftime("%Y-%m-%d %H:%M")
+    period = f"{fiscal_year}年/{posting_period:02d}期" if fiscal_year and posting_period else "unknown"
+    company = company_code or "unknown"
+
+    try:
+        client = _client()
+        if client is None:
+            return
+
+        with client:
+            client.send_card(
+                title=f"📗 毛利率计算表 · {company} · {period}",
+                content=(
+                    f"**报表已生成**\n\n"
+                    f"公司代码：**{company}**\n"
+                    f"期间：**{period}**\n"
+                    f"生成时间：{now} (Vancouver)\n\n"
+                    "---\n👇 附件见下方"
+                ),
+                color="green",
+                chat_id=chat_id,
+                user_id=user_id,
+            )
+            client.send_file(
+                report_path,
+                filename=report_path.name,
+                chat_id=chat_id,
+                user_id=user_id,
+                file_type="xlsx",
+            )
+
+        log.info("Gross margin report sent to %s: %s", target_chat, report_path.name)
+    except Exception:
+        log.exception("Failed to send gross margin report to Lark")
 
 
 def notify_competitor_takeout_report_file(

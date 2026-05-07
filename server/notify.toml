@@ -9,6 +9,8 @@ hongming     = "oc_78f29489a577f10e36ebf989bccdcc83"   # server alerts / error m
 store_hours  = "oc_9fe9a845d25c1e07a58a1230cbb04b5d"   # store-hours-collect group
 production_accounting_report_chat  = "oc_ff2a74b2ba7b07eee95c6138b9cfd112"   # sending production automation or cron result
 finance_study_group  = "oc_c6e72a24845f76c6e06fafe930ff0509"   # 财务新学习群 — daily report screenshots only
+dongwenting_dm = "oc_6650cde260b35c9dc52cdebf34e56a49"   # 董文婷 私聊/单聊会话
+travel_budget_group = "oc_3fa11554a4e07580353771cde1e77102"   # 差旅费预算发送群
 
 # ── Per-command targets ────────────────────────────────────────────────────
 # Each key is a command name (matches BaseCommand.name).
@@ -37,6 +39,9 @@ chat = "hongming"
 
 [f13-clearing]
 chat = "hongming"
+
+[travel-expense-budget]
+chat = "travel_budget_group"
 
 [treasury-loan-watch]
 chat = "hongming"

@@ -45,7 +45,7 @@ def compute_report(
     Uses coworker methodology: budget split into Q1 (actual revenue) + remaining (target).
 
     Args:
-        curr_year_travel: {cost_center: total_usd} for current year YTD (from KSB1)
+        curr_year_travel: {cost_center: total_cad} for current year YTD (from KSB1)
         db_data: {store_name: {target_revenue, prev_year_revenue, prev_year_travel, q1_revenue}}
         report_month: Month number (1-12) that is the last month included in YTD
     """
@@ -175,7 +175,7 @@ def generate_excel(
     ws.merge_cells("A1:L1")
     ws["A1"] = f"加拿大{curr_year}年差旅费预算明细"
     ws["A1"].font = font_title
-    ws.cell(row=1, column=13, value="货币单位：美元")
+    ws.cell(row=1, column=13, value="货币单位：CAD")
     ws.cell(row=1, column=13).font = font_normal
     ws.cell(row=1, column=13).alignment = Alignment(horizontal="right")
 

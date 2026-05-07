@@ -15,7 +15,7 @@ from typing import Iterable
 from dotenv import load_dotenv
 
 from sap_gui.export import SAPExporter
-from sap_gui.errors import SAPConnectionError
+from sap_gui.errors import SAPConnectionError, SAPExportError, SAPNavigationError
 from sap_gui.navigation import SAPNavigator
 from sap_gui.session import SAPSession
 from vpn.connect import ensure_vpn
@@ -61,11 +61,32 @@ FIELD_GL_HIGH = (
     "wnd[0]/usr/ctxtSO_HKONT-HIGH",
 )
 FIELD_MAX_HITS = (
+    "wnd[0]/usr/txtN",
     "wnd[0]/usr/txtP_MAXSEL",
     "wnd[0]/usr/txtP_MAXHIT",
     "wnd[0]/usr/txtMAXSEL",
+    "wnd[0]/usr/txtMAXSEL-LOW",
+    "wnd[0]/usr/txtMAXHIT-LOW",
     "wnd[0]/usr/txtP_MAX",
+    "wnd[0]/usr/txtPA_MAXSEL",
+    "wnd[0]/usr/txtPA_MAXHIT",
+    "wnd[0]/usr/txtS_MAXSEL-LOW",
+    "wnd[0]/usr/txtS_MAXHIT-LOW",
+    "wnd[0]/usr/txtSO_MAXSEL-LOW",
+    "wnd[0]/usr/txtSO_MAXHIT-LOW",
+    "wnd[0]/usr/txtP_ANZSN",
+    "wnd[0]/usr/txtANZSN",
+    "wnd[0]/usr/txtS_ANZSN-LOW",
+    "wnd[0]/usr/txtSO_ANZSN-LOW",
     "wnd[0]/usr/txtKAEP_SETT-MAXSEL",
+)
+
+FIELD_MAX_HITS_DIALOG = (
+    "wnd[1]/usr/txtKAEP_SETT-MAXSEL",
+    "wnd[1]/usr/txtP_MAXSEL",
+    "wnd[1]/usr/txtP_MAXHIT",
+    "wnd[1]/usr/txtMAXSEL",
+    "wnd[1]/usr/txtP_MAX",
 )
 
 
@@ -108,31 +129,53 @@ def _execute_report(
     output_path: Path,
     language: str,
 ) -> Path:
-    # Prefer reusing the current SAP GUI session on macOS, but fall back to
-    # auto-launch when the Scripting Console cannot reach the current session.
-    sap_ctx: SAPSession
-    try:
-        sap_ctx = SAPSession()
-        sap_ctx.connect()
-        sap = sap_ctx
-    except SAPConnectionError:
-        log.info("Current SAP session is not reachable; falling back to auto-launch mode...")
-        sap_ctx = SAPSession(auto_launch=True, quit_after=True)
-        sap_ctx.connect()
-        sap = sap_ctx
+    def _connect_sap(*, force_clean: bool = False) -> SAPSession:
+        # Prefer reusing the current SAP GUI session on macOS, but fall back to
+        # auto-launch when the Scripting Console cannot reach the current session.
+        if force_clean:
+            log.info("Re-launching SAP GUI for a clean session...")
+            ctx = SAPSession(auto_launch=True, quit_after=True)
+            ctx.connect()
+            return ctx
+        try:
+            ctx = SAPSession()
+            ctx.connect()
+            return ctx
+        except SAPConnectionError:
+            log.info("Current SAP session is not reachable; falling back to auto-launch mode...")
+            ctx = SAPSession(auto_launch=True, quit_after=True)
+            ctx.connect()
+            return ctx
+
+    def _is_company_field_error(exc: Exception) -> bool:
+        return "company field not found" in str(exc).lower()
+
+    sap_ctx: SAPSession = _connect_sap()
 
     try:
-        nav = SAPNavigator(sap.session)
-        exporter = SAPExporter(sap.session, nav)
+        while True:
+            nav = SAPNavigator(sap_ctx.session)
+            exporter = SAPExporter(sap_ctx.session, nav)
 
-        log.info("Logging in as %s...", username)
-        nav.login(username, password, language)
+            log.info("Logging in as %s...", username)
+            nav.login(username, password, language)
 
-        if sys.platform == "darwin":
-            log.info("Running transaction ZFI0049...")
-            nav.run_transaction("ZFI0049")
-            js = (
+            if sys.platform == "darwin":
+                log.info("Running transaction ZFI0049...")
+                js = (
                 "(function() {"
+                '  ses.startTransaction("ZFI0049");'
+                "  function tryResetSelection() {"
+                '    try { ses.findById("wnd[0]/tbar[1]/btn[16]").press(); return "btn16"; } catch (e) {}'
+                '    try { ses.findById("wnd[0]").sendVKey(15); return "vkey15"; } catch (e) {}'
+                "    return null;"
+                "  }"
+                "  function tryPress(ids) {"
+                "    for (var i = 0; i < ids.length; i++) {"
+                "      try { ses.findById(ids[i]).press(); return ids[i]; } catch (e) {}"
+                "    }"
+                "    return null;"
+                "  }"
                 "  function trySet(ids, value) {"
                 "    for (var i = 0; i < ids.length; i++) {"
                 "      try {"
@@ -163,94 +206,120 @@ def _execute_report(
                 f"  var companyIds = {json.dumps(list(FIELD_COMPANY))};"
                 f"  var yearIds = {json.dumps(list(FIELD_FISCAL_YEAR))};"
                 f"  var periodLowIds = {json.dumps(list(FIELD_PERIOD_LOW))};"
+                f"  var periodHighIds = {json.dumps(list(FIELD_PERIOD_HIGH))};"
                 f"  var glLowIds = {json.dumps(list(FIELD_GL_LOW))};"
                 f"  var glHighIds = {json.dumps(list(FIELD_GL_HIGH))};"
                 f"  var maxHitIds = {json.dumps(list(FIELD_MAX_HITS))};"
-                "  if (!waitAny(companyIds, 20)) throw 'company field not found';"
+                f"  var maxHitDialogIds = {json.dumps(list(FIELD_MAX_HITS_DIALOG))};"
+                '  var maxHitButtonIds = ["wnd[0]/usr/btnBUT1","wnd[0]/usr/btn%_BUT1_%_APP_%-VALU_PUSH"];'
+                "  var reset = null;"
+                "  var ready = waitAny(companyIds, 20);"
+                "  if (!ready) {"
+                "    reset = tryResetSelection();"
+                "    if (reset) { try { java.lang.Thread.sleep(500); } catch (e) {} }"
+                "    ready = waitAny(companyIds, 20);"
+                "  }"
+                "  if (!ready) throw 'company field not found';"
                 f'  var company = waitSet(companyIds, {json.dumps(company_code)}, 20); if (!company) throw "company field not found";'
                 f'  var year = waitSet(yearIds, {json.dumps(str(fiscal_year))}, 20); if (!year) throw "fiscal year field not found";'
                 f'  var periodLow = waitSet(periodLowIds, {json.dumps(f"{posting_period:02d}")}, 20); if (!periodLow) throw "period low field not found";'
+                f'  var periodHigh = waitSet(periodHighIds, {json.dumps(f"{posting_period:02d}")}, 20);'
                 f'  var glLow = waitSet(glLowIds, {json.dumps(gl_low)}, 20); if (!glLow) throw "gl low field not found";'
                 f'  var glHigh = waitSet(glHighIds, {json.dumps(gl_high)}, 20); if (!glHigh) throw "gl high field not found";'
-                f'  var maxHit = waitSet(maxHitIds, {json.dumps(str(max_hits))}, 20); if (!maxHit) throw "max hits field not found";'
+                f'  var maxHit = waitSet(maxHitIds, {json.dumps(str(max_hits))}, 20);'
+                "  var maxHitButton = null;"
+                "  if (!maxHit) {"
+                "    maxHitButton = tryPress(maxHitButtonIds);"
+                "    if (maxHitButton) {"
+                "      try { java.lang.Thread.sleep(300); } catch (e) {}"
+                f'      maxHit = waitSet(maxHitDialogIds, {json.dumps(str(max_hits))}, 20);'
+                '      try { ses.findById("wnd[1]/tbar[0]/btn[0]").press(); } catch (e) {}'
+                "    }"
+                "  }"
+                f'  if (periodHigh && ((""+periodHigh.value).replace(/^0+/, "") !== {json.dumps(f"{posting_period:02d}")}.replace(/^0+/, ""))) throw "period high write mismatch: " + periodHigh.value;'
                 f'  if ((""+glLow.value).replace(/^0+/, "") !== {json.dumps(gl_low)}.replace(/^0+/, "")) throw "gl low write mismatch: " + glLow.value;'
                 f'  if ((""+glHigh.value).replace(/^0+/, "") !== {json.dumps(gl_high)}.replace(/^0+/, "")) throw "gl high write mismatch: " + glHigh.value;'
-                f'  if ((""+maxHit.value).replace(/,/g, "") !== {json.dumps(str(max_hits))}) throw "max hits write mismatch: " + maxHit.value;'
+                f'  if (maxHit && ((""+maxHit.value).replace(/,/g, "") !== {json.dumps(str(max_hits))})) throw "max hits write mismatch: " + maxHit.value;'
                 '  ses.findById("wnd[0]").sendVKey(0);'
                 '  ses.findById("wnd[0]").sendVKey(8);'
                 '  try { ses.findById("wnd[1]").sendVKey(0); } catch(e) {}'
-                '  ses.findById("wnd[0]/mbar/menu[0]/menu[3]/menu[1]").select();'
-                '  var p = "" + ses.findById("wnd[1]/usr/ctxtDY_PATH").text;'
-                f'  ses.findById("wnd[1]/usr/ctxtDY_FILENAME").text = {json.dumps(output_path.name)};'
-                '  ses.findById("wnd[1]/tbar[0]/btn[0]").press();'
-                '  try { ses.findById("wnd[2]").sendVKey(0); } catch(e) {}'
-                '  try { ses.startTransaction("SESSION_MANAGER"); } catch(e) {}'
                 "  return JSON.stringify({"
-                "    path: p,"
                 "    fields: {"
+                "      reset: reset,"
                 "      company: company,"
                 "      year: year,"
                 "      periodLow: periodLow,"
+                "      periodHigh: periodHigh,"
                 "      glLow: glLow,"
                 "      glHigh: glHigh,"
+                "      maxHitButton: maxHitButton,"
                 "      maxHit: maxHit"
                 "    }"
                 "  });"
                 "})()"
-            )
-            result_raw = sap.session.execute_js(js, timeout=360.0)
-            if not result_raw:
-                raise RuntimeError("SAP did not return a save directory (DY_PATH)")
-            result = json.loads(result_raw)
-            log.info(
-                "ZFI0049 fields confirmed: company=%s year=%s period=%s-%s gl=%s-%s max_hits=%s",
-                (result.get("fields", {}).get("company") or {}).get("value"),
-                (result.get("fields", {}).get("year") or {}).get("value"),
-                (result.get("fields", {}).get("periodLow") or {}).get("value"),
-                "",
-                (result.get("fields", {}).get("glLow") or {}).get("value"),
-                (result.get("fields", {}).get("glHigh") or {}).get("value"),
-                (result.get("fields", {}).get("maxHit") or {}).get("value"),
-            )
-            actual_path = (Path(result["path"]) / output_path.name).resolve()
-            t0 = time.monotonic()
-            while not actual_path.exists():
-                if time.monotonic() - t0 > 60.0:
-                    raise RuntimeError(f"Export file not created at {actual_path} within 60s")
-                time.sleep(0.5)
-            if actual_path != output_path:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(actual_path, output_path)
-            return output_path
+                )
+                try:
+                    result_raw = sap_ctx.session.execute_js(js, timeout=360.0)
+                except SAPConnectionError as exc:
+                    if _is_company_field_error(exc):
+                        log.warning("Company field not found in current SAP state; retrying with a clean SAP session...")
+                        sap_ctx.disconnect()
+                        sap_ctx = _connect_sap(force_clean=True)
+                        continue
+                    raise
+                if not result_raw:
+                    raise RuntimeError("SAP did not return a save directory (DY_PATH)")
+                result = json.loads(result_raw)
+                log.info(
+                    "ZFI0049 fields confirmed: company=%s year=%s period=%s-%s gl=%s-%s max_hits=%s",
+                    (result.get("fields", {}).get("company") or {}).get("value"),
+                    (result.get("fields", {}).get("year") or {}).get("value"),
+                    (result.get("fields", {}).get("periodLow") or {}).get("value"),
+                    (result.get("fields", {}).get("periodHigh") or {}).get("value"),
+                    (result.get("fields", {}).get("glLow") or {}).get("value"),
+                    (result.get("fields", {}).get("glHigh") or {}).get("value"),
+                    (result.get("fields", {}).get("maxHit") or {}).get("value"),
+                )
+                try:
+                    log.info("Exporting report via classic list export...")
+                    exported = exporter.export_list_to_file(output_path, timeout=60.0)
+                except (SAPExportError, SAPNavigationError):
+                    log.warning("Classic list export did not trigger; falling back to ALV export...")
+                    exported = exporter.export_alv_to_file(output_path, timeout=60.0)
+                try:
+                    nav.run_transaction("SESSION_MANAGER")
+                except Exception:
+                    log.debug("Best-effort cleanup to SESSION_MANAGER failed", exc_info=True)
+                return exported
 
-        log.info("Running transaction ZFI0049...")
-        nav.run_transaction("ZFI0049")
+            log.info("Running transaction ZFI0049...")
+            nav.run_transaction("ZFI0049")
 
-        period_text = f"{posting_period:02d}"
-        log.info("Setting company code: %s", company_code)
-        _set_first_existing(sap.session, FIELD_COMPANY, company_code)
-        log.info("Setting fiscal year: %s", fiscal_year)
-        _set_first_existing(sap.session, FIELD_FISCAL_YEAR, str(fiscal_year))
-        log.info("Setting posting period: %s", period_text)
-        _set_first_existing(sap.session, FIELD_PERIOD_LOW, period_text)
-        _set_first_existing(sap.session, FIELD_PERIOD_HIGH, period_text, required=False)
-        log.info("Setting GL range: %s - %s", gl_low, gl_high)
-        _set_first_existing(sap.session, FIELD_GL_LOW, gl_low)
-        _set_first_existing(sap.session, FIELD_GL_HIGH, gl_high, required=False)
-        log.info("Setting max hits: %s", max_hits)
-        _set_first_existing(sap.session, FIELD_MAX_HITS, str(max_hits), required=False)
+            period_text = f"{posting_period:02d}"
+            log.info("Setting company code: %s", company_code)
+            _set_first_existing(sap_ctx.session, FIELD_COMPANY, company_code)
+            log.info("Setting fiscal year: %s", fiscal_year)
+            _set_first_existing(sap_ctx.session, FIELD_FISCAL_YEAR, str(fiscal_year))
+            log.info("Setting posting period: %s", period_text)
+            _set_first_existing(sap_ctx.session, FIELD_PERIOD_LOW, period_text)
+            _set_first_existing(sap_ctx.session, FIELD_PERIOD_HIGH, period_text, required=False)
+            log.info("Setting GL range: %s - %s", gl_low, gl_high)
+            _set_first_existing(sap_ctx.session, FIELD_GL_LOW, gl_low)
+            _set_first_existing(sap_ctx.session, FIELD_GL_HIGH, gl_high, required=False)
+            log.info("Setting max hits: %s", max_hits)
+            _set_first_existing(sap_ctx.session, FIELD_MAX_HITS, str(max_hits), required=False)
 
-        log.info("Confirming selection screen...")
-        nav.send_vkey(0)
-        log.info("Executing report...")
-        nav.press_button("wnd[0]/tbar[1]/btn[8]")
-        log.info("Dismissing possible popup...")
-        nav.dismiss_popup(window=1, vkey=0)
+            log.info("Confirming selection screen...")
+            nav.send_vkey(0)
+            log.info("Executing report...")
+            nav.press_button("wnd[0]/tbar[1]/btn[8]")
+            log.info("Dismissing possible popup...")
+            nav.dismiss_popup(window=1, vkey=0)
 
-        log.info("Exporting report via list export...")
-        exported = exporter.export_list_to_file(output_path, timeout=30.0)
+            log.info("Exporting report via list export...")
+            exported = exporter.export_list_to_file(output_path, timeout=30.0)
 
-        return exported
+            return exported
     finally:
         sap_ctx.disconnect()
 
@@ -271,17 +340,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mapping", type=Path, default=DEFAULT_MAPPING_PATH)
     parser.add_argument("--skill-script", type=Path, default=DEFAULT_SKILL_SCRIPT)
     parser.add_argument("--language", default="ZH")
+    parser.add_argument("--store-name", default="", help="Single store to export; empty means all stores")
     return parser.parse_args()
 
 
-def _generate_pnl(source_path: Path, mapping_path: Path, skill_script: Path, output_dir: Path, company_code: str, fiscal_year: int, posting_period: int) -> Path:
+def _generate_pnl(source_path: Path, mapping_path: Path, skill_script: Path, output_dir: Path, company_code: str, fiscal_year: int, posting_period: int, store_name: str = "") -> Path:
     if not mapping_path.is_file():
         raise FileNotFoundError(f"Mapping workbook not found: {mapping_path}")
     if not skill_script.is_file():
         raise FileNotFoundError(f"Canada PnL skill script not found: {skill_script}")
 
     timestamp = datetime.now().strftime("%H%M%S")
-    output_path = output_dir / f"canada_pnl_{company_code}_{fiscal_year}_{posting_period:02d}_{timestamp}.xlsx"
+    store_suffix = f"_{store_name}" if store_name else ""
+    output_path = output_dir / f"canada_pnl_{company_code}_{fiscal_year}_{posting_period:02d}{store_suffix}_{timestamp}.xlsx"
     cmd = [
         sys.executable,
         str(skill_script),
@@ -289,6 +360,8 @@ def _generate_pnl(source_path: Path, mapping_path: Path, skill_script: Path, out
         "--mapping", str(mapping_path),
         "--output", str(output_path),
     ]
+    if store_name:
+        cmd.extend(["--store", store_name])
     log.info("Generating Canada PnL workbook...")
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.stdout:
@@ -343,6 +416,7 @@ def main() -> Path:
         company_code=args.company_code,
         fiscal_year=args.fiscal_year,
         posting_period=args.posting_period,
+        store_name=args.store_name,
     )
     log.info("Report saved to %s", pnl_path)
     return pnl_path

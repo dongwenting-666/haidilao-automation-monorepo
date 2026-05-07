@@ -28,8 +28,9 @@ def extract_travel_expenses(
 ) -> dict[str, float]:
     """Extract travel expenses from a KSB1 xlsx file, grouped by cost center.
 
-    Returns {cost_center_code: total_usd}.
-    Detects transaction currency per row: USD rows use rate 1.0, CAD uses cad_to_usd.
+    Returns {cost_center_code: total_cad}.
+    Detects transaction currency per row: CAD rows use rate 1.0, USD rows are
+    converted back to CAD using the configured CAD→USD exchange rate.
     Filters for GL accounts starting with 5101160x (travel expense codes).
     """
     wb = openpyxl.load_workbook(ksb1_path, data_only=True, read_only=True)
@@ -37,6 +38,7 @@ def extract_travel_expenses(
         ws = wb[wb.sheetnames[0]]
         totals: dict[str, float] = {}
         row_count = 0
+        usd_to_cad = 1 / cad_to_usd if cad_to_usd else 0
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if len(row) <= KSB1_COL_CURRENCY:
@@ -51,13 +53,13 @@ def extract_travel_expenses(
             except (ValueError, TypeError):
                 continue
             currency = str(row[KSB1_COL_CURRENCY]) if row[KSB1_COL_CURRENCY] else "CAD"
-            usd = amount if currency == "USD" else amount * cad_to_usd
+            cad = amount * usd_to_cad if currency == "USD" else amount
 
             if cc:
-                totals[cc] = totals.get(cc, 0) + usd
+                totals[cc] = totals.get(cc, 0) + cad
                 row_count += 1
 
-        log.info("Extracted %d travel expense rows from %s → %d cost centers (rate=%.4f)",
+        log.info("Extracted %d travel expense rows from %s → %d cost centers (CAD output, rate=%.4f)",
                  row_count, ksb1_path.name, len(totals), cad_to_usd)
         return totals
     finally:

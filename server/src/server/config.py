@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     server_port: int = 8000
     daily_report_cron: str = "0 6 * * *"
     competitor_takeout_report_cron: str = "0 7 * * 1"
+    anita_weather_reminder_cron: str = "0 8 * * *"
+    anita_weather_followup_cron: str = "0 12 * * *"
     output_dir: Path = REPO_ROOT / "output"
 
     # Database — optional; DB features degrade gracefully when not set.

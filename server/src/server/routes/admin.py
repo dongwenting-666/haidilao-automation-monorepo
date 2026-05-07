@@ -818,6 +818,12 @@ async def reports_hub_page(request: Request, session: dict = Depends(require_aut
         <p>打开 SAP 交易码 ZFI0049，导出总账区间数据后自动生成加拿大门店损益表。</p>
         <span class="badge">按需触发</span>
       </a>
+      <a href="/admin/gross-margin-report" class="report-card">
+        <span class="icon">📗</span>
+        <h3>毛利率计算表</h3>
+        <p>直接基于 ZFI0049 原始明细生成毛利率汇总与底层收入/成本明细表。</p>
+        <span class="badge">按需触发</span>
+      </a>
       <a href="/admin/travel-expense-budget" class="report-card">
         <span class="icon">✈️</span>
         <h3>差旅费预算明细</h3>
@@ -1262,6 +1268,21 @@ async def zfi0049_report_page(request: Request, session: dict = Depends(require_
         '<option value="9451" selected>9451 · 加拿大海底捞</option>'
         '<option value="9452">9452 · Hi Bowl</option>'
     )
+    store_options = "".join(
+        [
+            '<option value="">全部门店</option>',
+            '<option value="Hi Bowl">Hi Bowl</option>',
+            '<option value="加拿大一店">加拿大一店</option>',
+            '<option value="加拿大二店">加拿大二店</option>',
+            '<option value="加拿大三店">加拿大三店</option>',
+            '<option value="加拿大四店">加拿大四店</option>',
+            '<option value="加拿大五店">加拿大五店</option>',
+            '<option value="加拿大六店">加拿大六店</option>',
+            '<option value="加拿大七店">加拿大七店</option>',
+            '<option value="加拿大八店">加拿大八店</option>',
+            '<option value="加拿大九店">加拿大九店</option>',
+        ]
+    )
     month_options = "".join(
         f'<option value="{m}"{" selected" if m == default_period else ""}>{m:02d} 期</option>'
         for m in range(1, 13)
@@ -1326,6 +1347,10 @@ async def zfi0049_report_page(request: Request, session: dict = Depends(require_
         <label for="sel-period">过账期间</label>
         <select id="sel-period" style="width:90px">{month_options}</select>
       </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-store">导出范围</label>
+        <select id="sel-store" style="width:160px">{store_options}</select>
+      </div>
     </div>
 
     <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
@@ -1342,7 +1367,8 @@ async def zfi0049_report_page(request: Request, session: dict = Depends(require_
       <li>总账账目：<code>50000000</code> 到 <code>69999999</code></li>
       <li>最大命中数量：<code>10000000</code></li>
       <li>运行前请确保 VPN 已连接，SAP 账号已在 <code>.env</code> 中配置</li>
-      <li>完成后会将最终损益表 XLSX 发送到 <strong>生产核算群</strong></li>
+      <li>可选全部门店导出，或单独导出指定门店损益表</li>
+      <li>完成后会将最终损益表 XLSX 发送给<strong>当前触发人</strong></li>
     </ul>
   </div>
 </div>
@@ -1354,6 +1380,7 @@ async function triggerRun() {{
   const company_code = document.getElementById('sel-company').value;
   const fiscal_year = parseInt(document.getElementById('sel-year').value, 10);
   const posting_period = parseInt(document.getElementById('sel-period').value, 10);
+  const store_name = document.getElementById('sel-store').value;
 
   document.getElementById('run-btn').disabled = true;
   setStatus('pending', '⏳ 正在提交...');
@@ -1364,7 +1391,7 @@ async function triggerRun() {{
     const resp = await fetch('/admin/zfi0049-report/run', {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{ company_code, fiscal_year, posting_period }}),
+      body: JSON.stringify({{ company_code, fiscal_year, posting_period, store_name }}),
     }});
     const data = await resp.json();
     if (!data.ok) {{
@@ -1394,7 +1421,7 @@ async function pollRun(runId) {{
     const status = data.status || 'unknown';
 
     if (status === 'success') {{
-      setStatus('success', '✅ 完成！损益表已发送至生产群');
+      setStatus('success', '✅ 完成！损益表已发送给当前触发人');
       showLogs(data.logs || '');
       document.getElementById('run-btn').disabled = false;
     }} else if (status === 'failed') {{
@@ -1428,6 +1455,7 @@ async def zfi0049_report_run(request: Request, session: dict = Depends(require_a
         "company_code": str(body.get("company_code", "9451")),
         "fiscal_year": int(body.get("fiscal_year", 0)),
         "posting_period": int(body.get("posting_period", 0)),
+        "store_name": str(body.get("store_name", "")).strip(),
         "gl_low": "50000000",
         "gl_high": "69999999",
         "max_hits": 10_000_000,
@@ -1437,7 +1465,7 @@ async def zfi0049_report_run(request: Request, session: dict = Depends(require_a
 
     try:
         from server.routes.runs import create_run
-        run = create_run("zfi0049-report", params, notify_chat="production_accounting_report_chat")
+        run = create_run("zfi0049-report", params, notify_chat=session.get("open_id", ""))
         return {"ok": True, "run_id": run.id, "status": run.status.value}
     except Exception as exc:
         logger.exception("Failed to create ZFI0049 run")
@@ -1446,6 +1474,234 @@ async def zfi0049_report_run(request: Request, session: dict = Depends(require_a
 
 @router.get("/zfi0049-report/run/{run_id}")
 async def zfi0049_report_run_status(run_id: str, session: dict = Depends(require_auth)):
+    from server.routes.runs import _runs
+    run = _runs.get(run_id)
+    if run is None:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return {
+        "run_id": run.id,
+        "status": run.status.value,
+        "queue_position": run.queue_position,
+        "logs": run.logs if run.status.value in ("success", "failed") else "",
+    }
+
+
+@router.get("/gross-margin-report", response_class=HTMLResponse)
+async def gross_margin_report_page(request: Request, session: dict = Depends(require_auth)):
+    from datetime import date
+
+    today = date.today()
+    default_period = today.month - 1 if today.month > 1 else 12
+    default_year = today.year - 1 if today.month <= 3 else today.year
+
+    company_options = (
+        '<option value="9451" selected>9451 · 加拿大海底捞</option>'
+        '<option value="9452">9452 · Hi Bowl</option>'
+    )
+    store_options = "".join(
+        [
+            '<option value="">全部门店</option>',
+            '<option value="Hi Bowl">Hi Bowl</option>',
+            '<option value="加拿大一店">加拿大一店</option>',
+            '<option value="加拿大二店">加拿大二店</option>',
+            '<option value="加拿大三店">加拿大三店</option>',
+            '<option value="加拿大四店">加拿大四店</option>',
+            '<option value="加拿大五店">加拿大五店</option>',
+            '<option value="加拿大六店">加拿大六店</option>',
+            '<option value="加拿大七店">加拿大七店</option>',
+            '<option value="加拿大八店">加拿大八店</option>',
+            '<option value="加拿大九店">加拿大九店</option>',
+        ]
+    )
+    month_options = "".join(
+        f'<option value="{m}"{" selected" if m == default_period else ""}>{m:02d} 期</option>'
+        for m in range(1, 13)
+    )
+    year_options = "".join(
+        f'<option value="{y}"{" selected" if y == default_year else ""}>{y}</option>'
+        for y in range(today.year - 2, today.year + 1)
+    )
+
+    name = session.get("name", "管理员")
+    open_id = session.get("open_id", "")
+
+    page_html = f"""<!DOCTYPE html>
+<html>
+<head>
+{_BASE_STYLE}
+    <title>毛利率计算表 — 管理后台</title>
+<style>
+  .status-box {{
+    background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px;
+    padding: 14px 16px; font-family: monospace; font-size: 0.85rem;
+    white-space: pre-wrap; max-height: 320px; overflow-y: auto;
+    color: #333; display: none;
+  }}
+  .status-box.visible {{ display: block; }}
+  .run-badge {{
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.8rem; font-weight: 600;
+  }}
+  .badge-pending  {{ background: #fff3cd; color: #856404; }}
+  .badge-running  {{ background: #cff4fc; color: #0c5460; }}
+  .badge-success  {{ background: #d1e7dd; color: #155724; }}
+  .badge-failed   {{ background: #f8d7da; color: #721c24; }}
+  .spinner {{
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #ccc; border-top-color: #333;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+</style>
+</head>
+<body>
+{_header("reports", name, super_admin=is_super_admin(open_id))}
+<div class="container">
+  <div class="card">
+    <h2 style="margin:0 0 6px;font-size:1.15rem">📗 毛利率计算表</h2>
+    <p style="color:#666;font-size:0.9rem;margin:0 0 20px">
+      直接使用 ZFI0049 原始底层明细，生成毛利率汇总和底层收入/成本明细，不走现成损益表汇总。
+    </p>
+
+    <div class="toolbar" style="flex-wrap:wrap;gap:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-company">公司</label>
+        <select id="sel-company" style="width:200px">{company_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-year">财年</label>
+        <select id="sel-year" style="width:90px">{year_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-period">过账期间</label>
+        <select id="sel-period" style="width:90px">{month_options}</select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="sel-store">导出范围</label>
+        <select id="sel-store" style="width:160px">{store_options}</select>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
+      <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ 立即运行</button>
+      <span id="run-status"></span>
+    </div>
+
+    <div id="log-box" class="status-box" style="margin-top:16px"></div>
+  </div>
+
+  <div class="card" style="margin-top:0">
+    <h3 style="margin:0 0 12px;font-size:0.95rem;color:#666">输出内容</h3>
+    <ul style="margin:0;padding-left:20px;color:#555;font-size:0.88rem;line-height:1.8">
+      <li><strong>汇总</strong>：销售净收入、仓储服务收入、主营业务收入、产品销售成本、仓储服务成本、毛利额、毛利率</li>
+      <li><strong>底层明细</strong>：保留成本要素、成本要素描述、利润中心、成本中心、取数维度等原始字段</li>
+      <li>运行前请确保 VPN 已连接，SAP 账号已在 <code>.env</code> 中配置</li>
+      <li>完成后会将最终毛利率计算表 XLSX 发送给<strong>当前触发人</strong></li>
+    </ul>
+  </div>
+</div>
+
+<script>
+let _pollTimer = null;
+
+async function triggerRun() {{
+  const company_code = document.getElementById('sel-company').value;
+  const fiscal_year = parseInt(document.getElementById('sel-year').value, 10);
+  const posting_period = parseInt(document.getElementById('sel-period').value, 10);
+  const store_name = document.getElementById('sel-store').value;
+
+  document.getElementById('run-btn').disabled = true;
+  setStatus('pending', '⏳ 正在提交...');
+  document.getElementById('log-box').classList.remove('visible');
+  document.getElementById('log-box').textContent = '';
+
+  try {{
+    const resp = await fetch('/admin/gross-margin-report/run', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ company_code, fiscal_year, posting_period, store_name }}),
+    }});
+    const data = await resp.json();
+    if (!data.ok) {{
+      setStatus('failed', '✗ 提交失败: ' + (data.error || '未知错误'));
+      document.getElementById('run-btn').disabled = false;
+      return;
+    }}
+    setStatus('running', '<span class="spinner"></span> 运行中 · Run ID: ' + data.run_id);
+    pollRun(data.run_id);
+  }} catch (e) {{
+    setStatus('failed', '✗ 网络错误: ' + e.message);
+    document.getElementById('run-btn').disabled = false;
+  }}
+}}
+
+function setStatus(state, html) {{
+  const el = document.getElementById('run-status');
+  const cls = {{ pending: 'badge-pending', running: 'badge-running', success: 'badge-success', failed: 'badge-failed' }};
+  el.innerHTML = `<span class="run-badge ${{cls[state] || ''}}">${{html}}</span>`;
+}}
+
+async function pollRun(runId) {{
+  if (_pollTimer) clearTimeout(_pollTimer);
+  try {{
+    const resp = await fetch('/admin/gross-margin-report/run/' + runId);
+    const data = await resp.json();
+    const status = data.status || 'unknown';
+
+    if (status === 'success') {{
+      setStatus('success', '✅ 完成！毛利率计算表已发送给当前触发人');
+      showLogs(data.logs || '');
+      document.getElementById('run-btn').disabled = false;
+    }} else if (status === 'failed') {{
+      setStatus('failed', '❌ 运行失败');
+      showLogs(data.logs || '（无输出）');
+      document.getElementById('run-btn').disabled = false;
+    }} else {{
+      _pollTimer = setTimeout(() => pollRun(runId), 3000);
+    }}
+  }} catch (e) {{
+    _pollTimer = setTimeout(() => pollRun(runId), 5000);
+  }}
+}}
+
+function showLogs(text) {{
+  const box = document.getElementById('log-box');
+  box.textContent = text;
+  box.classList.add('visible');
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
+
+
+@router.post("/gross-margin-report/run")
+async def gross_margin_report_run(request: Request, session: dict = Depends(require_auth)):
+    body = await request.json()
+    params = {
+        "company_code": str(body.get("company_code", "9451")),
+        "fiscal_year": int(body.get("fiscal_year", 0)),
+        "posting_period": int(body.get("posting_period", 0)),
+        "store_name": str(body.get("store_name", "")).strip(),
+        "gl_low": "50000000",
+        "gl_high": "69999999",
+        "max_hits": 10_000_000,
+        "triggered_by_open_id": session.get("open_id", ""),
+        "triggered_by_name": session.get("name", ""),
+    }
+
+    try:
+        from server.routes.runs import create_run
+        run = create_run("gross-margin-report", params, notify_chat=session.get("open_id", ""))
+        return {"ok": True, "run_id": run.id, "status": run.status.value}
+    except Exception as exc:
+        logger.exception("Failed to create gross margin run")
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.get("/gross-margin-report/run/{run_id}")
+async def gross_margin_report_run_status(run_id: str, session: dict = Depends(require_auth)):
     from server.routes.runs import _runs
     run = _runs.get(run_id)
     if run is None:
@@ -1659,7 +1915,7 @@ async def travel_expense_budget_run(request: Request, session: dict = Depends(re
 
     try:
         from server.routes.runs import create_run
-        run = create_run("travel-expense-budget", params, notify_chat="hongming")
+        run = create_run("travel-expense-budget", params, notify_chat="travel_budget_group")
         return {"ok": True, "run_id": run.id, "status": run.status.value}
     except Exception as exc:
         logger.exception("Failed to create travel budget run")

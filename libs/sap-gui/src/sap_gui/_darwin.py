@@ -107,7 +107,19 @@ def _is_sapgui_running() -> bool:
             capture_output=True,
             text=True,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
+        # Some macOS environments return:
+        #   "sysmon request failed with error: sysmond service not found"
+        # and exit non-zero even when the process is present. Fall back to
+        # System Events, which is already used elsewhere in this bridge.
+        try:
+            out = _run_applescript(
+                'tell application "System Events" to return exists (process "SAPGUI")'
+            )
+            return out.strip().lower() == "true"
+        except Exception:
+            return False
     except Exception:
         return False
 

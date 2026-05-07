@@ -18,7 +18,7 @@ import time
 from datetime import date, timedelta
 from pathlib import Path
 
-from sap_gui.errors import SAPExportError
+from sap_gui.errors import SAPConnectionError, SAPExportError
 from sap_gui.export import SAPExporter
 from sap_gui.navigation import SAPNavigator
 from sap_gui.session import SAPSession
@@ -81,7 +81,21 @@ def _run_darwin(
 
     cc_nl = "\\n".join(cost_centers)
 
-    with SAPSession(auto_launch=True, quit_after=True) as sap:
+    def _connect_sap() -> SAPSession:
+        try:
+            ctx = SAPSession()
+            ctx.connect()
+            return ctx
+        except SAPConnectionError:
+            log.info(
+                "Current SAP session is not reachable; falling back to auto-launch mode..."
+            )
+            ctx = SAPSession(auto_launch=True, quit_after=True)
+            ctx.connect()
+            return ctx
+
+    sap = _connect_sap()
+    try:
         nav = SAPNavigator(sap.session)
 
         # Login (separate, same as Windows)
@@ -146,6 +160,8 @@ def _run_darwin(
 
         log.info("Export complete: %s", output_path)
         return output_path
+    finally:
+        sap.disconnect()
 
 
 # ---------------------------------------------------------------------------

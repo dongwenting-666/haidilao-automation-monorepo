@@ -113,6 +113,30 @@ def _load_from_db(year: int) -> tuple[dict[str, dict], float]:
         return {}, DEFAULT_CAD_TO_USD
 
 
+def _convert_db_data_to_cad(
+    db_data: dict[str, dict],
+    cad_to_usd: float,
+) -> dict[str, dict]:
+    """Convert DB-stored USD values into CAD for report output."""
+    usd_to_cad = 1 / cad_to_usd if cad_to_usd else 0
+    converted: dict[str, dict] = {}
+    money_keys = {
+        "target_revenue",
+        "prev_year_revenue",
+        "prev_year_travel",
+        "q1_revenue",
+    }
+    for store_name, raw in db_data.items():
+        row = dict(raw)
+        for key in money_keys:
+            value = row.get(key)
+            if value is None:
+                continue
+            row[key] = float(value) * usd_to_cad
+        converted[store_name] = row
+    return converted
+
+
 def parse_args() -> argparse.Namespace:
     today = date.today()
     default_month = today.month - 1 if today.month > 1 else 12
@@ -175,7 +199,8 @@ def main() -> Path:
             "No travel budget targets configured for %d. "
             "Set targets in admin panel at /admin/travel-budget" % curr_year
         )
-    log.info("Loaded DB config: %d stores, rate=%.6f", len(db_data), curr_rate)
+    db_data = _convert_db_data_to_cad(db_data, curr_rate)
+    log.info("Loaded DB config: %d stores, rate=%.6f (CAD output)", len(db_data), curr_rate)
 
     # ── 1. Current year YTD travel expenses (KSB1) ───────────────────────
     if args.skip_download:

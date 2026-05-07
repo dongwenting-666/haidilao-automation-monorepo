@@ -20,6 +20,14 @@ STORE_ORDER = [
 ]
 
 ALIAS_MAP = {
+    "Hi Bowl": "Hi Bowl",
+    "HI BOWL": "Hi Bowl",
+    "HIBOWL": "Hi Bowl",
+    "9452100001": "Hi Bowl",
+    "9452201002": "Hi Bowl",
+    "加拿大大嗨麻辣烫一店": "Hi Bowl",
+    "加拿大大嗨麻辣烫一店(9452)": "Hi Bowl",
+    "加拿大大嗨麻辣烫一店（9452）": "Hi Bowl",
     "加拿大一店": "加拿大一店",
     "加拿大一店夜市项目": "加拿大一店",
     "加拿大海底捞-大嗨麻辣烫一店(9451)": "加拿大一店",
@@ -257,7 +265,15 @@ def calculate_result(direct: dict[str, defaultdict[str, float]]) -> dict[str, di
         values["七、营业外收益（加）"] = values["1、营业外收入"] - values["2、营业外支出"]
         values["八、投资收益（加）"] = values["1、公允价值变动收益"] + values["2、投资收益"]
         values['九、利润总额(亏损以"-"号表示)'] = values["五、营业利润合计"] + values["六、其他业务收益（加）"] + values["七、营业外收益（加）"] + values["八、投资收益（加）"]
-        values["十、所得税费用"] = values.get("十、所得税费用", values.get("十、所得税费用", 0.0))
+        values["十、所得税费用"] = (
+            0.0
+            if store == "Hi Bowl"
+            else (
+                values['九、利润总额(亏损以"-"号表示)'] * 0.27
+                if values['九、利润总额(亏损以"-"号表示)'] > 0
+                else 0.0
+            )
+        )
         values['十一、净利润(亏损以"-"号表示)'] = values['九、利润总额(亏损以"-"号表示)'] - values["十、所得税费用"]
     return result
 

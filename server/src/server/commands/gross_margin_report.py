@@ -7,9 +7,9 @@ from server.commands.base import BaseCommand
 from server.config import REPO_ROOT
 
 
-class ZFI0049ReportCommand(BaseCommand):
-    name = "zfi0049-report"
-    description = "Export SAP ZFI0049 raw data and generate Canada PnL workbook"
+class GrossMarginReportCommand(BaseCommand):
+    name = "gross-margin-report"
+    description = "Export SAP ZFI0049 raw data and generate gross margin workbook"
 
     @property
     def working_dir(self) -> Path:
@@ -28,7 +28,7 @@ class ZFI0049ReportCommand(BaseCommand):
         args = [
             "uv", "run",
             "--project", str(self.working_dir),
-            "python", "-m", "zfi0049_report.main",
+            "python", "-m", "zfi0049_report.gross_margin_main",
             "--company-code", str(params.get("company_code", "9451")),
             "--fiscal-year", str(params.get("fiscal_year", "")),
             "--posting-period", str(params.get("posting_period", "")),
