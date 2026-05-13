@@ -121,6 +121,7 @@ _HEADER_TMPL = """
   <nav>
     <a href="/admin/targets" class="{t_active}">月度目标</a>
     <a href="/admin/competitors" class="{c_active}">假想敌配置</a>
+    <a href="/admin/bom" class="{bom_active}">用料配方</a>
     {tools_link}
   </nav>
   <span class="user-info">👤 {name} &nbsp;·&nbsp; <a href="/admin/logout" style="color:rgba(255,255,255,0.75);font-size:0.82rem">退出</a></span>
@@ -153,6 +154,7 @@ def _header(page: str, name: str = "", super_admin: bool = False) -> str:
     return _HEADER_TMPL.format(
         t_active="active" if page == "targets" else "",
         c_active="active" if page == "competitors" else "",
+        bom_active="active" if page == "bom" else "",
         tools_link=travel_link + reports_link + msglog_link + tools_link + apikeys_link,
         name=name or "管理员",
     )
