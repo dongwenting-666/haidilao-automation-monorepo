@@ -753,35 +753,82 @@ def _replace_calc_sheet(wb, store: Store, bom_paths: tuple[Path, ...],
     return len(rows)
 
 
-def _wipe_template_references_if_foreign(wb, store: Store) -> None:
-    """Clear data rows from the template's reference sheets when the
-    target store doesn't own the template.
+def _rekey_calc_for_store(ws: Worksheet, store: Store) -> int:
+    """Rewrite per-store fields of the template's 计算 sheet so the
+    inherited brand-wide recipes apply to ``store``.
 
-    The template's 计算 sheet has 门店名称 in col C of every data row.
-    If the first data row's value matches ``store.pos_name``, the
-    template *is* this store's — leave everything alone. Otherwise,
-    wipe the reference sheets (header rows survive).
+    Treats the template's 计算 as the **brand recipe truth** (manual is
+    hand-curated, IPMS BOM has stale codes per 2026-05 user direction
+    "use original records, don't use BOM"). The recipe table itself is
+    brand-wide, but two cols are store-keyed:
+
+      C 门店名称   → set to store.pos_name
+      A 检索       → recomputed as ``store.pos_name + F + (G or '') + J``
+                     so it matches Sheet3's per-store pivot keys (Sheet3
+                     IS rebuilt per store from POS sales).
+
+    All other cols (recipe data, formulas) are preserved exactly as the
+    template has them.
+    """
+    if ws.max_row <= 1:
+        return 0
+    rewrites = 0
+    for r in range(2, ws.max_row + 1):
+        f_val = ws.cell(row=r, column=6).value   # F 菜品编码
+        g_val = ws.cell(row=r, column=7).value   # G 菜品短编码
+        j_val = ws.cell(row=r, column=10).value  # J 规格
+        if f_val is None:
+            continue
+        ws.cell(row=r, column=3, value=store.pos_name)  # C 门店名称
+        key = (
+            f"{store.pos_name}"
+            f"{f_val if f_val is not None else ''}"
+            f"{g_val if g_val is not None else ''}"
+            f"{j_val if j_val is not None else ''}"
+        )
+        ws.cell(row=r, column=1, value=key)              # A 检索
+        rewrites += 1
+    logger.info("rekeyed 计算 — %d rows now keyed to %s",
+                rewrites, store.pos_name)
+    return rewrites
+
+
+def _wipe_template_references_if_foreign(wb, store: Store) -> None:
+    """Adapt the template's reference sheets for the target store.
+
+    Behaviour (revised 2026-05 per user direction "use original records,
+    don't use BOM"):
+
+      计算 sheet — **kept and rekeyed**. The template's 计算 is the
+        brand-wide recipe truth; we only rewrite store-keyed cols
+        (A 检索 / C 门店名称) so its rows reference the target store's
+        Sheet3 pivot keys. The IPMS-driven regeneration is no longer
+        on by default — opt in via ``ipms_bom_paths`` on WorkbookSources.
+
+      BI套餐 sheet — **wiped when foreign**. This sheet holds the
+        previous month's per-store set-meal breakdown; without a per-store
+        source the conservative default is to clear it so W (set-meal
+        usage) resolves to 0 rather than leaking another store's data.
+        When ``sources.pos_set_path`` is set, ``_replace_bi_taocan_sheet``
+        rewrites it later with the fresh per-store export.
     """
     if "计算" not in wb.sheetnames:
-        return  # nothing to wipe
+        return
     calc_ws = wb["计算"]
     template_store = (
         calc_ws.cell(row=2, column=3).value if calc_ws.max_row >= 2 else None
     )
     if template_store == store.pos_name:
-        logger.info(
-            "template's reference sheets belong to %s (== target) — kept",
-            store.pos_name,
-        )
-        return
-    logger.info(
-        "template-native store=%r ≠ target=%r — wiping reference sheets %s",
-        template_store, store.pos_name, list(TEMPLATE_REFERENCE_SHEETS),
-    )
-    for sheet_name in TEMPLATE_REFERENCE_SHEETS:
-        if sheet_name not in wb.sheetnames:
-            continue
-        ws = wb[sheet_name]
+        logger.info("template's 计算 already keyed to %s — kept as-is",
+                    store.pos_name)
+    else:
+        logger.info("template's 计算 was keyed to %r; rekeying to %r",
+                    template_store, store.pos_name)
+        _rekey_calc_for_store(calc_ws, store)
+
+    # BI套餐 — per-store sales data, no recipe value — wipe on foreign.
+    if template_store != store.pos_name and "BI套餐" in wb.sheetnames:
+        ws = wb["BI套餐"]
         before = ws.max_row - 1 if ws.max_row > 1 else 0
         _clear_data_rows(ws)
-        logger.info("  cleared %d rows from %s", before, sheet_name)
+        logger.info("  cleared %d rows from BI套餐 (foreign template)", before)

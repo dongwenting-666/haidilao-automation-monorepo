@@ -374,22 +374,30 @@ def _make_report_row(row_no: int, matnr: str = "1000049") -> ReportRow:
     )
 
 
-def test_wipe_template_references_if_foreign(tmp_path: Path) -> None:
-    """When the target store isn't the template's native store, the
-    reference sheets (计算/分类/etc.) must be wiped so VLOOKUPs from
-    the report sheet can't pick up the previous owner's data."""
+def test_wipe_template_references_if_foreign_rekeys_calc(tmp_path: Path) -> None:
+    """Per 2026-05 user direction: 计算 is the brand recipe truth and must
+    be PRESERVED across foreign-store regenerations — only the
+    store-keyed cols (A 检索 / C 门店名称) get rewritten. BI套餐 (per-store
+    set-meal sales) still gets wiped on foreign templates.
+    """
     from inventory_check.stores import Store
-    from inventory_check.workbook import (
-        TEMPLATE_REFERENCE_SHEETS,
-        _wipe_template_references_if_foreign,
-    )
+    from inventory_check.workbook import _wipe_template_references_if_foreign
+
     wb = Workbook()
     # 计算 sheet — col C row 2 stores the template-native store name.
+    # Cols (A, B, C, D, E, F=code, G=short, H, I, J=spec) match the
+    # 26-col layout's positions for the rekey logic.
     calc = wb.active
     calc.title = "计算"
-    calc.append(["检索", "区域", "门店名称", "大类", "子类", "码", "短码"])
-    calc.append(["k1", "加拿大", "加拿大八店", "锅底类", "锅底类", 1060061, None])
-    calc.append(["k2", "加拿大", "加拿大八店", "其他", "其他", 9000001, None])
+    calc.append([f"col{i}" for i in range(26)])  # header
+    calc.append([
+        "加拿大八店1060061单锅", "加拿大", "加拿大八店",
+        None, None, 1060061, None, None, None, "单锅",
+    ] + [None] * 16)
+    calc.append([
+        "加拿大八店9000001整份", "加拿大", "加拿大八店",
+        None, None, 9000001, None, None, None, "整份",
+    ] + [None] * 16)
     # 分类 etc.
     for name in ("分类", "折算数量", "BI套餐", "对照表"):
         ws = wb.create_sheet(name)
@@ -400,18 +408,46 @@ def test_wipe_template_references_if_foreign(tmp_path: Path) -> None:
     foreign = Store(sap_user="CA1DKG", werks="CA01", pos_name="加拿大一店")
     _wipe_template_references_if_foreign(wb, foreign)
 
-    # Store-specific sheets (计算, BI套餐): header survives, data wiped.
-    assert calc.cell(row=1, column=1).value == "检索"
-    assert calc.max_row == 1
-    bi = wb["BI套餐"]
-    assert bi.max_row == 1
-    # Regional master sheets (分类, 折算数量, 对照表): kept intact —
-    # they're CA-wide reference data, not store-specific. Wiping them
-    # broke the report sheet's 分类 col VLOOKUPs.
+    # 计算 — recipe rows PRESERVED but rekeyed to the target store.
+    assert calc.max_row == 3
+    assert calc.cell(row=2, column=3).value == "加拿大一店"
+    assert calc.cell(row=2, column=1).value == "加拿大一店1060061单锅"
+    assert calc.cell(row=3, column=3).value == "加拿大一店"
+    assert calc.cell(row=3, column=1).value == "加拿大一店9000001整份"
+    # Recipe data (cols beyond C/A) untouched.
+    assert calc.cell(row=2, column=6).value == 1060061  # F 菜品编码
+    assert calc.cell(row=2, column=10).value == "单锅"   # J 规格
+    # BI套餐 — wiped on foreign (no per-store source).
+    assert wb["BI套餐"].max_row == 1
+    # Regional master sheets (分类, 折算数量, 对照表): kept intact.
     for name in ("分类", "折算数量", "对照表"):
         ws = wb[name]
         assert ws.max_row == 3, f"{name} should be left intact"
         assert ws.cell(row=2, column=1).value == "data1"
+
+
+def test_rekey_calc_for_store_basic() -> None:
+    """_rekey_calc_for_store rewrites A and C, preserves all other cols."""
+    from inventory_check.stores import Store
+    from inventory_check.workbook import _rekey_calc_for_store
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "计算"
+    ws.append([f"h{i}" for i in range(26)])
+    ws.append([
+        "加拿大八店1060061单锅", "加拿大", "加拿大八店",
+        "大类", "子类", 1060061, 12345, "清油麻辣火锅",
+        "清油麻辣火锅", "单锅",
+    ] + [None] * 16)
+    store = Store(sap_user="CA1DKG", werks="CA01", pos_name="加拿大一店")
+    n = _rekey_calc_for_store(ws, store)
+    assert n == 1
+    # A rekeyed, C rewritten, all other cols preserved.
+    assert ws.cell(row=2, column=1).value == "加拿大一店106006112345单锅"
+    assert ws.cell(row=2, column=3).value == "加拿大一店"
+    assert ws.cell(row=2, column=6).value == 1060061
+    assert ws.cell(row=2, column=8).value == "清油麻辣火锅"
 
 
 def test_wipe_template_references_keeps_native(tmp_path: Path) -> None:
