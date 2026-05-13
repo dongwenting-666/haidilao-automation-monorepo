@@ -268,3 +268,113 @@ class TestMigrations:
         from server.db import migrate_from_json
         migrate_from_json(tmp_path / "targets.json", tmp_path / "comps.json")
         assert mock_db.execute.call_count >= 2  # at least target + competitor inserts
+
+
+# ── Store BOM ─────────────────────────────────────────────────────────────────
+
+
+class TestStoreBom:
+    def test_list_bom_werks_empty_when_no_db(self, no_db):
+        from server.db import list_bom_werks
+        assert list_bom_werks() == []
+
+    def test_list_bom_werks(self, mock_db):
+        mock_db.fetchall.return_value = [{"werks": "CA01"}, {"werks": "CA08"}]
+        from server.db import list_bom_werks
+        assert list_bom_werks() == ["CA01", "CA08"]
+
+    def test_list_bom_empty_when_no_db(self, no_db):
+        from server.db import list_bom
+        assert list_bom("CA08") == []
+
+    def test_list_bom_basic_filter(self, mock_db):
+        mock_db.fetchall.return_value = [{"id": 1, "dish_code": 1060061}]
+        from server.db import list_bom
+        rows = list_bom("CA08", dish_filter="清油", limit=10)
+        assert len(rows) == 1
+        # SQL must include the dish-filter clause and the werks param
+        args = mock_db.fetchall.call_args
+        sql = args[0][0]
+        params = args[0][1]
+        assert "werks = %s" in sql
+        assert "ILIKE %s" in sql
+        assert params[0] == "CA08"
+        assert "%清油%" in params
+
+    def test_list_bom_with_material_filter(self, mock_db):
+        mock_db.fetchall.return_value = []
+        from server.db import list_bom
+        list_bom("CA08", material_filter="3000759")
+        sql = mock_db.fetchall.call_args[0][0]
+        params = mock_db.fetchall.call_args[0][1]
+        assert "material_name" in sql or "material_code" in sql
+        assert "%3000759%" in params
+
+    def test_count_bom(self, mock_db):
+        mock_db.fetchone.return_value = {"n": 42}
+        from server.db import count_bom
+        assert count_bom("CA08") == 42
+        sql = mock_db.fetchone.call_args[0][0]
+        assert "COUNT(*)" in sql
+
+    def test_get_bom_entry_no_db(self, no_db):
+        from server.db import get_bom_entry
+        assert get_bom_entry(1) is None
+
+    def test_get_bom_entry(self, mock_db):
+        mock_db.fetchone.return_value = {"id": 5, "werks": "CA08", "dish_code": 1060061}
+        from server.db import get_bom_entry
+        out = get_bom_entry(5)
+        assert out["dish_code"] == 1060061
+        # Param-binding: id should be the only param
+        assert mock_db.fetchone.call_args[0][1] == (5,)
+
+    def test_upsert_bom_entry_insert_returns_id(self, mock_db):
+        mock_db.fetchone.return_value = {"id": 7}
+        from server.db import upsert_bom_entry
+        new_id = upsert_bom_entry(
+            "CA08", 1060061, "单锅", 3000759,
+            dish_name="清油麻辣火锅", portion=1.2, loss_factor=1.0,
+        )
+        assert new_id == 7
+        sql = mock_db.fetchone.call_args[0][0]
+        # INSERT path uses ON CONFLICT — no entry_id given.
+        assert "INSERT INTO store_bom" in sql
+        assert "ON CONFLICT" in sql
+
+    def test_upsert_bom_entry_update_path(self, mock_db):
+        mock_db.fetchone.return_value = {"id": 7}
+        from server.db import upsert_bom_entry
+        new_id = upsert_bom_entry(
+            "CA08", 1060061, "单锅", 3000759,
+            entry_id=7, dish_name="清油麻辣火锅",
+        )
+        assert new_id == 7
+        # UPDATE path when entry_id given
+        sql = mock_db.fetchone.call_args[0][0]
+        assert sql.lstrip().startswith("UPDATE store_bom")
+
+    def test_upsert_bom_entry_update_missing_raises(self, mock_db):
+        mock_db.fetchone.return_value = None
+        from server.db import upsert_bom_entry
+        with pytest.raises(ValueError, match="not found"):
+            upsert_bom_entry("CA08", 1, None, 1, entry_id=999)
+
+    def test_upsert_bom_entry_no_db_raises(self, no_db):
+        from server.db import upsert_bom_entry
+        with pytest.raises(RuntimeError, match="DB not available"):
+            upsert_bom_entry("CA08", 1, None, 1)
+
+    def test_delete_bom_entry_true(self, mock_db):
+        mock_db.fetchone.return_value = {"id": 5}
+        from server.db import delete_bom_entry
+        assert delete_bom_entry(5) is True
+
+    def test_delete_bom_entry_missing(self, mock_db):
+        mock_db.fetchone.return_value = None
+        from server.db import delete_bom_entry
+        assert delete_bom_entry(999) is False
+
+    def test_delete_bom_entry_no_db(self, no_db):
+        from server.db import delete_bom_entry
+        assert delete_bom_entry(1) is False
