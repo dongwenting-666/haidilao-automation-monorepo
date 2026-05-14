@@ -19,6 +19,7 @@ from daily_store_operation_report.sheets.styles import (
     BOLD,
     BOLD_LARGE,
     CENTER,
+    HIGHLIGHT_ORANGE_FILL,
     WHITE_FILL,
     apply_border,
     apply_fill_range,
@@ -137,6 +138,12 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         _write_row(ws, r, "外卖收入", [data.stores[s].today_takeout_wan for s in stores]); r += 1
         _write_row(ws, r, "堂食收入", [data.stores[s].today_dine_in_wan for s in stores]); r += 1
 
+    # Track the three regional-total rows (今年总额 / 对比期总额 / 差额) so
+    # we can highlight them after writing — makes them easy to spot when
+    # the operator scans the sheet on Lark.
+    highlight_rows: list[int] = []
+
+    highlight_rows.append(r)  # 本月截止目前营业收入(万) — this year's total
     _write_row(ws, r, "本月截止目前营业收入(万)", [data.stores[s].mtd_revenue_wan for s in stores]); r += 1
 
     if is_yoy:
@@ -146,6 +153,7 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         _write_row(ws, r, "本月截止目前堂食收入(万)", [data.stores[s].mtd_dine_in_wan for s in stores]); r += 1
         _write_row(ws, r, "本月截止目前外卖收入(万)", [data.stores[s].mtd_takeout_wan for s in stores]); r += 1
 
+    highlight_rows.append(r)  # {comp}截止目前营业收入(万) — last year / last month's total
     _write_row(ws, r, f"{comp}截止目前营业收入(万)",
                [config.get_comp_revenue_wan(data.stores[s]) for s in stores]); r += 1
 
@@ -155,6 +163,7 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         _write_row(ws, r, f"{comp}截止目前外卖营业收入(万)",
                    [config.get_comp_takeout_wan(data.stores[s]) for s in stores]); r += 1
 
+    highlight_rows.append(r)  # {comp_type}营业收入变化(万) — 差额
     _write_row(ws, r, f"{comp_type}营业收入变化(万)",
                [data.stores[s].mtd_revenue_wan - config.get_comp_revenue_wan(data.stores[s]) for s in stores]); r += 1
 
@@ -286,6 +295,14 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
 
     # Section 2 (收入): 9 to revenue_end → section_b
     apply_fill_range(ws, 9, revenue_end, theme.section_b_fill, 1, _NCOLS)
+
+    # Highlight the three key revenue total rows (今年总额 / 对比期总额 / 差额).
+    # Light orange on the label cell (col B) and the region-total cell
+    # (col K = 加拿大片区) so reviewers can spot them at a glance — middle
+    # cells stay in the section fill so per-store data stays readable.
+    for hr in highlight_rows:
+        ws.cell(row=hr, column=2).fill = HIGHLIGHT_ORANGE_FILL
+        ws.cell(row=hr, column=_NCOLS).fill = HIGHLIGHT_ORANGE_FILL
 
     # Section 3 (单桌消费)
     apply_fill_range(ws, sec3_start, sec4_start - 1, theme.section_a_fill, 1, _NCOLS)
