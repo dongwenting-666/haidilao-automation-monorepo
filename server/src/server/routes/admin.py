@@ -905,6 +905,12 @@ async def daily_report_page(request: Request, session: dict = Depends(require_au
           跳过下载（使用已有 QBI 文件）
         </label>
       </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label title="勾选后报告只发到 hongming 群，不打扰生产核算群">
+          <input type="checkbox" id="chk-test-mode">
+          <strong>测试模式</strong>（只发到 hongming 群）
+        </label>
+      </div>
     </div>
 
     <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
@@ -932,6 +938,7 @@ let _pollTimer = null;
 async function triggerRun() {{
   const date = document.getElementById('sel-date').value;
   const skipDl = document.getElementById('chk-skip-dl').checked;
+  const testMode = document.getElementById('chk-test-mode').checked;
 
   document.getElementById('run-btn').disabled = true;
   setStatus('pending', '⏳ 正在提交...');
@@ -942,7 +949,7 @@ async function triggerRun() {{
     const resp = await fetch('/admin/daily-report/run', {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{ date, skip_download: skipDl }}),
+      body: JSON.stringify({{ date, skip_download: skipDl, test_mode: testMode }}),
     }});
     const data = await resp.json();
     if (!data.ok) {{
@@ -950,7 +957,8 @@ async function triggerRun() {{
       document.getElementById('run-btn').disabled = false;
       return;
     }}
-    setStatus('running', '<span class="spinner"></span> 运行中 · Run ID: ' + data.run_id);
+    const dest = data.notify_chat === 'hongming' ? 'hongming 群（测试模式）' : '生产核算群';
+    setStatus('running', '<span class="spinner"></span> 运行中 → ' + dest + ' · Run ID: ' + data.run_id);
     pollRun(data.run_id);
   }} catch (e) {{
     setStatus('failed', '✗ 网络错误: ' + e.message);
@@ -972,7 +980,9 @@ async function pollRun(runId) {{
     const status = data.status || 'unknown';
 
     if (status === 'success') {{
-      setStatus('success', '✅ 完成！日报已发送至生产群');
+      const testMode = document.getElementById('chk-test-mode').checked;
+      const dest = testMode ? 'hongming 群（测试模式）' : '生产核算群';
+      setStatus('success', '✅ 完成！日报已发送至 ' + dest);
       showLogs(data.logs || '');
       document.getElementById('run-btn').disabled = false;
     }} else if (status === 'failed') {{
@@ -1000,10 +1010,21 @@ function showLogs(text) {{
 
 @router.post("/daily-report/run")
 async def daily_report_run(request: Request, session: dict = Depends(require_auth)):
-    """Trigger a daily report run."""
+    """Trigger a daily report run.
+
+    Body params:
+        date (str)               — YYYY-MM-DD, defaults to T-2
+        skip_download (bool)     — reuse cached QBI files
+        test_mode (bool)         — send xlsx to ``hongming`` chat instead of
+                                    the production accounting chat. Use this
+                                    when verifying formatting changes mid-day
+                                    so the finance team doesn't get an extra
+                                    out-of-schedule report.
+    """
     body = await request.json()
     date_str = body.get("date")
     skip_download = bool(body.get("skip_download", False))
+    test_mode = bool(body.get("test_mode", False))
 
     params: dict = {}
     if date_str:
@@ -1011,10 +1032,13 @@ async def daily_report_run(request: Request, session: dict = Depends(require_aut
     if skip_download:
         params["skip_download"] = True
 
+    notify_chat = "hongming" if test_mode else "production_accounting_report_chat"
+
     try:
         from server.routes.runs import create_run
-        run = create_run("daily-report", params, notify_chat="production_accounting_report_chat")
-        return {"ok": True, "run_id": run.id, "status": run.status.value}
+        run = create_run("daily-report", params, notify_chat=notify_chat)
+        return {"ok": True, "run_id": run.id, "status": run.status.value,
+                "notify_chat": notify_chat}
     except Exception as exc:
         logger.exception("Failed to create daily report run")
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
