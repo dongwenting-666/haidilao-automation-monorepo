@@ -30,6 +30,13 @@ YELLOW_FILL = PatternFill(start_color="FFFFFF99", end_color="FFFFFF99", fill_typ
 BRIGHT_YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
 LIGHT_BLUE_FILL_GOLD = PatternFill(start_color="FFE6F3FF", end_color="FFE6F3FF", fill_type="solid")
 
+# Highlight for the three revenue total rows (今年/去年/差额) on the
+# 对比上年/对比上月 sheets — light orange so it pops against the white
+# data cells without clashing with the gold/yellow header.
+HIGHLIGHT_ORANGE_FILL = PatternFill(
+    start_color="FFFFCC99", end_color="FFFFCC99", fill_type="solid",
+)
+
 # ── Sheet 3: Blue/YoY theme ──────────────────────────────────────────────────
 DARK_BLUE_FILL = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
 MED_BLUE_FILL = PatternFill(start_color="FF5B9BD5", end_color="FF5B9BD5", fill_type="solid")
