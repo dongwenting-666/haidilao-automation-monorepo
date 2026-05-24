@@ -249,7 +249,9 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
     ws.cell(row=r, column=2, value="名次")
     for i in range(len(stores)):
         ws.cell(row=r, column=3 + i, value=f"第{i + 1}名")
-    ws.cell(row=r, column=_NCOLS, value="当月累计平均翻台率"); r += 1
+    # K[N] is intentionally blank — the two region-TR cells below carry
+    # their own inline labels (one for {comp}同期, one for 当月).
+    r += 1
 
     # Today ranking
     today_tr = [(s, data.stores[s].today_turnover_rate) for s in stores]
@@ -273,15 +275,44 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
 
     ws.merge_cells(f"A{sec4_start}:A{r}")
 
-    # Region weighted-average turnover rate (merged in K)
-    ws.merge_cells(f"K{tr_start}:K{r}")
+    # Region weighted-average turnover rate — stacked: comparison-period
+    # MTD in the top half (aligned with today's ranking rows), current MTD
+    # in the bottom half (aligned with the MTD ranking rows). Each cell
+    # carries an inline label so the K[N] header could be dropped.
     region_mtd_tables_total = sum(data.stores[s].mtd_tables for s in stores)
-    region_seats_total = sum(data.stores[s].seats for s in stores if data.stores[s].seats > 0)
+    region_comp_tables_total = sum(
+        config.get_comp_tables(data.stores[s]) for s in stores
+    )
+    region_seats_total = sum(
+        data.stores[s].seats for s in stores if data.stores[s].seats > 0
+    )
     num_days = dates.day_of_month
-    region_avg_tr = div_or_zero(region_mtd_tables_total, region_seats_total * num_days) if region_seats_total else 0
-    ws.cell(row=tr_start, column=_NCOLS, value=region_avg_tr)
+    denom = region_seats_total * num_days
+    region_avg_tr = div_or_zero(region_mtd_tables_total, denom) if denom else 0
+    region_comp_avg_tr = (
+        div_or_zero(region_comp_tables_total, denom) if denom else 0
+    )
+
+    today_end = tr_start + 1   # today ranking spans 2 rows
+    mtd_start = today_end + 1  # MTD ranking spans the remaining 2 rows
+
+    # Top half — {comp}同期累计平均翻台率 (上年同期 / 上月同期)
+    ws.merge_cells(f"K{tr_start}:K{today_end}")
+    ws.cell(
+        row=tr_start, column=_NCOLS,
+        value=f"{comp}同期累计平均翻台率\n{region_comp_avg_tr:.2f}",
+    )
     ws.cell(row=tr_start, column=_NCOLS).font = BOLD_LARGE
     ws.cell(row=tr_start, column=_NCOLS).alignment = CENTER
+
+    # Bottom half — 当月累计平均翻台率
+    ws.merge_cells(f"K{mtd_start}:K{r}")
+    ws.cell(
+        row=mtd_start, column=_NCOLS,
+        value=f"当月累计平均翻台率\n{region_avg_tr:.2f}",
+    )
+    ws.cell(row=mtd_start, column=_NCOLS).font = BOLD_LARGE
+    ws.cell(row=mtd_start, column=_NCOLS).alignment = CENTER
 
     last_row = r
 
@@ -312,8 +343,9 @@ def build_comparison_sheet(wb: Workbook, data: ReportData, config: ComparisonCon
         fill = theme.highlight_fill if (i - sec4_start) % 2 == 0 else theme.section_b_fill
         apply_fill_row(ws, i, fill, 1, _NCOLS)
 
-    # K region avg white fill override
+    # K region avg white fill override — applied to both stacked cells
     ws.cell(row=tr_start, column=_NCOLS).fill = WHITE_FILL
+    ws.cell(row=mtd_start, column=_NCOLS).fill = WHITE_FILL
 
     # Borders
     apply_border(ws, 1, last_row, 1, _NCOLS)
