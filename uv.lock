@@ -483,6 +483,7 @@ name = "inventory-check"
 version = "0.1.0"
 source = { editable = "projects/inventory-check" }
 dependencies = [
+    { name = "db-client" },
     { name = "openpyxl" },
     { name = "pos-crawler" },
     { name = "python-dotenv" },
@@ -493,6 +494,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "db-client", editable = "libs/db-client" },
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "pos-crawler", editable = "libs/pos-crawler" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
@@ -1532,6 +1534,7 @@ name = "zfi0049-report"
 version = "0.1.0"
 source = { editable = "projects/zfi0049-report" }
 dependencies = [
+    { name = "inventory-check" },
     { name = "openpyxl" },
     { name = "python-dotenv" },
     { name = "sap-gui" },
@@ -1540,6 +1543,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "inventory-check", editable = "projects/inventory-check" },
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sap-gui", editable = "libs/sap-gui" },

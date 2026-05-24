@@ -101,14 +101,6 @@ class WorkbookSources:
     prev_report_path: Path | None = None
     pos_path: Path | None = None  # report month's 红火台销售汇总 (POS)
     pos_set_path: Path | None = None  # report month's 红火台套餐汇总 (POS) → BI套餐
-    ipms_bom_paths: tuple[Path, ...] = ()
-    """IPMS 海外菜品物料明细 exports (one per tab: 菜品 + 锅底).
-
-    When provided, the 计算 sheet is regenerated from these BOM rows
-    (manual is stale per 2026-05 user direction — IPMS is authoritative).
-    When empty, the template's 计算 sheet behaviour is preserved
-    (kept for native store, wiped otherwise).
-    """
 
 
 def _strip_pivot_tables(ws: Worksheet) -> int:
@@ -655,17 +647,12 @@ def assemble_workbook(
             f"template {sources.template_path} has no {REPORT_SHEET!r} sheet"
         )
 
-    # If the target store isn't the template's native store, wipe the
-    # hand-curated reference sheets (计算/分类/折算数量/BI套餐/对照表) so
-    # this workbook is self-contained — the previous owner's data
-    # doesn't leak via the report sheet's VLOOKUPs.
-    _wipe_template_references_if_foreign(wb, store)
+    # Wipe any inherited 计算/BI套餐 data — the DB-sourced regen below
+    # (and the POS-sourced BI套餐 regen) are now the authoritative source.
+    _wipe_inherited_recipe_sheets(wb)
 
-    # IPMS-derived 计算 sheet — overrides whatever the template held
-    # (or the wipe just left blank) with current-recipe data.
-    if sources.ipms_bom_paths:
-        _replace_calc_sheet(wb, store, sources.ipms_bom_paths,
-                            pos_path=sources.pos_path)
+    # store_bom-derived 计算 sheet — DB is the system of record.
+    _replace_calc_sheet(wb, store, pos_path=sources.pos_path)
 
     # BI套餐 — populate from POS 菜品套餐报表 if supplied (per-store data,
     # so we always rewrite when given a path; if missing, the wipe above
@@ -712,33 +699,43 @@ def _replace_bi_taocan_sheet(wb, pos_set_path: Path) -> int:
     return written
 
 
-def _replace_calc_sheet(wb, store: Store, bom_paths: tuple[Path, ...],
+def _replace_calc_sheet(wb, store: Store, *,
                         pos_path: Path | None = None) -> int:
-    """Regenerate the 计算 sheet from IPMS BOM exports.
+    """Regenerate the 计算 sheet from the ``store_bom`` table.
 
-    Drops all existing data rows (the manual is stale per 2026-05) and
-    writes one row per IPMS BOM (dish×spec×material) tuple. The 检索
-    column is keyed to ``store.pos_name`` so the report sheet's VLOOKUPs
+    Drops all existing data rows and writes one row per (dish×spec×material)
+    recipe in ``store_bom`` for ``store.werks``. The 检索 column is keyed
+    to ``store.pos_name`` so the report sheet's VLOOKUPs
     (col 15 备注 → 计算!R:Z) and Sheet3 lookups (计算!M ← Sheet3!A:B)
     resolve correctly per store. Formulas in M/Q/T/U/X are kept as
     formulas so Excel computes them on open.
 
     pos_path supplies 菜品短编码 / 大类名称 / 子类名称 for each
-    (dish_code, spec) tuple. Without it, the 检索 keys won't include
-    the short-code segment that Sheet3 expects, and M (实收数量) +
-    Q (红火台理论量) formulas resolve to 0 for all rows.
+    (dish_code, spec) tuple as a fallback when ``store_bom`` doesn't
+    carry them. Without it, dishes whose BOM rows lack short codes won't
+    resolve through Sheet3 → M / Q.
+
+    Raises RuntimeError if store_bom returns zero rows for this werks —
+    a clear signal that the migration hasn't been run, rather than
+    silently producing an empty 计算 sheet.
     """
     from inventory_check.calc_sheet import (
-        attach_formulas, derive_calc_rows, load_ipms_bom_rows,
-        load_pos_dish_meta,
+        attach_formulas, derive_calc_rows, load_pos_dish_meta,
     )
+    from inventory_check.db_bom import load_store_bom_rows
 
     if "计算" not in wb.sheetnames:
-        logger.warning("template has no 计算 sheet — skipping IPMS regen")
+        logger.warning("template has no 计算 sheet — skipping regen")
         return 0
 
     ws = wb["计算"]
-    bom_rows = load_ipms_bom_rows(list(bom_paths))
+    bom_rows = load_store_bom_rows(store.werks)
+    if not bom_rows:
+        raise RuntimeError(
+            f"store_bom has no rows for werks={store.werks!r} — "
+            "run migration/load_store_bom_from_template.py or curate via "
+            "/admin/bom before generating reports"
+        )
     pos_meta = load_pos_dish_meta(pos_path) if pos_path else {}
     rows = derive_calc_rows(bom_rows, store_name=store.pos_name,
                             pos_meta=pos_meta)
@@ -747,88 +744,25 @@ def _replace_calc_sheet(wb, store: Store, bom_paths: tuple[Path, ...],
     _clear_data_rows(ws)
     for r in rows:
         ws.append(r)
-    logger.info("regenerated 计算 with %d rows from IPMS BOM "
-                "(%d source files, pos_meta=%d entries)",
-                len(rows), len(bom_paths), len(pos_meta))
+    logger.info("regenerated 计算 with %d rows from store_bom "
+                "(werks=%s, pos_meta=%d entries)",
+                len(rows), store.werks, len(pos_meta))
     return len(rows)
 
 
-def _rekey_calc_for_store(ws: Worksheet, store: Store) -> int:
-    """Rewrite per-store fields of the template's 计算 sheet so the
-    inherited brand-wide recipes apply to ``store``.
+def _wipe_inherited_recipe_sheets(wb) -> None:
+    """Clear data rows from 计算 and BI套餐.
 
-    Treats the template's 计算 as the **brand recipe truth** (manual is
-    hand-curated, IPMS BOM has stale codes per 2026-05 user direction
-    "use original records, don't use BOM"). The recipe table itself is
-    brand-wide, but two cols are store-keyed:
-
-      C 门店名称   → set to store.pos_name
-      A 检索       → recomputed as ``store.pos_name + F + (G or '') + J``
-                     so it matches Sheet3's per-store pivot keys (Sheet3
-                     IS rebuilt per store from POS sales).
-
-    All other cols (recipe data, formulas) are preserved exactly as the
-    template has them.
+    Both are regenerated downstream — 计算 from ``store_bom``, BI套餐 from
+    the POS set-meal export (or left empty so W → 0 if no POS source).
+    Wiping up-front means no stale data from the template's native store
+    can leak into the report if a downstream step is skipped.
     """
-    if ws.max_row <= 1:
-        return 0
-    rewrites = 0
-    for r in range(2, ws.max_row + 1):
-        f_val = ws.cell(row=r, column=6).value   # F 菜品编码
-        g_val = ws.cell(row=r, column=7).value   # G 菜品短编码
-        j_val = ws.cell(row=r, column=10).value  # J 规格
-        if f_val is None:
+    for sheet in ("计算", "BI套餐"):
+        if sheet not in wb.sheetnames:
             continue
-        ws.cell(row=r, column=3, value=store.pos_name)  # C 门店名称
-        key = (
-            f"{store.pos_name}"
-            f"{f_val if f_val is not None else ''}"
-            f"{g_val if g_val is not None else ''}"
-            f"{j_val if j_val is not None else ''}"
-        )
-        ws.cell(row=r, column=1, value=key)              # A 检索
-        rewrites += 1
-    logger.info("rekeyed 计算 — %d rows now keyed to %s",
-                rewrites, store.pos_name)
-    return rewrites
-
-
-def _wipe_template_references_if_foreign(wb, store: Store) -> None:
-    """Adapt the template's reference sheets for the target store.
-
-    Behaviour (revised 2026-05 per user direction "use original records,
-    don't use BOM"):
-
-      计算 sheet — **kept and rekeyed**. The template's 计算 is the
-        brand-wide recipe truth; we only rewrite store-keyed cols
-        (A 检索 / C 门店名称) so its rows reference the target store's
-        Sheet3 pivot keys. The IPMS-driven regeneration is no longer
-        on by default — opt in via ``ipms_bom_paths`` on WorkbookSources.
-
-      BI套餐 sheet — **wiped when foreign**. This sheet holds the
-        previous month's per-store set-meal breakdown; without a per-store
-        source the conservative default is to clear it so W (set-meal
-        usage) resolves to 0 rather than leaking another store's data.
-        When ``sources.pos_set_path`` is set, ``_replace_bi_taocan_sheet``
-        rewrites it later with the fresh per-store export.
-    """
-    if "计算" not in wb.sheetnames:
-        return
-    calc_ws = wb["计算"]
-    template_store = (
-        calc_ws.cell(row=2, column=3).value if calc_ws.max_row >= 2 else None
-    )
-    if template_store == store.pos_name:
-        logger.info("template's 计算 already keyed to %s — kept as-is",
-                    store.pos_name)
-    else:
-        logger.info("template's 计算 was keyed to %r; rekeying to %r",
-                    template_store, store.pos_name)
-        _rekey_calc_for_store(calc_ws, store)
-
-    # BI套餐 — per-store sales data, no recipe value — wipe on foreign.
-    if template_store != store.pos_name and "BI套餐" in wb.sheetnames:
-        ws = wb["BI套餐"]
+        ws = wb[sheet]
         before = ws.max_row - 1 if ws.max_row > 1 else 0
         _clear_data_rows(ws)
-        logger.info("  cleared %d rows from BI套餐 (foreign template)", before)
+        logger.info("cleared %d rows from %s (template inheritance)",
+                    before, sheet)

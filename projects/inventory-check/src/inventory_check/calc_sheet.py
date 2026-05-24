@@ -1,33 +1,33 @@
-"""Derive the 计算 sheet rows from IPMS BOM exports.
+"""Build 计算 sheet rows from store_bom recipe data.
 
-The 计算 sheet (28-col, hand-curated in the manual) joins POS sales
-with material BOM data to compute theoretical material consumption per
-dish×spec. Per the user's call (2026-05-02): IPMS is the authoritative
-source — manual is stale (e.g. portion sizes drift, loss factors not
-updated). We always derive from IPMS now.
+The 计算 sheet (26-col, hand-curated in the manual) joins POS sales with
+material BOM data to compute theoretical material consumption per
+dish×spec. Per the 2026-05 migration, the recipe table now lives in
+Postgres (``store_bom``); ``inventory_check.db_bom.load_store_bom_rows``
+is the canonical reader. The /admin/bom UI is the system of record.
 
-Each IPMS BOM row (one per dish×spec×material) becomes one 计算 row.
+Each store_bom row (one per dish×spec×material) becomes one 计算 row.
 Display columns we don't have a source for (大类, 子类, 菜品单价,
-菜品单位) are left blank — they don't enter the formula chain that
-feeds the report sheet's 备注 column.
+菜品单位) come from POS; if POS doesn't have them they're left blank —
+they don't enter the formula chain that feeds the report sheet.
 
-Source columns from IPMS 海外菜品物料明细 export:
-  菜品编码 → F (after lstrip('0') and int())
-  菜品名称 → H, I
-  规格名称 → J
-  物料编码 → R
-  物料名称 → S (manual reads via VLOOKUP into MB5B; we provide IPMS too)
-  单位物料用量 → N (出品分量)
-  物料产成率(%)→ O (损耗 = round(100/yield, 2); default 1 if blank)
-  库存单位名称 → Y (单位; '磅-美' normalised to '磅')
-  用量单位 → P (物料单位)
+Source columns from store_bom:
+  dish_code        → F
+  dish_short_code  → G (also fed by POS when missing in BOM)
+  dish_name        → H, I
+  spec             → J
+  material_code    → R
+  material_name    → S
+  portion          → N (出品分量)
+  loss_factor      → O (损耗 — already computed, no yield→loss conversion)
+  unit             → Y (库存单位)
+  packaging_factor → P (物料单位)
 
 Computed columns:
   A 检索 = store_name & code_int & short_code & spec
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -45,51 +45,13 @@ HEADERS: list[str | None] = [
 
 REGION = "加拿大"
 
-# IPMS 库存单位名称 → manual 单位 vocabulary alignment.
-UNIT_ALIASES = {"磅-美": "磅"}
-
 
 def _norm_code(c: Any) -> str:
-    """IPMS pads codes to 8 digits; the manual uses ints (no leading zero).
-    Strip leading zeros for joining and for emitting int form."""
+    """Normalize numeric codes by stripping leading zeros so SAP/IPMS-padded
+    strings ('01060061') and bare ints (1060061) compare equal."""
     if c is None:
         return ""
     return str(c).strip().lstrip("0")
-
-
-def _normalize_unit(u: Any) -> Any:
-    if u is None:
-        return None
-    return UNIT_ALIASES.get(str(u).strip(), str(u).strip())
-
-
-def _loss_factor(yield_pct: Any) -> float:
-    """Manual hand-rounds 100/yield to 2dp; emulate that. Default to 1
-    when yield is missing (consistent with manual's default)."""
-    if yield_pct is None or yield_pct == "":
-        return 1
-    try:
-        return round(100.0 / float(yield_pct), 2)
-    except (TypeError, ValueError):
-        return 1
-
-
-def load_ipms_bom_rows(paths: list[Path]) -> list[dict]:
-    """Read one or more IPMS 海外菜品物料明细 exports → flat list of
-    BOM dict rows. Skips rows missing dish_code, spec, or material_code."""
-    out: list[dict] = []
-    for path in paths:
-        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-        ws = wb[wb.sheetnames[0]]
-        iter_ = ws.iter_rows(values_only=True)
-        headers = list(next(iter_))
-        for vals in iter_:
-            row = {h: v for h, v in zip(headers, vals) if h}
-            if (row.get("菜品编码") and row.get("规格名称")
-                    and row.get("物料编码")):
-                out.append(row)
-        wb.close()
-    return out
 
 
 def load_pos_dish_meta(pos_path: Path) -> dict[tuple[str, str], dict]:
@@ -146,29 +108,34 @@ def load_pos_dish_meta(pos_path: Path) -> dict[tuple[str, str], dict]:
 def derive_calc_rows(bom_rows: list[dict], *, store_name: str,
                      pos_meta: dict[tuple[str, str], dict] | None = None,
                      ) -> list[list[Any]]:
-    """Build 计算 rows from BOM data for a single store.
+    """Build 计算 rows from store_bom data for a single store.
 
     The store_name parameterises both the 门店名称 column and the 检索
-    key (since A column is `store + code + short + spec` joined into the
-    Sheet3 lookup). All other columns are sourced from IPMS BOM and are
-    region-wide (so the same BOM data drives every store in the region).
+    key (since col A is `store + code + short + spec` joined into the
+    Sheet3 lookup). All other columns come from the BOM rows.
 
-    pos_meta supplies fields IPMS doesn't carry: 菜品短编码 (CRITICAL —
+    pos_meta supplies fields BOM may not carry: 菜品短编码 (CRITICAL —
     Sheet3's pivot keys include it, so without it the M/Q formula chain
-    can't resolve), 大类名称, 子类名称.
+    can't resolve), 大类名称, 子类名称, 菜品单价, 菜品单位. When a BOM
+    row already has dish_short_code, it wins; POS is the fallback.
     """
     pos_meta = pos_meta or {}
     out = []
     for b in bom_rows:
-        code = _norm_code(b["菜品编码"])
-        spec = str(b["规格名称"]).strip()
-        matnr = _norm_code(b["物料编码"])
+        code = _norm_code(b["dish_code"])
+        spec = str(b["spec"]).strip()
+        matnr = _norm_code(b["material_code"])
 
         code_int = int(code) if code.isdigit() else code
         matnr_int = int(matnr) if matnr.isdigit() else matnr
 
         meta = pos_meta.get((code, spec), {})
-        short_raw = meta.get("菜品短编码")
+        # Prefer the BOM-side short_code if present; fall back to POS.
+        bom_short = b.get("dish_short_code")
+        if bom_short in (None, ""):
+            short_raw = meta.get("菜品短编码")
+        else:
+            short_raw = bom_short
         short_int = (int(_norm_code(short_raw))
                      if short_raw and str(_norm_code(short_raw)).isdigit()
                      else (short_raw or None))
@@ -182,22 +149,14 @@ def derive_calc_rows(bom_rows: list[dict], *, store_name: str,
         short_str = "" if short_int is None else str(short_int)
         key = f"{store_name}{code_int}{short_str}{spec}"
 
-        portion_raw = b.get("单位物料用量")
-        try:
-            portion = (float(portion_raw)
-                       if portion_raw not in (None, "") else None)
-        except (TypeError, ValueError):
-            portion = portion_raw  # keep as text if unparseable
-        loss = _loss_factor(b.get("物料产成率（%）"))
-        unit = _normalize_unit(b.get("库存单位名称"))
-        # P (物料单位) is the analyst's packaging conversion factor between
-        # 用量单位 and 库存单位 (e.g., 0.354 公斤/瓶 for soup base). IPMS
-        # doesn't expose a packaging-master field, so we leave it blank —
-        # T formula handles blank P as "no conversion" via IF(P="",1,P).
-        # Don't put the IPMS 用量单位 text here: it's a string label, not
-        # a numeric factor, and would break T's multiplier.
-        name = b.get("菜品名称")
-        matdesc = b.get("物料名称")
+        portion = b.get("portion")
+        loss = b.get("loss_factor")
+        if loss in (None, ""):
+            loss = 1
+        unit = b.get("unit")
+        packaging_factor = b.get("packaging_factor")
+        name = b.get("dish_name")
+        matdesc = b.get("material_name")
 
         # 实收数量 (M), 红火台理论量 (Q), 物料用量 (T), 差异 (U), 备注1 (V),
         # 套餐拼盘用量 (W), 备注 (X), 备注 (Z) are all formulas in the
@@ -209,16 +168,16 @@ def derive_calc_rows(bom_rows: list[dict], *, store_name: str,
             big_cat,            # D 大类名称 (from POS)
             sub_cat,            # E 子类名称 (from POS)
             code_int,           # F 菜品编码
-            short_int,          # G 菜品短编码 (from POS)
+            short_int,          # G 菜品短编码 (BOM, fallback POS)
             name,               # H 菜品名称
             name,               # I 菜品名称（系统）
             spec,               # J 规格
             dish_price,         # K 菜品单价 (from POS listDishPotSale.dishPrice)
             dish_unit,          # L 菜品单位 (from POS listDishPotSale.unit)
             None,               # M 实收数量 — formula filled below
-            portion,            # N 出品分量 = IPMS 单位物料用量
+            portion,            # N 出品分量
             loss,               # O 损耗
-            None,               # P 物料单位 — packaging factor; blank by default
+            packaging_factor,   # P 物料单位 — packaging factor
             None,               # Q 红火台理论量 — formula
             matnr_int,           # R 物料号
             matdesc,            # S 物料描述

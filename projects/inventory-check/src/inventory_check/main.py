@@ -78,11 +78,6 @@ def main(argv: list[str] | None = None) -> int:
                         "上月数量需更新 / 上月盘点结果 / CA08-本月-盘点结果. are regenerated. The "
                         "report sheet uses VLOOKUP formulas (computed by Excel on open). Requires "
                         "--prev-report-file and --zfi0156-file.")
-    p.add_argument("--ipms-bom-file", action="append", default=None,
-                   dest="ipms_bom_files",
-                   help="IPMS 海外菜品物料明细 export (one tab per file: 菜品 + 锅底). "
-                        "Pass twice for both tabs. When provided, the 计算 sheet is "
-                        "regenerated from IPMS — manual is stale, IPMS is authoritative.")
     p.add_argument("--no-assemble", action="store_true",
                    help="Skip the final 盘点结果 report assembly")
 
@@ -106,7 +101,6 @@ def main(argv: list[str] | None = None) -> int:
         zfi0156_path=args.zfi0156_file,
         calc_path=args.calc_file,
         template_path=args.template_file,
-        ipms_bom_paths=args.ipms_bom_files,
         assemble=not args.no_assemble,
     )
 

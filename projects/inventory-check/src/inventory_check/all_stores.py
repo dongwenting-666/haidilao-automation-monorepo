@@ -338,7 +338,6 @@ def build_one(store_key: str, month: Month, out_root: Path,
               pos_path: Path | None,
               mb5b_shared: Path, zfi_shared: Path,
               template: Path,
-              ipms_bom_paths: list[Path],
               prev_report_root: Path | None = None,
               pos_set_path: Path | None = None,
               ) -> tuple[Path | None, str | None]:
@@ -389,7 +388,6 @@ def build_one(store_key: str, month: Month, out_root: Path,
             pos_set_path=pos_set_path,
             prev_report_path=prev_report_path,
             template_path=template,
-            ipms_bom_paths=[str(p) for p in ipms_bom_paths] or None,
             assemble=True,
         )
         return artifacts.report, None
@@ -424,13 +422,6 @@ def main(argv: list[str] | None = None) -> int:
                    help=f"Comma-separated store keys to skip (default: {','.join(DEFAULT_SKIP)})")
     p.add_argument("--stores", default=None,
                    help="Comma-separated subset to run (overrides ALL_STORES − --skip)")
-    p.add_argument("--ipms-bom-file", action="append", default=None,
-                   dest="ipms_bom_files",
-                   help="IPMS 海外菜品物料明细 export (pass twice — one per tab). "
-                        "When given, regenerates the 计算 sheet from IPMS BOM. "
-                        "Default: NOT used — the template's 计算 (manual brand "
-                        "recipes) is rekeyed per store. IPMS BOM had stale "
-                        "material codes per 2026-05 audit; manual is authoritative.")
     p.add_argument("--prev-report-root", default=None,
                    help="Root dir to auto-discover prev-month per-store reports "
                         "(populates 上月盘点结果 sheet). Looks for "
@@ -458,21 +449,6 @@ def main(argv: list[str] | None = None) -> int:
         if not path.exists():
             logger.error("%s not found: %s", label, path)
             return 2
-
-    # IPMS BOM is opt-in. Default: inherit the template's 计算 sheet
-    # (the manual's hand-curated brand recipes), with store-keyed cols
-    # (A 检索, C 门店名称) rekeyed per target store. Per 2026-05 audit
-    # IPMS material codes had drifted from the manual's recipes.
-    if args.ipms_bom_files:
-        ipms_bom_paths = [Path(p).expanduser() for p in args.ipms_bom_files]
-        logger.info("IPMS BOM (regen 计算 — opt-in): %s", ipms_bom_paths)
-        for p in ipms_bom_paths:
-            if not p.exists():
-                logger.error("IPMS BOM file not found: %s", p)
-                return 2
-    else:
-        ipms_bom_paths = []
-        logger.info("IPMS BOM disabled — inheriting template 计算 (rekey per store)")
 
     logger.info("running %d stores: %s", len(stores), stores)
     logger.info("month=%s  out_root=%s", args.month, out_root)
@@ -503,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     rows = []
     for s in stores:
         rep, err = build_one(s, month, out_root, pos_paths.get(s),
-                             mb5b, zfi, template, ipms_bom_paths,
+                             mb5b, zfi, template,
                              prev_report_root=prev_report_root,
                              pos_set_path=pos_set_paths.get(s))
         rows.append((s, rep, err))

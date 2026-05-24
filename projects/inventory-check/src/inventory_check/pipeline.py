@@ -281,7 +281,6 @@ def build_inventory_report(
     zfi0156_path: Path | str | None = None,
     calc_path: Path | str | None = None,
     template_path: Path | str | None = None,
-    ipms_bom_paths: list[Path | str] | None = None,
     assemble: bool = True,
 ) -> InventoryArtifacts:
     """End-to-end orchestration entry point.
@@ -356,7 +355,6 @@ def build_inventory_report(
                     ),
                     pos_path=pos_resolved,
                     pos_set_path=Path(pos_set_path) if pos_set_path else None,
-                    ipms_bom_paths=tuple(Path(p) for p in (ipms_bom_paths or [])),
                 ),
                 store=store, month=month,
                 out_path=out_dir / file_name,

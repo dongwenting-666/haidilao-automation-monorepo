@@ -374,101 +374,49 @@ def _make_report_row(row_no: int, matnr: str = "1000049") -> ReportRow:
     )
 
 
-def test_wipe_template_references_if_foreign_rekeys_calc(tmp_path: Path) -> None:
-    """Per 2026-05 user direction: 计算 is the brand recipe truth and must
-    be PRESERVED across foreign-store regenerations — only the
-    store-keyed cols (A 检索 / C 门店名称) get rewritten. BI套餐 (per-store
-    set-meal sales) still gets wiped on foreign templates.
+def test_wipe_inherited_recipe_sheets_clears_calc_and_bi(tmp_path: Path) -> None:
+    """Per 2026-05 migration: 计算 lives in store_bom now, BI套餐 from POS.
+    Both inherited data rows must be wiped up-front so a downstream
+    regen failure can't silently leak the template's native-store data.
+    Regional master sheets (分类, 折算数量, 对照表) are untouched.
     """
-    from inventory_check.stores import Store
-    from inventory_check.workbook import _wipe_template_references_if_foreign
+    from inventory_check.workbook import _wipe_inherited_recipe_sheets
 
     wb = Workbook()
-    # 计算 sheet — col C row 2 stores the template-native store name.
-    # Cols (A, B, C, D, E, F=code, G=short, H, I, J=spec) match the
-    # 26-col layout's positions for the rekey logic.
     calc = wb.active
     calc.title = "计算"
-    calc.append([f"col{i}" for i in range(26)])  # header
-    calc.append([
-        "加拿大八店1060061单锅", "加拿大", "加拿大八店",
-        None, None, 1060061, None, None, None, "单锅",
-    ] + [None] * 16)
-    calc.append([
-        "加拿大八店9000001整份", "加拿大", "加拿大八店",
-        None, None, 9000001, None, None, None, "整份",
-    ] + [None] * 16)
-    # 分类 etc.
+    calc.append([f"col{i}" for i in range(26)])
+    calc.append(["row1"] + [None] * 25)
+    calc.append(["row2"] + [None] * 25)
+
     for name in ("分类", "折算数量", "BI套餐", "对照表"):
         ws = wb.create_sheet(name)
         ws.append(["header"])
         ws.append(["data1"])
         ws.append(["data2"])
 
-    foreign = Store(sap_user="CA1DKG", werks="CA01", pos_name="加拿大一店")
-    _wipe_template_references_if_foreign(wb, foreign)
+    _wipe_inherited_recipe_sheets(wb)
 
-    # 计算 — recipe rows PRESERVED but rekeyed to the target store.
-    assert calc.max_row == 3
-    assert calc.cell(row=2, column=3).value == "加拿大一店"
-    assert calc.cell(row=2, column=1).value == "加拿大一店1060061单锅"
-    assert calc.cell(row=3, column=3).value == "加拿大一店"
-    assert calc.cell(row=3, column=1).value == "加拿大一店9000001整份"
-    # Recipe data (cols beyond C/A) untouched.
-    assert calc.cell(row=2, column=6).value == 1060061  # F 菜品编码
-    assert calc.cell(row=2, column=10).value == "单锅"   # J 规格
-    # BI套餐 — wiped on foreign (no per-store source).
+    # 计算 + BI套餐 — data wiped, header preserved.
+    assert calc.max_row == 1
     assert wb["BI套餐"].max_row == 1
-    # Regional master sheets (分类, 折算数量, 对照表): kept intact.
+    # Regional master sheets: untouched.
     for name in ("分类", "折算数量", "对照表"):
         ws = wb[name]
         assert ws.max_row == 3, f"{name} should be left intact"
         assert ws.cell(row=2, column=1).value == "data1"
 
 
-def test_rekey_calc_for_store_basic() -> None:
-    """_rekey_calc_for_store rewrites A and C, preserves all other cols."""
-    from inventory_check.stores import Store
-    from inventory_check.workbook import _rekey_calc_for_store
-
+def test_wipe_inherited_recipe_sheets_safe_on_missing_sheets() -> None:
+    """No-op when 计算 / BI套餐 aren't in the workbook."""
+    from inventory_check.workbook import _wipe_inherited_recipe_sheets
     wb = Workbook()
     ws = wb.active
-    ws.title = "计算"
-    ws.append([f"h{i}" for i in range(26)])
-    ws.append([
-        "加拿大八店1060061单锅", "加拿大", "加拿大八店",
-        "大类", "子类", 1060061, 12345, "清油麻辣火锅",
-        "清油麻辣火锅", "单锅",
-    ] + [None] * 16)
-    store = Store(sap_user="CA1DKG", werks="CA01", pos_name="加拿大一店")
-    n = _rekey_calc_for_store(ws, store)
-    assert n == 1
-    # A rekeyed, C rewritten, all other cols preserved.
-    assert ws.cell(row=2, column=1).value == "加拿大一店106006112345单锅"
-    assert ws.cell(row=2, column=3).value == "加拿大一店"
-    assert ws.cell(row=2, column=6).value == 1060061
-    assert ws.cell(row=2, column=8).value == "清油麻辣火锅"
-
-
-def test_wipe_template_references_keeps_native(tmp_path: Path) -> None:
-    """When the target store IS the template's native store, references
-    are left intact (the template's 计算 / 分类 are *this* store's data)."""
-    from inventory_check.stores import Store
-    from inventory_check.workbook import _wipe_template_references_if_foreign
-    wb = Workbook()
-    calc = wb.active
-    calc.title = "计算"
-    calc.append(["检索", "区域", "门店名称"])
-    calc.append(["k1", "加拿大", "加拿大八店"])
-    fenlei = wb.create_sheet("分类")
-    fenlei.append(["h"])
-    fenlei.append(["d"])
-
-    native = Store(sap_user="CA8DKG", werks="CA08", pos_name="加拿大八店")
-    _wipe_template_references_if_foreign(wb, native)
-
-    assert calc.max_row == 2  # data preserved
-    assert fenlei.max_row == 2
+    ws.title = "其他"
+    ws.append(["a", "b"])
+    _wipe_inherited_recipe_sheets(wb)
+    # Untouched.
+    assert ws.max_row == 1
 
 
 def test_replace_report_sheet_writes_static_and_formulas() -> None:
