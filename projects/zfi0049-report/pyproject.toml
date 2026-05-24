@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "sap-gui",
     "vpn",
+    "inventory-check",
     "python-dotenv>=1.0.0",
     "openpyxl>=3.1.0",
 ]
@@ -20,3 +21,4 @@ packages = ["src/zfi0049_report"]
 [tool.uv.sources]
 sap-gui = { workspace = true }
 vpn = { workspace = true }
+inventory-check = { workspace = true }
