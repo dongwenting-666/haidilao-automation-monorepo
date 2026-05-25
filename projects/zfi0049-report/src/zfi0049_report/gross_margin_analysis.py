@@ -38,6 +38,10 @@ from zfi0049_report.derivative_sheets import (
     build_yoy_sheet,
 )
 from zfi0049_report.static_meta import STORE_META
+from zfi0049_report.subdivided_gp_sheet import (
+    build_subdivided_gp_sheet,
+    compute_category_gp,
+)
 from zfi0049_report.table1_dish import (
     PosSale,
     Table1Row,
@@ -95,6 +99,11 @@ class GrossMarginInputs:
 
     # store_bom: store → list of recipe dicts (from inventory_check.db_bom)
     bom_rows: dict[str, list[dict]] = field(default_factory=dict)
+
+    # Pre-built prev-month Table1Row list — only needed if the caller wants
+    # 细分毛利率表 to show the 环比 column. Built the same way as cur table1
+    # rows but using prev-month POS sales + prev-month material prices.
+    prev_table1_rows: list = field(default_factory=list)
 
     # ZFI0156 + MB5B by werks: (werks, matnr) → value
     zfi_cur: dict = field(default_factory=dict)
@@ -169,16 +178,22 @@ def build_workbook(inputs: GrossMarginInputs, out_path: Path) -> Path:
     ws_inst.append(["2、其次填写《细分毛利率表》、《毛利率连续对比表》"])
     ws_inst.append(["3、再填写《毛利率环比》和《毛利率同比》中贴数部分"])
 
-    # Sheet 2: 细分毛利率表 (2) — TODO, placeholder for now.
-    ws_sub = wb.create_sheet("细分毛利率表 (2)")
-    ws_sub.append(["TODO: per-category gross margin breakdown — needs dish→category map"])
+    # Build 表1/2/3 first so derivative sheets can consume them.
+    table1_rows = _build_table1(inputs)
+
+    # Sheet 2: 细分毛利率表 (2) — per-category gross margin breakdown.
+    # Categories come from POS 大类 via dish_category.map_pos_to_report_category.
+    cur_gp = compute_category_gp(table1_rows)
+    prev_gp = (compute_category_gp(inputs.prev_table1_rows)
+               if inputs.prev_table1_rows else {})
+    build_subdivided_gp_sheet(
+        wb, cur_gp=cur_gp, prev_gp=prev_gp,
+        year=inputs.year, month=inputs.month,
+    )
 
     # Sheet 3: 毛利率连续对比表
     trend_rows = build_trend_rows(monthly_gp=inputs.monthly_gp)
     build_trend_sheet(wb, trend_rows)
-
-    # Build 表1/2/3 first so derivative sheets can consume them.
-    table1_rows = _build_table1(inputs)
     table2_rows = build_table2_rows(
         zfi_cur=inputs.zfi_cur,
         mb5b_cur=inputs.mb5b_cur,

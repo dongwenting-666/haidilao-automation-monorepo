@@ -72,6 +72,9 @@ class Table1Row:
     mom_revenue_impact: float | None = None  # 环比影响收入
     yoy_revenue_impact: float | None = None  # 同比影响收入
 
+    # ── Report category (for 细分毛利率表 aggregation) ──
+    category: str | None = None  # e.g. '锅底类', '荤菜类', '其他类（如有）'
+
     # ── Pricing date (col 26) ──
     price_change_date: Any = None  # 调价日期 — manual fill currently
 
@@ -175,6 +178,7 @@ class PosSale:
     spec: str
     sales_qty: float
     dish_unit: str | None = None  # not in older POS files
+    category: str | None = None   # report category (from POS 大类 → mapping)
 
 
 def load_pos_sales(path: Path) -> list[PosSale]:
@@ -186,6 +190,7 @@ def load_pos_sales(path: Path) -> list[PosSale]:
 
     实际出品数据 = 出品数量 - 退菜数量 (this is 本期销量 for 表1).
     """
+    from zfi0049_report.dish_category import map_pos_to_report_category
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     ws = wb[wb.sheetnames[0]]
     rows = list(ws.iter_rows(values_only=True))
@@ -203,6 +208,8 @@ def load_pos_sales(path: Path) -> list[PosSale]:
         net_i = idx["实际出品数据（出品数量-退菜数量）"]
     except KeyError as e:
         raise ValueError(f"POS file {path} missing expected column: {e}")
+    dalei_i = idx.get("大类名称")
+    zilei_i = idx.get("子类名称")
 
     out = []
     for vals in rows[1:]:
@@ -226,6 +233,8 @@ def load_pos_sales(path: Path) -> list[PosSale]:
             sales_f = float(sales) if sales not in (None, "") else 0.0
         except (TypeError, ValueError):
             sales_f = 0.0
+        dalei = vals[dalei_i] if dalei_i is not None and dalei_i < len(vals) else None
+        zilei = vals[zilei_i] if zilei_i is not None and zilei_i < len(vals) else None
         out.append(PosSale(
             store=str(store).strip(),
             dish_code=dish_int,
@@ -234,6 +243,7 @@ def load_pos_sales(path: Path) -> list[PosSale]:
             spec=str(vals[spec_i]).strip() if vals[spec_i] else "",
             sales_qty=sales_f,
             dish_unit=None,
+            category=map_pos_to_report_category(dalei, zilei),
         ))
     return out
 
@@ -273,7 +283,7 @@ def build_rows_for_store(
                              else (sale.dish_short_code if sale else None)),
             dish_name=str(b.get("dish_name") or (sale.dish_name if sale else "")),
             portion=float(b["portion"]) if b.get("portion") is not None else None,
-            dish_unit=None,  # POS doesn't carry dish_unit yet; TODO iter 3
+            dish_unit=sale.dish_unit if sale else None,
             spec=spec,
             sales_qty=sale.sales_qty if sale else 0,
             loss_factor=(float(b["loss_factor"])
@@ -281,6 +291,7 @@ def build_rows_for_store(
             material_code=(int(b["material_code"])
                            if b.get("material_code") is not None else None),
             material_name=b.get("material_name"),
+            category=sale.category if sale else None,
         ))
     return out
 
