@@ -16,6 +16,7 @@ from zfi0049_report.derivative_sheets import (
     build_trend_sheet,
     build_yoy_sheet,
     mom_row_to_excel,
+    restored_gp_discount,
     restored_gp_dish,
     restored_gp_material,
 )
@@ -44,6 +45,25 @@ def test_restored_gp_dish_handles_zero_revenue():
 
 def test_restored_gp_material_handles_zero_revenue():
     assert restored_gp_material(0.5, 0, 100.0) == 0.5
+
+
+def test_restored_gp_discount_matches_manual_canada_one_march():
+    """加拿大一店 March 2026: cur_gp=0.6974, discount_pct=0.0433
+    → manual 本月还原毛利率 = 0.7105."""
+    r = restored_gp_discount(cur_gp=0.6974, discount_pct=0.0433)
+    assert r == pytest.approx(0.7105, abs=1e-4)
+
+
+def test_restored_gp_discount_matches_manual_canada_one_feb():
+    """加拿大一店 上月: cur_gp=0.7006, discount_pct=0.0634
+    → manual 上月还原毛利率 = 0.7196."""
+    r = restored_gp_discount(cur_gp=0.7006, discount_pct=0.0634)
+    assert r == pytest.approx(0.7196, abs=1e-4)
+
+
+def test_restored_gp_discount_no_discount_returns_cur_gp():
+    """When discount = 0 the restored margin equals the input margin."""
+    assert restored_gp_discount(0.6974, 0.0) == pytest.approx(0.6974)
 
 
 # ── MomRow → 23-col Excel projection ──

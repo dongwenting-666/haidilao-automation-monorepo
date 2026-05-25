@@ -2,7 +2,7 @@
 
 Pulls together the per-sheet builders into a single workbook generator:
   1. 填写说明 — static instructions
-  2. 细分毛利率表 (2) — TODO (needs dish→category map)
+  2. 细分毛利率表 (2) — per-category gross margin breakdown
   3. 毛利率连续对比表 — 7-month rolling trend per store
   4. 毛利率环比 — MoM decomposition
   5. 毛利率同比 — YoY decomposition

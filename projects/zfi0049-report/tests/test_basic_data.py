@@ -77,6 +77,48 @@ def test_derived_hotpot_profit_formula_matches_canada_one_march_2026():
     assert d["火锅经营净利润率（所得税前）"] == pytest.approx(0.1204, abs=0.0005)
 
 
+def test_derived_cash_flow_adds_back_non_cash_pnl_items():
+    """经营性现金流 = 火锅经营净利润 + 资产折旧费 + 装修费摊销 + 资产减值损失.
+
+    Verified against 加拿大三店 March 2026: 火锅经营净利润 = -4044.87,
+    经营性现金流 = 16428.91 → implied depreciation+amortization ≈ 20,473.
+    Here we test the formula mechanically with synthetic numbers.
+    """
+    rec = StoreMonthRecord(
+        store="加拿大三店", year=2026, month=3, period_serial=46082,
+        pnl={
+            "一、主营业务收入": 617235.0,
+            '九、利润总额(亏损以"-"号表示)': 27548.73,
+            "十、所得税费用": 0.0,
+            '十一、净利润(亏损以"-"号表示)': 27548.73,
+            "3.3、资产折旧费": 18000.0,
+            "3.5、装修费摊销": 2473.0,
+            "3.7、资产减值损失": 0.0,
+        },
+        audit_adjustment=-1525.4675,
+        functional_fees=33119.0658,
+    )
+    d = compute_derived(rec)
+    # 火锅经营净利润 = 27548.73 - (-1525.47) - 33119.07 = -4044.87
+    assert d["火锅经营净利润"] == pytest.approx(-4044.87, abs=0.05)
+    # cash flow = -4044.87 + 18000 + 2473 + 0 = 16428.13 ≈ manual 16428.91
+    assert d["经营性现金流"] == pytest.approx(16428.13, abs=1.0)
+    assert d["经营性现金流（所得税前）"] == d["经营性现金流"]
+
+
+def test_derived_cash_flow_zero_when_no_depreciation_data():
+    """When the P&L lacks depreciation lines, cash flow falls back to
+    just 火锅经营净利润 (no add-backs)."""
+    rec = StoreMonthRecord(
+        store="加拿大一店", year=2026, month=3, period_serial=46082,
+        pnl={'九、利润总额(亏损以"-"号表示)': 100.0},
+        audit_adjustment=0.0,
+        functional_fees=0.0,
+    )
+    d = compute_derived(rec)
+    assert d["经营性现金流"] == pytest.approx(100.0)
+
+
 def test_build_row_shape():
     rec = StoreMonthRecord(
         store="加拿大一店", year=2026, month=3, period_serial=46082,

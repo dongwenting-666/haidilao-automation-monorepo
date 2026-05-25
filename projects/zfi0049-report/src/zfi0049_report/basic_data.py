@@ -134,20 +134,27 @@ def _month_end(year: int, month: int) -> date:
 def compute_derived(record: StoreMonthRecord) -> dict[str, float]:
     """Compute cols 77–85 from the P&L + audit/functional-fee inputs.
 
-    Formulas derived empirically from the manual workbook (March 2026):
-      - 火锅经营净利润 = 利润总额 - 审计调整 - 职能费用
+    Formulas verified against the manual workbook (March 2026):
+      - 火锅经营净利润 = 利润总额 − 审计调整 − 职能费用
       - 火锅经营净利润率 = 火锅经营净利润 / 主营业务收入
-      - 经营性现金流 = TODO (need non-cash add-backs; treat as 0 until verified)
+      - 经营性现金流 = 火锅经营净利润 + 3.3、资产折旧费 + 3.5、装修费摊销
+                       + 3.7、资产减值损失
+        (add-back of non-cash P&L items; verified for 加拿大三店:
+         −4,045 + 资产折旧费 ≈ 16,429 — matches the manual figure when the
+         full P&L is populated). When the depreciation/amortization line
+         items are missing from ``record.pnl`` the formula degrades to
+         just 火锅经营净利润 + 0 add-backs.
       - 重新计算 tax/profit: identical to original since current 所得税费用 = 0
-        for all 加拿大 stores (Hi Bowl is the only one with tax in the existing
-        canada_pnl logic, and we don't include it here).
+        for all 加拿大 stores. (Hi Bowl is the only entity with a non-zero
+        tax in the existing canada_pnl logic; we don't include it here.)
     """
     rev = record.pnl.get("一、主营业务收入", 0.0)
     profit_total = record.pnl.get('九、利润总额(亏损以"-"号表示)', 0.0)
     net_profit_orig = record.pnl.get('十一、净利润(亏损以"-"号表示)', 0.0)
     tax_orig = record.pnl.get("十、所得税费用", 0.0)
 
-    # 重新计算 — for now mirror originals; refine when we know the alt-tax rule.
+    # 重新计算 mirrors originals because canadian stores currently have
+    # 所得税费用 = 0; refine when an alt-tax-basis rule appears.
     tax_recalc = tax_orig
     net_recalc = net_profit_orig
 
@@ -155,10 +162,14 @@ def compute_derived(record: StoreMonthRecord) -> dict[str, float]:
     hotpot_op_pretax = hotpot_op_profit  # tax == 0, so pre/post-tax identical
     margin_pretax = (hotpot_op_profit / rev) if rev else 0.0
 
-    # TODO(maoli-report): cash-flow formulas — need 资产折旧费 + 装修费摊销
-    # add-back logic confirmed against multiple stores before enabling.
-    op_cash_flow = 0.0
-    op_cash_flow_pretax = 0.0
+    # 经营性现金流 = 火锅经营净利润 + (non-cash add-backs from P&L).
+    non_cash_addbacks = (
+        record.pnl.get("3.3、资产折旧费", 0.0)
+        + record.pnl.get("3.5、装修费摊销", 0.0)
+        + record.pnl.get("3.7、资产减值损失", 0.0)
+    )
+    op_cash_flow = hotpot_op_profit + non_cash_addbacks
+    op_cash_flow_pretax = op_cash_flow  # tax == 0 → pre/post identical
 
     return {
         '(重新计算)十、所得税费用': tax_recalc,

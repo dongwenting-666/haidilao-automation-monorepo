@@ -1,15 +1,16 @@
-"""Build the four 毛利率 derivative sheets:
+"""Build the three 毛利率 derivative sheets that live alongside 细分毛利率表:
   - 毛利率连续对比表 (7-month rolling trend + anomaly flags)
   - 毛利率环比 (MoM decomposition: dish-price / material-cost / discount impact)
   - 毛利率同比 (YoY equivalent)
-  - 细分毛利率表 (per-category gross margins — TODO, needs dish→category map)
+
+The fourth derivative sheet, 细分毛利率表 (per-category gross margin
+breakdown), lives in ``subdivided_gp_sheet.py``.
 
 Formulas verified against the manual workbook 附件3-毛利相关分析指标-2603.xlsx
 for 加拿大一店 March 2026:
-  - 还原毛利率(dish)  = (cur_gp · revenue − Δdish) / (revenue − Δdish)
-    where Δdish = 菜品涨价金额 (Σ over 表1 col 24 per store)
+  - 还原毛利率(dish)     = (cur_gp · revenue − Δdish) / (revenue − Δdish)
   - 还原毛利率(material) = cur_gp + Δcost / revenue
-    where Δcost = 原材料价格变动金额 (Σ over 表2 col 13 per store)
+  - 还原毛利率(discount) = 1 − (1 − cur_gp) · (1 − 优惠占比)
   - 毛利率影响 = cur_gp − 还原毛利率
 """
 from __future__ import annotations
@@ -62,6 +63,24 @@ def restored_gp_material(cur_gp: float, revenue: float,
     return cur_gp + delta_material / revenue
 
 
+def restored_gp_discount(cur_gp: float, discount_pct: float) -> float:
+    """Restored gross margin if no discount had been applied — i.e. the
+    gross margin computed against gross (pre-discount) revenue.
+
+    Manual workbook's "本月还原毛利率" / "上月还原毛利率" column for the
+    discount section. Derived from:
+      gross_revenue = revenue / (1 − discount_pct)
+      restored_gp   = (gross_revenue − cost) / gross_revenue
+                    = 1 − (revenue · (1 − cur_gp)) / gross_revenue
+                    = 1 − (1 − cur_gp) · (1 − discount_pct)
+
+    Verified against 加拿大一店 March 2026: cur_gp=0.6974, disc=0.0433
+      → 1 − 0.3026 × 0.9567 = 0.7105 (matches manual exactly).
+    Verified for 上月: cur_gp=0.7006, disc=0.0634 → 0.7196 ✓
+    """
+    return 1.0 - (1.0 - cur_gp) * (1.0 - discount_pct)
+
+
 # ── 毛利率环比 ───────────────────────────────────────────────────────────────
 
 
@@ -107,7 +126,9 @@ class MomRow:
     delta_material: float    # Σ 表2 col 13
     cur_discount_pct: float  # 表3 col 4
     prev_discount_pct: float  # 表3 col 7
-    delta_loss: float = 0.0  # 表1 col 34 sum (TODO when loss-impact cols built)
+    # Σ 表1 col 34 (损耗环比变动金额). Defaults to 0; populates when the
+    # caller has prev-month POS + material data to compute per-row loss-impact.
+    delta_loss: float = 0.0
 
 
 def _impact_columns(cur_gp: float, restored: float) -> tuple[float, float]:
@@ -127,14 +148,12 @@ def mom_row_to_excel(r: MomRow) -> list[Any]:
     restored_mat = restored_gp_material(r.cur_gp, r.cur_revenue, r.delta_material)
     impact_mat = r.cur_gp - restored_mat
 
-    # Discount impact (cols 14-17)
+    # Discount impact (cols 14-17). 还原毛利率 here means "what would the
+    # gross margin have been measured against gross (pre-discount) revenue"
+    # — verified vs manual: 加拿大一店 → 0.7105 (cur), 0.7196 (prev).
     discount_mom = r.cur_discount_pct - r.prev_discount_pct
-    # Per-discount "还原毛利率": gp + cur_discount_pct (rough but matches manual
-    # for 加拿大一店: 0.6974 + 0.0433 = 0.7407 vs manual 0.7105 — formula needs
-    # refinement). For now provide the column with a documented placeholder.
-    # TODO(iter-8): refine 还原毛利率 (discount) formula against manual numbers.
-    restored_disc_cur = r.cur_gp + r.cur_discount_pct
-    restored_disc_prev = r.prev_gp + r.prev_discount_pct
+    restored_disc_cur = restored_gp_discount(r.cur_gp, r.cur_discount_pct)
+    restored_disc_prev = restored_gp_discount(r.prev_gp, r.prev_discount_pct)
     impact_disc = r.cur_gp - restored_disc_cur
 
     # Loss impact (cols 19-20)
