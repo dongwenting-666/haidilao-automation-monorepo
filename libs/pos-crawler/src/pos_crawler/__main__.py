@@ -111,21 +111,102 @@ def _save_storage_with_promoted_cookies(
 
 def _wait_for_login(page: "Any", timeout_s: int, log: logging.Logger) -> bool:
     """Block until the page is past the QR / login redirect. Returns True if
-    already logged in (no QR shown), False if a fresh QR scan happened."""
+    already logged in (no manual interaction needed), False if a fresh QR
+    scan happened.
+
+    When the login page is shown, attempt to click the
+    "海底捞 飞书授权登录" (Lark OAuth) button — this completes auth via
+    existing Lark cookies on this host without requiring a QR scan.
+    During the Lark OAuth redirect chain the URL briefly contains
+    ``/oauth2/authorize`` (matched by ``_is_login_page``'s `/auth`
+    substring), so we use the hostname being back at the POS origin as
+    the "logged-in" signal once OAuth has been attempted.
+    """
+    from urllib.parse import urlparse
+
     deadline = time.monotonic() + timeout_s
     saw_qr = False
+    oauth_attempted = False
+    lark_consent_attempted = False
+    oauth_selectors = (
+        "text=海底捞 飞书授权登录",
+        "text=飞书授权登录",
+        "button:has-text('飞书授权')",
+    )
+    # Lark/Feishu OAuth consent screen — clicked once per app authorization
+    # (Lark remembers consent after first click so subsequent runs skip it).
+    lark_consent_selectors = (
+        "button:has-text('Authorize')",
+        "button:has-text('授权')",
+        "button:has-text('同意')",
+    )
+
+    def _on_pos_app(url: str) -> bool:
+        """True iff we're back on the POS origin with a non-login path."""
+        u = urlparse(url)
+        if "pos.superhi-tech.com" not in (u.hostname or ""):
+            return False
+        path = (u.path or "").lower()
+        return not any(frag in path for frag in ("/login", "/sso"))
+
+    tick = 0
     while time.monotonic() < deadline:
         try:
             qr_present = page.locator("text=飞书扫码登录").count() > 0
         except Exception:
             qr_present = True
+        if tick % 5 == 0:
+            log.info("[poll] url=%s qr=%s oauth_done=%s",
+                     page.url, qr_present, oauth_attempted)
+        tick += 1
+        # When the login page is up and we haven't tried OAuth yet,
+        # click the Lark-OAuth button to bypass the QR scan entirely.
+        if qr_present and not oauth_attempted:
+            for sel in oauth_selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if loc.count() == 0:
+                        continue
+                    loc.click(timeout=3000)
+                    log.info("Clicked OAuth button (%s) — bypassing QR scan", sel)
+                    oauth_attempted = True
+                    time.sleep(2)
+                    break
+                except Exception:
+                    continue
+            else:
+                # No OAuth button visible — mark attempted so we don't
+                # loop the selector probe; fall through to QR-scan wait.
+                oauth_attempted = True
+
+        # If we're on the Lark consent screen, click 'Authorize' once.
+        if (oauth_attempted and not lark_consent_attempted
+                and "accounts.feishu.cn" in (urlparse(page.url).hostname or "")):
+            for sel in lark_consent_selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if loc.count() == 0:
+                        continue
+                    loc.click(timeout=3000)
+                    log.info("Clicked Lark consent (%s)", sel)
+                    lark_consent_attempted = True
+                    time.sleep(2)
+                    break
+                except Exception:
+                    continue
         if qr_present:
             saw_qr = True
-        if not qr_present and not _is_login_page(page.url):
+        # During the OAuth redirect chain (briefly on accounts.feishu.cn),
+        # only treat ourselves as "logged in" once we're back on the POS
+        # origin. Otherwise fall back to the original login-path check.
+        ok = (_on_pos_app(page.url) if oauth_attempted
+              else (not qr_present and not _is_login_page(page.url)))
+        if ok:
             time.sleep(2)
-            if not _is_login_page(page.url):
+            if (_on_pos_app(page.url) if oauth_attempted
+                    else not _is_login_page(page.url)):
                 log.info("✅ Logged in. URL=%s", page.url)
-                return not saw_qr
+                return not saw_qr or oauth_attempted
         time.sleep(2)
     raise POSTimeoutError(f"Login not completed within {timeout_s}s")
 
