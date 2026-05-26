@@ -91,6 +91,10 @@ class GrossMarginInputs:
 
     # POS sales per store: store_name → list of PosSale
     pos_sales: dict[str, list[PosSale]] = field(default_factory=dict)
+    # Prev/YoY POS sales — used to build prev/yoy table1 rows so the
+    # 细分毛利率表 prev/YoY GM columns can be computed.
+    pos_prev_sales: dict[str, list[PosSale]] = field(default_factory=dict)
+    pos_yoy_sales: dict[str, list[PosSale]] = field(default_factory=dict)
 
     # POS prices per store (current/prev/YoY): store → {(dish,spec) → (price, unit)}
     pos_prices_cur: dict[str, dict] = field(default_factory=dict)
@@ -137,6 +141,41 @@ def _build_table1(inputs: GrossMarginInputs) -> list[Table1Row]:
     return all_rows
 
 
+def _build_prev_table1(inputs: GrossMarginInputs) -> list[Table1Row]:
+    """Build a prev-month table1 row list — same shape as cur but using
+    ``pos_prev_sales`` for sales and the same store_bom for recipes.
+
+    Material prices fall back to ``mb5b_cur`` when ``mb5b_prev`` is empty
+    (price drift month-over-month is small enough that the prev-GM
+    figures stay representative). When neither MB5B export is available
+    the per-row cost stays None and the resulting 细分毛利率表 prev cells
+    blank out as None rather than producing a misleading zero.
+    """
+    if not inputs.pos_prev_sales:
+        return []
+    all_rows: list[Table1Row] = []
+    werks_by_store = {v: k for k, v in WERKS_TO_STORE.items()}
+    mb5b_for_prev = inputs.mb5b_prev or inputs.mb5b_cur
+    for store, bom in inputs.bom_rows.items():
+        sales = inputs.pos_prev_sales.get(store, [])
+        if not sales:
+            continue
+        rows = build_rows_for_store(store, pos_sales=sales, bom_rows=bom)
+        werks = werks_by_store.get(store)
+        if werks:
+            enrich_with_materials(
+                rows, werks=werks,
+                zfi=inputs.zfi_cur,  # prev ZFI usage isn't needed for GM
+                mb5b_prices=mb5b_for_prev,
+            )
+        enrich_with_prices(
+            rows,
+            cur_prices=inputs.pos_prices_prev.get(store, {}),
+        )
+        all_rows.extend(rows)
+    return all_rows
+
+
 def _build_store_month_records(inputs: GrossMarginInputs) -> list[StoreMonthRecord]:
     """Build the cur-month 基础数据 row(s) — one per store with P&L."""
     out: list[StoreMonthRecord] = []
@@ -171,21 +210,52 @@ def build_workbook(inputs: GrossMarginInputs, out_path: Path) -> Path:
     wb = Workbook()
     wb.remove(wb.active)
 
-    # Sheet 1: instructions (static text)
+    # Sheet 1: instructions (static text — verbatim from the manual template).
     ws_inst = wb.create_sheet("填写说明")
     ws_inst.append(["填表说明：涉及金额的填写为本币金额"])
     ws_inst.append(["1、先更新《表1-菜品价格变动及菜品损耗表》、《表2-原材料成本变动表》、《表3-打折优惠表》"])
     ws_inst.append(["2、其次填写《细分毛利率表》、《毛利率连续对比表》"])
     ws_inst.append(["3、再填写《毛利率环比》和《毛利率同比》中贴数部分"])
+    ws_inst.append(["4、通过本表数据对比分析后，需识别毛利率相关分析问题在经营分析报告上描述即可（描述内容需包含如下图示例中问题类型，内容建议等）"])
+    ws_inst.append([])
+    ws_inst.append([f"{inputs.year}年{inputs.month}月毛利率相关问题"])
+    ws_inst.append(["序号", "问题内容", "问题描述及建议"])
+    ws_inst.append([
+        1, "毛利率环比下降异常",
+        "(1) 问题描述：本月XX店毛利率环比下降超过3%，且毛利率低于60%；\n"
+        "(2) 原因：如：本月库存盘点有误，影响成本虚增3万元，影响毛利率下降0.5%；"
+        "原材料成本环比增加8万元，影响毛利率下降XXX；",
+    ])
+    ws_inst.append([
+        2, "低毛利低点击率产品",
+        "（1）问题描述：通过数据发现XXX店和XXX店销售的牛蛙（现杀）属于负毛利、低点击率产品"
+        "（毛利率为-7.8%，点击率在1.5%左右），反馈至门店以及大区，由门店及大区评估是否下架或"
+        "通过其他如调价等措施提升毛利率\n"
+        "（2）建议：反馈至门店以及大区，由门店及大区评估是否下架或通过其他如调价等措施提升毛利率",
+    ])
+    ws_inst.append([
+        3, "单品锅底毛利率异常",
+        "(1) 问题描述：XXX店的番茄锅底及白玉锅底的毛利率较低损耗较大，该店番茄及白玉锅底"
+        "全月损耗较片区平均水平高566公斤，影响成本上升1.2万人民币，影响锅底毛利率下降2%；",
+    ])
+    ws_inst.append([
+        4, "酒水毛利率中单品毛利异常",
+        "(1) 问题描述：因盘点不准导致的毛利率异常问题，尤其贵重酒水盘差影响尤为明显，"
+        "如8月XXX店酒水毛利率环比7月下降16.7%，经复核发现门店飞天茅台漏盘，影响酒水毛利率下降异常；\n"
+        "(2) 原因：主要是门店库存盘点不准确，存在漏盘的问题",
+    ])
 
     # Build 表1/2/3 first so derivative sheets can consume them.
     table1_rows = _build_table1(inputs)
+    prev_table1_rows = (
+        inputs.prev_table1_rows or _build_prev_table1(inputs)
+    )
 
     # Sheet 2: 细分毛利率表 (2) — per-category gross margin breakdown.
     # Categories come from POS 大类 via dish_category.map_pos_to_report_category.
     cur_gp = compute_category_gp(table1_rows)
-    prev_gp = (compute_category_gp(inputs.prev_table1_rows)
-               if inputs.prev_table1_rows else {})
+    prev_gp = (compute_category_gp(prev_table1_rows)
+               if prev_table1_rows else {})
     build_subdivided_gp_sheet(
         wb, cur_gp=cur_gp, prev_gp=prev_gp,
         year=inputs.year, month=inputs.month,
@@ -277,6 +347,8 @@ def load_inputs_from_paths(
     loaded here.
     """
     pos_sales: dict[str, list[PosSale]] = {}
+    pos_prev_sales: dict[str, list[PosSale]] = {}
+    pos_yoy_sales: dict[str, list[PosSale]] = {}
     pos_prices_cur: dict[str, dict] = {}
     pos_prices_prev: dict[str, dict] = {}
     pos_prices_yoy: dict[str, dict] = {}
@@ -286,9 +358,11 @@ def load_inputs_from_paths(
             pos_prices_cur[store] = load_pos_prices(p)
     for store, p in (pos_prev_paths or {}).items():
         if p and p.exists():
+            pos_prev_sales[store] = load_pos_sales(p)
             pos_prices_prev[store] = load_pos_prices(p)
     for store, p in (pos_yoy_paths or {}).items():
         if p and p.exists():
+            pos_yoy_sales[store] = load_pos_sales(p)
             pos_prices_yoy[store] = load_pos_prices(p)
 
     return GrossMarginInputs(
@@ -298,6 +372,8 @@ def load_inputs_from_paths(
         yoy_pnl=yoy_pnl or {},
         monthly_gp=monthly_gp or {},
         pos_sales=pos_sales,
+        pos_prev_sales=pos_prev_sales,
+        pos_yoy_sales=pos_yoy_sales,
         pos_prices_cur=pos_prices_cur,
         pos_prices_prev=pos_prices_prev,
         pos_prices_yoy=pos_prices_yoy,

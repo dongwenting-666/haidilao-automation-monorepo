@@ -210,6 +210,7 @@ def load_pos_sales(path: Path) -> list[PosSale]:
         raise ValueError(f"POS file {path} missing expected column: {e}")
     dalei_i = idx.get("大类名称")
     zilei_i = idx.get("子类名称")
+    unit_i = idx.get("菜品单位")
 
     out = []
     for vals in rows[1:]:
@@ -235,6 +236,7 @@ def load_pos_sales(path: Path) -> list[PosSale]:
             sales_f = 0.0
         dalei = vals[dalei_i] if dalei_i is not None and dalei_i < len(vals) else None
         zilei = vals[zilei_i] if zilei_i is not None and zilei_i < len(vals) else None
+        unit = vals[unit_i] if unit_i is not None and unit_i < len(vals) else None
         out.append(PosSale(
             store=str(store).strip(),
             dish_code=dish_int,
@@ -242,7 +244,7 @@ def load_pos_sales(path: Path) -> list[PosSale]:
             dish_name=str(vals[name_i]).strip() if vals[name_i] else "",
             spec=str(vals[spec_i]).strip() if vals[spec_i] else "",
             sales_qty=sales_f,
-            dish_unit=None,
+            dish_unit=str(unit).strip() if unit else None,
             category=map_pos_to_report_category(dalei, zilei),
         ))
     return out

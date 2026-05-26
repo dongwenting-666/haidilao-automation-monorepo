@@ -170,6 +170,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Directory containing per-store POS xlsx files")
     p.add_argument("--pos-period", default="20260301-20260331",
                    help="POS filename period suffix (default: 20260301-20260331)")
+    p.add_argument("--pos-prev-dir", type=Path, required=False,
+                   help="Directory containing previous-month per-store POS xlsx files")
+    p.add_argument("--pos-prev-period", default=None,
+                   help="Prev-month POS filename period suffix (e.g. 20260201-20260228)")
+    p.add_argument("--pos-yoy-dir", type=Path, required=False,
+                   help="Directory containing YoY-month per-store POS xlsx files")
+    p.add_argument("--pos-yoy-period", default=None,
+                   help="YoY-month POS filename period suffix (e.g. 20250301-20250331)")
     p.add_argument("--reference-diff", type=Path, required=False,
                    help="Compare against a reference (manual) workbook")
     return p.parse_args(argv)
@@ -188,6 +196,14 @@ def main(argv: list[str] | None = None) -> int:
 
     pos_paths = (discover_pos_paths(args.pos_dir, args.pos_period)
                  if args.pos_dir else {})
+    pos_prev_paths = (
+        discover_pos_paths(args.pos_prev_dir, args.pos_prev_period)
+        if args.pos_prev_dir and args.pos_prev_period else {}
+    )
+    pos_yoy_paths = (
+        discover_pos_paths(args.pos_yoy_dir, args.pos_yoy_period)
+        if args.pos_yoy_dir and args.pos_yoy_period else {}
+    )
     bom_rows = load_bom_from_db()
 
     # Build the 7-month trend from cur+prev_pnl gross-margin values when
@@ -210,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
         month=args.month,
         cur_pnl=cur_pnl,
         pos_sales_paths=pos_paths,
+        pos_prev_paths=pos_prev_paths,
+        pos_yoy_paths=pos_yoy_paths,
         bom_rows=bom_rows,
         zfi_cur_path=args.zfi0156 or Path("/nonexistent"),
         mb5b_cur_path=args.mb5b or Path("/nonexistent"),

@@ -224,13 +224,24 @@ def test_enrich_with_prices_handles_missing_data():
     assert rows[0].yoy_price_delta is None
 
 
-def test_load_pos_prices_returns_empty_for_old_format():
-    """Older POS files lack 菜品单价 — graceful degrade, not crash."""
-    # CA08_POS is the older 12-col format
-    if not CA08_POS.exists():
-        pytest.skip("CA08 POS file not on this machine")
-    prices = load_pos_prices(CA08_POS)
-    assert prices == {}
+def test_load_pos_prices_returns_empty_for_old_format(tmp_path):
+    """Older POS files lack 菜品单价 — load_pos_prices returns empty dict."""
+    import openpyxl
+    p = tmp_path / "old-format.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    # 12-col old format — no 菜品单价 column
+    ws.append([
+        "检索", "门店名称", "编码", "菜品编码", "菜品短编码", "菜品名称",
+        "规格", "出品数量", "退菜数量", "实际出品数据（出品数量-退菜数量）",
+        "大类名称", "子类名称",
+    ])
+    ws.append([
+        "加拿大八店1060061单锅", "加拿大八店", None, 1060061, 10016,
+        "清油麻辣火锅", "单锅", 5, 0, 5, "锅底类", "单锅类",
+    ])
+    wb.save(p)
+    assert load_pos_prices(p) == {}
 
 
 @pytest.mark.skipif(not ZFI0156_MARCH.exists(),
