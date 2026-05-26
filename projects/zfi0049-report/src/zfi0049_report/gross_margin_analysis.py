@@ -109,6 +109,12 @@ class GrossMarginInputs:
     # rows but using prev-month POS sales + prev-month material prices.
     prev_table1_rows: list = field(default_factory=list)
 
+    # Full historical 基础数据 rows (one StoreMonthRecord per store-month).
+    # When provided, the 基础数据 sheet mirrors these records 1:1 instead
+    # of being built from cur_pnl alone — preserves the historical archive
+    # (since 2018) that the manual workbook carries.
+    basic_data_records: list = field(default_factory=list)
+
     # ZFI0156 + MB5B by werks: (werks, matnr) → value
     zfi_cur: dict = field(default_factory=dict)
     mb5b_cur: dict = field(default_factory=dict)
@@ -304,9 +310,13 @@ def build_workbook(inputs: GrossMarginInputs, out_path: Path) -> Path:
     ws3 = wb.create_sheet("表3-打折优惠表")
     write_table3_sheet(ws3, table3_rows)
 
-    # Sheet 9: 基础数据
+    # Sheet 9: 基础数据 — use the full historical record list when the
+    # caller supplied one (mirrors the manual workbook's archive); otherwise
+    # build a minimal cur-month record list from cur_pnl.
     ws_basic = wb.create_sheet("基础数据")
-    records = _build_store_month_records(inputs)
+    records = (inputs.basic_data_records
+               if inputs.basic_data_records
+               else _build_store_month_records(inputs))
     write_basic_data_sheet(ws_basic, records)
 
     out_path = Path(out_path)

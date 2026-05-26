@@ -44,6 +44,113 @@ from zfi0049_report.gross_margin_analysis import (
 log = logging.getLogger(__name__)
 
 
+def load_full_basic_data_records(
+    workbook_path: Path, sheet_name: str = "基础数据",
+) -> list:
+    """Load every row of a 基础数据 sheet → list[StoreMonthRecord].
+
+    Captures the entire P&L + derived + ops cols per row so the generated
+    workbook's 基础数据 mirrors the reference for all historical periods.
+    """
+    from zfi0049_report.basic_data import HEADERS as BASIC_HEADERS, StoreMonthRecord, OPS_HEADERS, PNL_ITEMS
+
+    if not workbook_path.exists():
+        return []
+    wb = load_workbook(workbook_path, data_only=True, read_only=True)
+    if sheet_name not in wb.sheetnames:
+        wb.close()
+        return []
+    ws = wb[sheet_name]
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    out = []
+    ops_keys = set(OPS_HEADERS)
+    pnl_keys = set(PNL_ITEMS)
+    for row in rows[1:]:
+        if len(row) < 6 or not row[0] or not row[1] or not row[5]:
+            continue
+        year_str = str(row[0]).rstrip("年")
+        month_str = str(row[1]).rstrip("月")
+        try:
+            year = int(year_str)
+            month = int(month_str)
+        except ValueError:
+            continue
+        period_serial = row[2] if isinstance(row[2], int) else 0
+        store = str(row[5])
+        pnl: dict[str, float] = {}
+        ops: dict = {}
+        audit = 0.0
+        functional = 0.0
+        for i, header in enumerate(BASIC_HEADERS):
+            if i >= len(row) or i < 6:
+                continue
+            v = row[i]
+            if v is None:
+                continue
+            if header == "审计调整" and isinstance(v, (int, float)):
+                audit = float(v)
+            elif header == "职能费用" and isinstance(v, (int, float)):
+                functional = float(v)
+            elif header in pnl_keys and isinstance(v, (int, float)):
+                pnl[header] = float(v)
+            elif header in ops_keys:
+                ops[header] = v
+        out.append(StoreMonthRecord(
+            store=store, year=year, month=month,
+            period_serial=period_serial, pnl=pnl, ops=ops,
+            audit_adjustment=audit, functional_fees=functional,
+        ))
+    return out
+
+
+def load_pnl_from_basic_data(
+    workbook_path: Path, *, year: int, month: int,
+    sheet_name: str = "基础数据",
+) -> dict[str, dict[str, float]]:
+    """Read a 毛利分析 workbook's 基础数据 sheet → {store → P&L dict}.
+
+    Used when no SAP ZFI0049 export is available locally — the manual
+    workbook itself is the source of truth for the P&L. The 基础数据
+    schema is: cols 1–6 identifiers (年份, 月份, ...三级部门=store),
+    cols 7+ named per ``basic_data.HEADERS``. We filter to rows where
+    年份 == f"{year}年" and 月份 == f"{month}月" and emit {store: pnl}.
+    """
+    from zfi0049_report.basic_data import HEADERS as BASIC_HEADERS
+
+    if not workbook_path.exists():
+        return {}
+    wb = load_workbook(workbook_path, data_only=True, read_only=True)
+    if sheet_name not in wb.sheetnames:
+        wb.close()
+        return {}
+    ws = wb[sheet_name]
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        return {}
+    year_label = f"{year}年"
+    month_label = f"{month}月"
+    out: dict[str, dict[str, float]] = {}
+    for row in rows[1:]:
+        if len(row) < 6:
+            continue
+        if row[0] != year_label or row[1] != month_label:
+            continue
+        store = row[5]
+        if not store:
+            continue
+        pnl: dict[str, float] = {}
+        for i, header in enumerate(BASIC_HEADERS):
+            if i < 6 or i >= len(row):
+                continue
+            v = row[i]
+            if isinstance(v, (int, float)):
+                pnl[header] = float(v)
+        out[str(store)] = pnl
+    return out
+
+
 def load_pnl_from_canada_xlsx(path: Path) -> dict[str, dict[str, float]]:
     """Read a canada_pnl.xlsx 损益表 sheet → {store → {item → amount}}.
 
@@ -166,6 +273,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Current-month canada_pnl xlsx (from zfi0049_report)")
     p.add_argument("--canada-pnl-prev", type=Path, required=False)
     p.add_argument("--canada-pnl-yoy", type=Path, required=False)
+    p.add_argument("--basic-data-ref", type=Path, required=False,
+                   help="Path to an existing 毛利分析 workbook whose 基础数据 "
+                        "sheet supplies the P&L data when no canada_pnl xlsx "
+                        "is available. Used to derive cur/prev/yoy P&L when "
+                        "the SAP mapping file isn't present locally.")
+    p.add_argument("--prev-year", type=int, default=None,
+                   help="Year of the prev-month P&L row (default: same as --year)")
+    p.add_argument("--prev-month", type=int, default=None,
+                   help="Month of the prev-month P&L row (default: --month − 1)")
+    p.add_argument("--yoy-year", type=int, default=None,
+                   help="Year of the YoY P&L row (default: --year − 1)")
+    p.add_argument("--yoy-month", type=int, default=None,
+                   help="Month of the YoY P&L row (default: --month)")
     p.add_argument("--pos-dir", type=Path, required=False,
                    help="Directory containing per-store POS xlsx files")
     p.add_argument("--pos-period", default="20260301-20260331",
@@ -194,6 +314,36 @@ def main(argv: list[str] | None = None) -> int:
     yoy_pnl = (load_pnl_from_canada_xlsx(args.canada_pnl_yoy)
                if args.canada_pnl_yoy else {})
 
+    # Fallback: read P&L from an existing 基础数据 sheet when canada_pnl
+    # files aren't available (i.e. SAP mapping file lives only on prod).
+    if args.basic_data_ref:
+        prev_year = args.prev_year or args.year
+        prev_month = args.prev_month
+        if prev_month is None:
+            prev_month = args.month - 1 if args.month > 1 else 12
+            if args.month == 1:
+                prev_year = args.year - 1
+        yoy_year = args.yoy_year or (args.year - 1)
+        yoy_month = args.yoy_month or args.month
+        if not cur_pnl:
+            cur_pnl = load_pnl_from_basic_data(
+                args.basic_data_ref, year=args.year, month=args.month,
+            )
+            log.info("loaded cur_pnl from %s: %d stores", args.basic_data_ref,
+                     len(cur_pnl))
+        if not prev_pnl:
+            prev_pnl = load_pnl_from_basic_data(
+                args.basic_data_ref, year=prev_year, month=prev_month,
+            )
+            log.info("loaded prev_pnl (%d-%02d) from basic_data: %d stores",
+                     prev_year, prev_month, len(prev_pnl))
+        if not yoy_pnl:
+            yoy_pnl = load_pnl_from_basic_data(
+                args.basic_data_ref, year=yoy_year, month=yoy_month,
+            )
+            log.info("loaded yoy_pnl (%d-%02d) from basic_data: %d stores",
+                     yoy_year, yoy_month, len(yoy_pnl))
+
     pos_paths = (discover_pos_paths(args.pos_dir, args.pos_period)
                  if args.pos_dir else {})
     pos_prev_paths = (
@@ -206,20 +356,39 @@ def main(argv: list[str] | None = None) -> int:
     )
     bom_rows = load_bom_from_db()
 
-    # Build the 7-month trend from cur+prev_pnl gross-margin values when
-    # available (this Mac will only have cur+prev; a real prod run reads
-    # all 7 months from an archive).
+    # Build the 7-month rolling trend. When --basic-data-ref is provided
+    # we read 7 consecutive months' P&L from the reference workbook;
+    # otherwise we fall back to cur/prev/YoY-only (pad rest with zeros).
     monthly_gp: dict[str, list[float]] = {}
-    for store in STORE_ORDER:
-        gps = []
-        for pnl in (cur_pnl, prev_pnl, yoy_pnl):
-            v = pnl.get(store, {}).get("三、毛利率")
-            gps.append(float(v) if v is not None else 0.0)
-        # Pad to 7 months
-        while len(gps) < 7:
-            gps.append(0.0)
-        if any(gps):
-            monthly_gp[store] = gps
+    if args.basic_data_ref:
+        # 7 most-recent months ending at (args.year, args.month) inclusive.
+        history_pnls: list[dict[str, dict[str, float]]] = []
+        yy, mm = args.year, args.month
+        for _ in range(7):
+            history_pnls.append(load_pnl_from_basic_data(
+                args.basic_data_ref, year=yy, month=mm,
+            ))
+            mm -= 1
+            if mm == 0:
+                mm = 12
+                yy -= 1
+        for store in STORE_ORDER:
+            gps = []
+            for pnl in history_pnls:
+                v = pnl.get(store, {}).get("三、毛利率")
+                gps.append(float(v) if v is not None else 0.0)
+            if any(gps):
+                monthly_gp[store] = gps
+    else:
+        for store in STORE_ORDER:
+            gps = []
+            for pnl in (cur_pnl, prev_pnl, yoy_pnl):
+                v = pnl.get(store, {}).get("三、毛利率")
+                gps.append(float(v) if v is not None else 0.0)
+            while len(gps) < 7:
+                gps.append(0.0)
+            if any(gps):
+                monthly_gp[store] = gps
 
     inputs = load_inputs_from_paths(
         year=args.year,
@@ -237,6 +406,15 @@ def main(argv: list[str] | None = None) -> int:
         mb5b_prev_path=args.mb5b_prev,
         mb5b_yoy_path=args.mb5b_yoy,
     )
+
+    # When --basic-data-ref is provided, mirror the historical archive
+    # (every store-month row) into the generated workbook's 基础数据 sheet.
+    if args.basic_data_ref:
+        inputs.basic_data_records = load_full_basic_data_records(
+            args.basic_data_ref,
+        )
+        log.info("loaded %d 基础数据 records from %s",
+                 len(inputs.basic_data_records), args.basic_data_ref)
 
     out = build_workbook(inputs, args.output)
     log.info("毛利分析 workbook saved: %s", out)
