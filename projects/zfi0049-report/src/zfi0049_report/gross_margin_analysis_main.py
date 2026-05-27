@@ -383,6 +383,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Directory containing YoY-month per-store POS xlsx files")
     p.add_argument("--pos-yoy-period", default=None,
                    help="YoY-month POS filename period suffix (e.g. 20250301-20250331)")
+    p.add_argument("--style-template", type=Path, required=False,
+                   help="Workbook to copy as a styled template — data cells "
+                        "are overwritten in place so fonts/fills/borders/"
+                        "merged cells/conditional formatting/column widths "
+                        "exactly match. Typically the manual workbook.")
     p.add_argument("--reference-diff", type=Path, required=False,
                    help="Compare against a reference (manual) workbook")
     return p.parse_args(argv)
@@ -508,7 +513,8 @@ def main(argv: list[str] | None = None) -> int:
         log.info("loaded %d 基础数据 records from %s",
                  len(inputs.basic_data_records), args.basic_data_ref)
 
-    out = build_workbook(inputs, args.output)
+    out = build_workbook(inputs, args.output,
+                         style_template=args.style_template)
     log.info("毛利分析 workbook saved: %s", out)
 
     if args.reference_diff:

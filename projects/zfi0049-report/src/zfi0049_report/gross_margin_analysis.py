@@ -210,13 +210,18 @@ def _build_store_month_records(inputs: GrossMarginInputs) -> list[StoreMonthReco
     return out
 
 
-def build_workbook(inputs: GrossMarginInputs, out_path: Path) -> Path:
+def build_workbook(inputs: GrossMarginInputs, out_path: Path,
+                   *, style_template: Path | None = None) -> Path:
     """Build the full 毛利相关分析指标 workbook → out_path.
 
-    Sheets are added in the order the manual workbook uses them so that
-    formula references (table1 → derivative sheets) resolve cleanly when
-    Excel opens the file.
+    When ``style_template`` is given, copy that workbook and overwrite
+    only the data cells in place — preserving the manual's exact styling
+    (fonts, fills, borders, merged cells, conditional formatting, column
+    widths). Otherwise build all sheets from scratch (unstyled).
     """
+    if style_template is not None:
+        return _build_workbook_from_template(inputs, out_path, style_template)
+
     wb = Workbook()
     wb.remove(wb.active)
 
@@ -330,6 +335,116 @@ def build_workbook(inputs: GrossMarginInputs, out_path: Path) -> Path:
         "wrote 毛利分析 workbook → %s (table1=%d rows, table2=%d, table3=%d, mom=%d)",
         out_path, len(table1_rows), len(table2_rows),
         len(table3_rows), len(mom_rows),
+    )
+    return out_path
+
+
+def _build_workbook_from_template(
+    inputs: GrossMarginInputs, out_path: Path, style_template: Path,
+) -> Path:
+    """Fill a styled template copy with computed data (styles preserved)."""
+    from zfi0049_report.template_fill import (
+        fill_positioned_rows, fill_table_sheet, open_template,
+    )
+    from zfi0049_report.table1_dish import to_row as t1_to_row
+    from zfi0049_report.table2_material import to_row as t2_to_row
+    from zfi0049_report.table3_discount import to_row as t3_to_row
+    from zfi0049_report.basic_data import build_row as basic_build_row
+    from zfi0049_report.derivative_sheets import mom_row_to_excel
+    from zfi0049_report.dish_category import REPORT_CATEGORIES
+
+    # ── Compute all data structures (same as the from-scratch path) ──
+    table1_rows = _build_table1(inputs)
+    prev_table1_rows = inputs.prev_table1_rows or _build_prev_table1(inputs)
+    cur_gp = compute_category_gp(table1_rows)
+    prev_gp = compute_category_gp(prev_table1_rows) if prev_table1_rows else {}
+    table2_rows = build_table2_rows(
+        zfi_cur=inputs.zfi_cur, mb5b_cur=inputs.mb5b_cur,
+        mb5b_prev=inputs.mb5b_prev, mb5b_yoy=inputs.mb5b_yoy,
+    )
+    table3_rows = build_table3_rows(
+        cur_pnl=inputs.cur_pnl, prev_pnl=inputs.prev_pnl, yoy_pnl=inputs.yoy_pnl,
+    )
+    mom_rows = build_mom_rows(
+        cur_pnl=inputs.cur_pnl, prev_pnl=inputs.prev_pnl,
+        table1_rows=table1_rows, table2_rows=table2_rows, table3_rows=table3_rows,
+    )
+    yoy_mom_rows = build_mom_rows(
+        cur_pnl=inputs.cur_pnl, prev_pnl=inputs.yoy_pnl,
+        table1_rows=table1_rows, table2_rows=table2_rows, table3_rows=table3_rows,
+    )
+    records = (inputs.basic_data_records
+               if inputs.basic_data_records
+               else _build_store_month_records(inputs))
+
+    wb = open_template(style_template, out_path)
+
+    # ── Flat tables: 表1 / 表2 / 基础数据 ──
+    fill_table_sheet(wb, "表1-菜品价格变动及菜品损耗表 (模板) ",
+                     [t1_to_row(r) for r in table1_rows], ncols=36)
+    fill_table_sheet(wb, "表2-原材料成本变动表",
+                     [t2_to_row(r) for r in table2_rows], ncols=29)
+    fill_table_sheet(wb, "基础数据",
+                     [basic_build_row(r) for r in records], ncols=126)
+
+    # ── 表3: 8 store rows (store name in col 3) ──
+    t3_by_store = {r.store: t3_to_row(r) for r in table3_rows}
+    fill_positioned_rows(
+        wb, "表3-打折优惠表", t3_by_store,
+        store_col=3, start_row=5, end_row=12,
+        value_cols=list(range(4, 16)),
+    )
+
+    # ── 毛利率环比 / 同比: store name in col 2, data rows 5-12 ──
+    mom_by_store = {r.store: mom_row_to_excel(r) for r in mom_rows}
+    fill_positioned_rows(
+        wb, "毛利率环比", mom_by_store,
+        store_col=2, start_row=5, end_row=12,
+        value_cols=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23],
+    )
+    yoy_by_store = {r.store: mom_row_to_excel(r) for r in yoy_mom_rows}
+    fill_positioned_rows(
+        wb, "毛利率同比", yoy_by_store,
+        store_col=2, start_row=5, end_row=12,
+        value_cols=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23],
+    )
+
+    # ── 细分毛利率表 (2): 2026 block, store rows 20-27 ──
+    # Build a full-row map per store: col2=store, then per-category cur/prev/环比.
+    sub_by_store: dict[str, list] = {}
+    stores_in_gp = {k[0] for k in cur_gp} | {k[0] for k in prev_gp}
+    for store in stores_in_gp:
+        row: list = [None] * 26
+        for cat_idx, cat in enumerate(REPORT_CATEGORIES):
+            col = 3 + cat_idx * 3  # 1-based
+            cur = cur_gp.get((store, cat))
+            prev = prev_gp.get((store, cat))
+            cgm = cur[2] if cur and cur[2] is not None else None
+            pgm = prev[2] if prev and prev[2] is not None else None
+            row[col - 1] = cgm
+            row[col] = pgm
+            row[col + 1] = (cgm - pgm) if (cgm is not None and pgm is not None) else None
+        sub_by_store[store] = row
+    fill_positioned_rows(
+        wb, "细分毛利率表 (2)", sub_by_store,
+        store_col=2, start_row=20, end_row=27,
+        value_cols=list(range(3, 24)),
+    )
+
+    # ── 毛利率连续对比表: store name in col 4, data rows 6-12 ──
+    trend_rows = build_trend_rows(monthly_gp=inputs.monthly_gp)
+    trend_by_store = {r[3]: r for r in trend_rows if len(r) > 3 and r[3]}
+    fill_positioned_rows(
+        wb, "毛利率连续对比表", trend_by_store,
+        store_col=4, start_row=6, end_row=12,
+        value_cols=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22],
+    )
+
+    out_path = Path(out_path)
+    wb.save(out_path)
+    logger.info(
+        "wrote styled 毛利分析 workbook → %s (table1=%d, table2=%d, table3=%d, mom=%d)",
+        out_path, len(table1_rows), len(table2_rows), len(table3_rows), len(mom_rows),
     )
     return out_path
 
