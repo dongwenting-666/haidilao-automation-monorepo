@@ -182,6 +182,85 @@ def load_pnl_from_canada_xlsx(path: Path) -> dict[str, dict[str, float]]:
     return out
 
 
+def load_ipms_bom_recipes(paths: list[Path]) -> list[dict]:
+    """Load IPMS 海外菜品物料明细 export(s) → list of neutral recipe dicts.
+
+    These region-wide BOM exports carry the full per-dish×spec×material
+    recipe (520+ dishes vs the 266 in store_bom seeded from one template).
+    Columns: 菜品编码 / 规格名称 / 物料编码 / 物料名称 / 单位物料用量 /
+    物料产成率（%）/ 库存单位名称.
+
+    loss_factor = round(100 / 产成率, 2) (default 1.0 when blank), matching
+    inventory_check.calc_sheet semantics. 库存单位 '磅-美' → '磅'.
+    """
+    UNIT_ALIASES = {"磅-美": "磅"}
+    out: list[dict] = []
+    for path in paths:
+        if not path.exists():
+            log.warning("IPMS BOM file not found: %s", path)
+            continue
+        wb = load_workbook(path, data_only=True, read_only=True)
+        ws = wb[wb.sheetnames[0]]
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        if not rows:
+            continue
+        hdr = {h: i for i, h in enumerate(rows[0]) if h}
+        ci_dish = hdr.get("菜品编码")
+        ci_name = hdr.get("菜品名称")
+        ci_spec = hdr.get("规格名称")
+        ci_mat = hdr.get("物料编码")
+        ci_matname = hdr.get("物料名称")
+        ci_portion = hdr.get("单位物料用量")
+        ci_yield = hdr.get("物料产成率（%）")
+        ci_unit = hdr.get("库存单位名称")
+        if ci_dish is None or ci_spec is None or ci_mat is None:
+            log.warning("IPMS BOM %s missing required columns", path)
+            continue
+
+        def _int(v):
+            if v in (None, ""):
+                return None
+            try:
+                return int(str(v).strip().lstrip("0") or "0")
+            except (TypeError, ValueError):
+                return None
+
+        def _at(row, i):
+            return row[i] if i is not None and i < len(row) else None
+
+        for r in rows[1:]:
+            dish = _int(_at(r, ci_dish))
+            mat = _int(_at(r, ci_mat))
+            spec = _at(r, ci_spec)
+            if dish is None or mat is None or not spec:
+                continue
+            portion_raw = _at(r, ci_portion)
+            try:
+                portion = float(portion_raw) if portion_raw not in (None, "") else None
+            except (TypeError, ValueError):
+                portion = None
+            yield_raw = _at(r, ci_yield)
+            try:
+                loss = round(100.0 / float(yield_raw), 2) if yield_raw not in (None, "") else 1.0
+            except (TypeError, ValueError, ZeroDivisionError):
+                loss = 1.0
+            unit_raw = _at(r, ci_unit)
+            unit = UNIT_ALIASES.get(str(unit_raw).strip(), str(unit_raw).strip()) if unit_raw else None
+            out.append({
+                "dish_code": dish,
+                "dish_short_code": None,  # filled from POS downstream
+                "dish_name": _at(r, ci_name),
+                "spec": str(spec).strip(),
+                "material_code": mat,
+                "material_name": _at(r, ci_matname),
+                "portion": portion,
+                "loss_factor": loss,
+                "unit": unit,
+            })
+    return out
+
+
 def discover_pos_paths(pos_dir: Path,
                        period: str = "20260301-20260331") -> dict[str, Path]:
     """Auto-discover per-store POS files in ``pos_dir``.
@@ -286,6 +365,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Year of the YoY P&L row (default: --year − 1)")
     p.add_argument("--yoy-month", type=int, default=None,
                    help="Month of the YoY P&L row (default: --month)")
+    p.add_argument("--ipms-bom", type=Path, action="append", default=None,
+                   dest="ipms_bom",
+                   help="IPMS 海外菜品物料明细 export(s) — pass once per file "
+                        "(菜品 + 锅底 tabs). Region-wide recipes broadcast to "
+                        "all 8 stores. Overrides store_bom when provided "
+                        "(broader coverage: ~540 dishes vs 266).")
     p.add_argument("--pos-dir", type=Path, required=False,
                    help="Directory containing per-store POS xlsx files")
     p.add_argument("--pos-period", default="20260301-20260331",
@@ -354,7 +439,14 @@ def main(argv: list[str] | None = None) -> int:
         discover_pos_paths(args.pos_yoy_dir, args.pos_yoy_period)
         if args.pos_yoy_dir and args.pos_yoy_period else {}
     )
-    bom_rows = load_bom_from_db()
+    # BOM source: IPMS export (broad coverage) when provided, else store_bom DB.
+    if args.ipms_bom:
+        recipes = load_ipms_bom_recipes(list(args.ipms_bom))
+        bom_rows = {store: recipes for store in STORE_ORDER if store != "加拿大九店"}
+        log.info("loaded %d IPMS recipes, broadcast to %d stores",
+                 len(recipes), len(bom_rows))
+    else:
+        bom_rows = load_bom_from_db()
 
     # Build the 7-month rolling trend. When --basic-data-ref is provided
     # we read 7 consecutive months' P&L from the reference workbook;

@@ -259,12 +259,17 @@ def build_rows_for_store(
     pos_sales: list[PosSale],
     bom_rows: list[dict[str, Any]],
     region: str = "加拿大",
+    sold_only: bool = False,
 ) -> list[Table1Row]:
     """Join POS sales with store_bom rows for a single store.
 
     Each BOM row (dish × spec × material) produces one Table1Row. Sales
     for the (dish, spec) come from ``pos_sales``; rows with no matching
     sale get sales_qty = 0.
+
+    When ``sold_only`` is True, only BOM rows whose (dish, spec) appears
+    in this store's POS sales are emitted — this matches the manual 表1
+    which lists dishes actually sold per store (not the full region BOM).
     """
     # Index POS by (dish_code, spec) for fast lookup
     sales_idx: dict[tuple[int, str], PosSale] = {}
@@ -276,6 +281,8 @@ def build_rows_for_store(
         dish = int(b["dish_code"])
         spec = str(b["spec"]).strip()
         sale = sales_idx.get((dish, spec))
+        if sold_only and sale is None:
+            continue
         out.append(Table1Row(
             region=region,
             store=store,

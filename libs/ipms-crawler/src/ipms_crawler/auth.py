@@ -50,6 +50,49 @@ _LOGIN_PATH_FRAGMENTS = ("/login",)
 # 我的工作台 is the first item in the top nav (see CLAUDE-side screenshots).
 POST_LOGIN_SELECTOR = "text=我的工作台"
 
+# Lark OAuth ("海底捞 飞书授权登录") + consent buttons — same flow as the
+# POS portal. Auto-clicking these completes auth via existing Lark cookies
+# on the superhi-tech.com host without a QR scan.
+_OAUTH_SELECTORS = (
+    "text=海底捞 飞书授权登录",
+    "text=飞书授权登录",
+    "button:has-text('飞书授权')",
+)
+_LARK_CONSENT_SELECTORS = (
+    "button:has-text('Authorize')",
+    "button:has-text('授权')",
+    "button:has-text('同意')",
+)
+
+
+def _try_lark_oauth(page, logger) -> bool:
+    """On the IPMS login page, click the Lark-OAuth button then the Lark
+    consent 'Authorize' button. Returns True if a button was clicked.
+
+    Best-effort and idempotent — safe to call repeatedly in a poll loop.
+    """
+    from urllib.parse import urlparse
+    clicked = False
+    host = urlparse(page.url).hostname or ""
+    if "accounts.feishu.cn" in host:
+        selectors = _LARK_CONSENT_SELECTORS
+        label = "Lark consent"
+    else:
+        selectors = _OAUTH_SELECTORS
+        label = "OAuth"
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if loc.count() == 0:
+                continue
+            loc.click(timeout=3000)
+            logger.info("Clicked %s button (%s)", label, sel)
+            clicked = True
+            break
+        except Exception:
+            continue
+    return clicked
+
 
 def _is_login_page(url: str) -> bool:
     from urllib.parse import urlparse
@@ -342,8 +385,14 @@ class IPMSSession:
 
             # Login is detected when the post-login UI appears
             # (我的工作台 in the top nav) AND the URL has left /login.
+            # First try the Lark-OAuth path (no QR scan needed); fall back
+            # to manual QR if the OAuth buttons aren't present.
             deadline = time.monotonic() + timeout_s
             while time.monotonic() < deadline:
+                try:
+                    _try_lark_oauth(page, logger)
+                except PlaywrightError:
+                    pass
                 try:
                     page.wait_for_selector(
                         POST_LOGIN_SELECTOR,

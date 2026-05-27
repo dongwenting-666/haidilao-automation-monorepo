@@ -128,7 +128,11 @@ def _build_table1(inputs: GrossMarginInputs) -> list[Table1Row]:
     werks_by_store = {v: k for k, v in WERKS_TO_STORE.items()}
     for store, bom in inputs.bom_rows.items():
         sales = inputs.pos_sales.get(store, [])
-        rows = build_rows_for_store(store, pos_sales=sales, bom_rows=bom)
+        # Only emit recipe rows for dishes actually sold in this store —
+        # matches the manual 表1 which is POS-driven per store.
+        rows = build_rows_for_store(
+            store, pos_sales=sales, bom_rows=bom, sold_only=bool(sales),
+        )
         werks = werks_by_store.get(store)
         if werks:
             enrich_with_materials(
