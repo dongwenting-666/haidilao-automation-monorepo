@@ -104,6 +104,61 @@ def load_full_basic_data_records(
     return out
 
 
+def load_yoy_pnl_from_manual(workbook_path: Path) -> dict[str, dict[str, float]]:
+    """Extract per-store YoY P&L fields from a manual workbook's
+    表3-打折优惠表 (revenue + discount) and 毛利率同比 (gross margin).
+
+    Used when the reference 基础数据 archive is missing March 2025 rows
+    but the YoY-comparison sheets carry the actual paste-from-管报 values.
+    Derives COGS = revenue × (1 − 毛利率) so downstream consumers (毛利率同比,
+    表3 YoY block) can compute deltas consistently.
+
+    Returns {store → P&L dict} with keys matching basic_data PNL_ITEMS /
+    OPS_HEADERS where possible.
+    """
+    if not workbook_path.exists():
+        return {}
+    wb = load_workbook(workbook_path, data_only=True, read_only=True)
+    out: dict[str, dict[str, float]] = {}
+
+    if "表3-打折优惠表" in wb.sheetnames:
+        ws = wb["表3-打折优惠表"]
+        for row in ws.iter_rows(min_row=5, max_row=12, values_only=True):
+            store = row[2]
+            if not store or "店" not in str(store):
+                continue
+            rev = row[11] if isinstance(row[11], (int, float)) else 0.0
+            disc = row[12] if isinstance(row[12], (int, float)) else 0.0
+            if rev == 0 and disc == 0:
+                continue
+            out.setdefault(str(store), {})
+            out[str(store)]["1、销售净收入"] = float(rev)
+            out[str(store)]["1、产品销售成本"] = 0.0  # filled by GM step
+            out[str(store)]["优惠总金额（不含税）"] = float(disc)
+            out[str(store)]["营业收入(堂吃)(不含税)"] = float(rev)
+
+    if "毛利率同比" in wb.sheetnames:
+        ws = wb["毛利率同比"]
+        for row in ws.iter_rows(min_row=5, max_row=14, values_only=True):
+            store = row[1]
+            if not store or "店" not in str(store):
+                continue
+            gp = row[3] if isinstance(row[3], (int, float)) else None
+            if gp is None or str(store) not in out:
+                continue
+            rev = out[str(store)].get("1、销售净收入", 0.0)
+            cogs = rev * (1.0 - float(gp))
+            out[str(store)]["三、毛利率"] = float(gp)
+            out[str(store)]["1、产品销售成本"] = cogs
+            out[str(store)]["1、产品销售毛利率"] = float(gp)
+            # Roll-up aggregates that basic_data computes
+            out[str(store)]["一、主营业务收入"] = rev
+            out[str(store)]["二、主营业务成本（减）"] = cogs
+
+    wb.close()
+    return out
+
+
 def load_pnl_from_basic_data(
     workbook_path: Path, *, year: int, month: int,
     sheet_name: str = "基础数据",
@@ -433,6 +488,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             log.info("loaded yoy_pnl (%d-%02d) from basic_data: %d stores",
                      yoy_year, yoy_month, len(yoy_pnl))
+            # 基础数据 in the reference workbook may skip historical months
+            # (e.g. the 2026-03 manual is missing 2025-3 through 2025-6).
+            # Fall back to the YoY sheets (表3 + 毛利率同比) which carry the
+            # paste-from-管报 values directly.
+            if not yoy_pnl:
+                yoy_pnl = load_yoy_pnl_from_manual(args.basic_data_ref)
+                log.info("loaded yoy_pnl from 表3 + 毛利率同比: %d stores",
+                         len(yoy_pnl))
 
     pos_paths = (discover_pos_paths(args.pos_dir, args.pos_period)
                  if args.pos_dir else {})
