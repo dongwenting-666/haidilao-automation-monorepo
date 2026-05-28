@@ -400,13 +400,13 @@ def _build_workbook_from_template(
     fill_positioned_rows(
         wb, "毛利率环比", mom_by_store,
         store_col=2, start_row=5, end_row=12,
-        value_cols=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23],
+        value_cols=list(range(3, 24)),  # cols 3..23 (all computed data)
     )
     yoy_by_store = {r.store: mom_row_to_excel(r) for r in yoy_mom_rows}
     fill_positioned_rows(
         wb, "毛利率同比", yoy_by_store,
         store_col=2, start_row=5, end_row=12,
-        value_cols=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23],
+        value_cols=list(range(3, 24)),  # cols 3..23 (all computed data)
     )
 
     # ── 细分毛利率表 (2): 2026 block, store rows 20-27 ──
