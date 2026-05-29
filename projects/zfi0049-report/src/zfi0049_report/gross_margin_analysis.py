@@ -485,19 +485,24 @@ def _build_workbook_from_template(
 
     # ── 细分毛利率表 (2): 2026 block, store rows 20-27 ──
     # Build a full-row map per store: col2=store, then per-category cur/prev/环比.
+    # Cover all 8 加拿大 stores even when GP data is empty (CA06 has empty
+    # POS in March 2026 → all zeros in the manual). Use 0 for unfilled
+    # categories so missing-category cells aren't left blank.
     sub_by_store: dict[str, list] = {}
-    stores_in_gp = {k[0] for k in cur_gp} | {k[0] for k in prev_gp}
-    for store in stores_in_gp:
+    for store in [
+        "加拿大一店", "加拿大二店", "加拿大三店", "加拿大四店",
+        "加拿大五店", "加拿大六店", "加拿大七店", "加拿大八店",
+    ]:
         row: list = [None] * 26
         for cat_idx, cat in enumerate(REPORT_CATEGORIES):
             col = 3 + cat_idx * 3  # 1-based
             cur = cur_gp.get((store, cat))
             prev = prev_gp.get((store, cat))
-            cgm = cur[2] if cur and cur[2] is not None else None
-            pgm = prev[2] if prev and prev[2] is not None else None
+            cgm = cur[2] if cur and cur[2] is not None else 0
+            pgm = prev[2] if prev and prev[2] is not None else 0
             row[col - 1] = cgm
             row[col] = pgm
-            row[col + 1] = (cgm - pgm) if (cgm is not None and pgm is not None) else None
+            row[col + 1] = cgm - pgm
         sub_by_store[store] = row
     fill_positioned_rows(
         wb, "细分毛利率表 (2)", sub_by_store,

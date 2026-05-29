@@ -149,7 +149,8 @@ def to_row(r: Table1Row) -> list[Any]:
         r.material_unit_price,              # 20
         r.material_period_usage,            # 21
         r.set_meal_usage,                   # 22
-        r.set_meal_qty,                     # 23
+        # Manual writes 0 (not blank) when a dish has no set-meal qty.
+        r.set_meal_qty if r.set_meal_qty is not None else 0,  # 23
         r.mom_revenue_impact,               # 24
         r.yoy_revenue_impact,               # 25
         r.price_change_date,                # 26
