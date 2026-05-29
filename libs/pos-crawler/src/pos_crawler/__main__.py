@@ -30,6 +30,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from pos_crawler.auth import POSSession, _is_login_page
+from pos_crawler.dish_set_sales import download_dish_set_sales
 from pos_crawler.constants import BASE_URL, DEFAULT_STORAGE_PATH
 from pos_crawler.dish_sales import (
     GROUP_COLLECT_BY_COLUMN,
@@ -209,6 +210,47 @@ def _wait_for_login(page: "Any", timeout_s: int, log: logging.Logger) -> bool:
                 return not saw_qr or oauth_attempted
         time.sleep(2)
     raise POSTimeoutError(f"Login not completed within {timeout_s}s")
+
+
+def cmd_download_dish_set_sales(args: argparse.Namespace) -> None:
+    """Drive 菜品套餐报表 — same login flow as dish-sales, different endpoint."""
+    if args.month and (args.start or args.end):
+        raise SystemExit("Use --month OR --start/--end, not both")
+    if args.month:
+        start_date, end_date = _month_to_dates(args.month)
+    elif args.start and args.end:
+        start_date, end_date = args.start, args.end
+    else:
+        raise SystemExit("Provide --month YYYY-MM, or both --start and --end")
+
+    output_dir = Path(args.output_dir)
+    storage_path = Path(args.storage_path)
+    storage_path.parent.mkdir(parents=True, exist_ok=True)
+    log = logging.getLogger("pos_crawler.download_dish_set_sales")
+
+    POSSession._ensure_browser()
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=False)
+        ctx_kwargs: dict = {}
+        if storage_path.exists():
+            ctx_kwargs["storage_state"] = str(storage_path)
+            log.info("Reusing saved session at %s", storage_path)
+        context = browser.new_context(**ctx_kwargs)
+        page = context.new_page()
+        page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60_000)
+        _wait_for_login(page, args.login_timeout, log)
+        _save_storage_with_promoted_cookies(context, storage_path, log)
+        try:
+            output_path = download_dish_set_sales(
+                page,
+                start_date=start_date, end_date=end_date,
+                store_name=args.store, output_dir=output_dir,
+            )
+            print(f"\n✅ Saved {output_path}")
+        finally:
+            _save_storage_with_promoted_cookies(context, storage_path, log)
+            context.close()
+            browser.close()
 
 
 def cmd_download_dish_sales(args: argparse.Namespace) -> None:
@@ -417,6 +459,19 @@ def main() -> None:
              "dish-spec for the entire date range — what 红火台销售汇总 expects)",
     )
     dish_parser.set_defaults(func=cmd_download_dish_sales)
+
+    # download-dish-set-sales (套餐报表)
+    set_parser = sub.add_parser(
+        "download-dish-set-sales",
+        help="Drive 菜品套餐报表 (set-meal sales) and save xlsx",
+    )
+    set_parser.add_argument("--store", required=True)
+    set_parser.add_argument("--month", help="Calendar month YYYY-MM")
+    set_parser.add_argument("--start")
+    set_parser.add_argument("--end")
+    set_parser.add_argument("--output-dir", default="output/pos")
+    set_parser.add_argument("--login-timeout", type=int, default=300)
+    set_parser.set_defaults(func=cmd_download_dish_set_sales)
 
     # debug-pos: hands-on diagnostic — log XHRs while you click around
     debug_parser = sub.add_parser(
