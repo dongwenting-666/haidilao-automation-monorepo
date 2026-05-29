@@ -158,10 +158,11 @@ def to_row(r: Table1Row) -> list[Any]:
         r.actual_gp_rate,                   # 28
         r.theoretical_gp_rate,              # 29
         r.theoretical_usage,                # 30 — dup of col 12
-        r.actual_usage,                     # 31
-        r.loss_cost_cur,                    # 32
-        r.loss_cost_prev,                   # 33
-        r.loss_cost_mom_delta,              # 34
+        # Manual writes 0 (not blank) on non-canonical rows for cols 31 & 34.
+        r.actual_usage if r.actual_usage is not None else 0,       # 31
+        r.loss_cost_cur,                    # 32 (blank on non-canonical)
+        r.loss_cost_prev,                   # 33 (blank on non-canonical)
+        r.loss_cost_mom_delta if r.loss_cost_mom_delta is not None else 0,  # 34
         r.loss_cost_comparable,             # 35
         r.loss_cost_yoy_delta,              # 36
     ]
