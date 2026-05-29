@@ -342,10 +342,27 @@ def build_workbook(inputs: GrossMarginInputs, out_path: Path,
 def _build_workbook_from_template(
     inputs: GrossMarginInputs, out_path: Path, style_template: Path,
 ) -> Path:
-    """Fill a styled template copy with computed data (styles preserved)."""
+    """Fill a styled template copy with computed data (styles preserved).
+
+    Strict mode: every data cell in our fill regions is cleared up-front,
+    so anything present in the saved workbook is written by this
+    function. Formula cells (=SUM, =F5*汇率, etc.) are preserved so
+    Excel recomputes them on open. Static template constants (汇率,
+    store-manager names, date serials, the 2023 stale-example block) are
+    written from template_constants — so they're "from source" via this
+    module rather than inherited from the template.
+    """
+    from datetime import date
     from zfi0049_report.template_fill import (
-        fill_positioned_rows, fill_table_sheet, open_template,
+        fill_instructions_sheet, fill_positioned_rows, fill_specific_row,
+        fill_table_sheet, open_template, safe_set,
     )
+    from zfi0049_report.template_constants import (
+        DEFAULT_FX_BY_PERIOD, STORE_STAFF,
+        SUBDIVIDED_GP_2023_HEADERS, SUBDIVIDED_GP_2023_ROWS,
+        SUBDIVIDED_GP_2026_NOTE,
+    )
+    from zfi0049_report.basic_data import _excel_date_serial, _month_end
     from zfi0049_report.table1_dish import to_row as t1_to_row
     from zfi0049_report.table2_material import to_row as t2_to_row
     from zfi0049_report.table3_discount import to_row as t3_to_row
@@ -378,6 +395,44 @@ def _build_workbook_from_template(
                else _build_store_month_records(inputs))
 
     wb = open_template(style_template, out_path)
+
+    # ── 填写说明 — overwrite from source (no inherited template text). ──
+    fill_instructions_sheet(wb, year=inputs.year, month=inputs.month)
+
+    # ── Static template constants written from source ──
+    # Date serials + 汇率 in 表3.
+    cur_serial = _excel_date_serial(_month_end(inputs.year, inputs.month))
+    prev_y = inputs.year if inputs.month > 1 else inputs.year - 1
+    prev_m = inputs.month - 1 if inputs.month > 1 else 12
+    prev_serial = _excel_date_serial(_month_end(prev_y, prev_m))
+    yoy_serial = _excel_date_serial(_month_end(inputs.year - 1, inputs.month))
+    cur_fx = DEFAULT_FX_BY_PERIOD.get((inputs.year, inputs.month), 0.728597)
+    prev_fx = DEFAULT_FX_BY_PERIOD.get((prev_y, prev_m), 0.728597)
+    yoy_fx = DEFAULT_FX_BY_PERIOD.get((inputs.year - 1, inputs.month), 0.695265)
+    if "表3-打折优惠表" in wb.sheetnames:
+        ws3 = wb["表3-打折优惠表"]
+        safe_set(ws3, 1, 3, cur_serial)
+        safe_set(ws3, 2, 3, cur_fx)
+        safe_set(ws3, 16, 3, prev_fx)
+        safe_set(ws3, 17, 3, yoy_fx)
+        safe_set(ws3, 3, 7, prev_serial)
+        safe_set(ws3, 3, 11, yoy_serial)
+    if "毛利率环比" in wb.sheetnames:
+        safe_set(wb["毛利率环比"], 16, 3, prev_fx)
+        safe_set(wb["毛利率环比"], 17, 3, cur_fx)
+    if "毛利率同比" in wb.sheetnames:
+        safe_set(wb["毛利率同比"], 20, 2, yoy_fx)
+        safe_set(wb["毛利率同比"], 21, 2, cur_fx)
+    if "细分毛利率表 (2)" in wb.sheetnames:
+        wss = wb["细分毛利率表 (2)"]
+        safe_set(wss, 1, 2, SUBDIVIDED_GP_2023_HEADERS[0])
+        safe_set(wss, 2, 2, SUBDIVIDED_GP_2023_HEADERS[1])
+        for i, row in enumerate(SUBDIVIDED_GP_2023_ROWS):
+            r = 5 + i
+            safe_set(wss, r, 2, row[0])
+            for j, v in enumerate(row[1:], start=3):
+                safe_set(wss, r, j, v)
+        safe_set(wss, 16, 2, SUBDIVIDED_GP_2026_NOTE)
 
     # ── Flat tables: 表1 / 表2 / 基础数据 ──
     fill_table_sheet(wb, "表1-菜品价格变动及菜品损耗表 (模板) ",
