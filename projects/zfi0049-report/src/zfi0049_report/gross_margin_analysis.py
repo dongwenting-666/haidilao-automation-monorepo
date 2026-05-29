@@ -48,12 +48,15 @@ from zfi0049_report.table1_dish import (
     WERKS_TO_STORE,
     apply_canonical_blanking,
     build_rows_for_store,
+    compute_loss_impact,
     compute_revenue_impact,
     enrich_with_materials,
     enrich_with_prices,
+    enrich_with_set_meals,
     load_mb5b_prices,
     load_pos_prices,
     load_pos_sales,
+    load_pos_set_sales,
     load_zfi0156,
     write_sheet as write_table1_sheet,
 )
@@ -95,6 +98,8 @@ class GrossMarginInputs:
     # 细分毛利率表 prev/YoY GM columns can be computed.
     pos_prev_sales: dict[str, list[PosSale]] = field(default_factory=dict)
     pos_yoy_sales: dict[str, list[PosSale]] = field(default_factory=dict)
+    # POS 菜品套餐汇总 — {(store, dish_code, spec) → Σ 应收数量}.
+    pos_set_qty: dict[tuple[str, int, str], float] = field(default_factory=dict)
 
     # POS prices per store (current/prev/YoY): store → {(dish,spec) → (price, unit)}
     pos_prices_cur: dict[str, dict] = field(default_factory=dict)
@@ -117,6 +122,8 @@ class GrossMarginInputs:
 
     # ZFI0156 + MB5B by werks: (werks, matnr) → value
     zfi_cur: dict = field(default_factory=dict)
+    zfi_prev: dict = field(default_factory=dict)
+    zfi_yoy: dict = field(default_factory=dict)
     mb5b_cur: dict = field(default_factory=dict)
     mb5b_prev: dict = field(default_factory=dict)
     mb5b_yoy: dict = field(default_factory=dict)
@@ -146,8 +153,18 @@ def _build_table1(inputs: GrossMarginInputs) -> list[Table1Row]:
             yoy_prices=inputs.pos_prices_yoy.get(store, {}),
         )
         compute_revenue_impact(rows)
-        apply_canonical_blanking(rows)
         all_rows.extend(rows)
+
+    # 套餐 cols 22-23 — populate from POS 菜品套餐汇总 aggregate.
+    if inputs.pos_set_qty:
+        enrich_with_set_meals(all_rows, inputs.pos_set_qty)
+    # Loss-impact cols 32-36 — needs the full row list to compute per-
+    # (store, material) aggregates. Run AFTER all stores are accumulated
+    # so prev / yoy lookups work across the whole region. Canonical
+    # blanking happens last so non-canonical rows are cleared at the end.
+    prev_rows = inputs.prev_table1_rows or _build_prev_table1(inputs)
+    compute_loss_impact(all_rows, prev_rows=prev_rows)
+    apply_canonical_blanking(all_rows)
     return all_rows
 
 
@@ -166,17 +183,19 @@ def _build_prev_table1(inputs: GrossMarginInputs) -> list[Table1Row]:
     all_rows: list[Table1Row] = []
     werks_by_store = {v: k for k, v in WERKS_TO_STORE.items()}
     mb5b_for_prev = inputs.mb5b_prev or inputs.mb5b_cur
+    zfi_for_prev = inputs.zfi_prev or inputs.zfi_cur
     for store, bom in inputs.bom_rows.items():
         sales = inputs.pos_prev_sales.get(store, [])
         if not sales:
             continue
-        rows = build_rows_for_store(store, pos_sales=sales, bom_rows=bom)
+        rows = build_rows_for_store(
+            store, pos_sales=sales, bom_rows=bom, sold_only=True,
+        )
         werks = werks_by_store.get(store)
         if werks:
             enrich_with_materials(
                 rows, werks=werks,
-                zfi=inputs.zfi_cur,  # prev ZFI usage isn't needed for GM
-                mb5b_prices=mb5b_for_prev,
+                zfi=zfi_for_prev, mb5b_prices=mb5b_for_prev,
             )
         enrich_with_prices(
             rows,
@@ -516,6 +535,9 @@ def load_inputs_from_paths(
     bom_rows: dict[str, list[dict]],
     zfi_cur_path: Path,
     mb5b_cur_path: Path,
+    pos_set_paths: dict[str, Path] | None = None,
+    zfi_prev_path: Path | None = None,
+    zfi_yoy_path: Path | None = None,
     monthly_gp: dict[str, list[float]] | None = None,
     prev_pnl: dict[str, dict[str, float]] | None = None,
     yoy_pnl: dict[str, dict[str, float]] | None = None,
@@ -549,6 +571,11 @@ def load_inputs_from_paths(
             pos_yoy_sales[store] = load_pos_sales(p)
             pos_prices_yoy[store] = load_pos_prices(p)
 
+    pos_set_qty: dict[tuple[str, int, str], float] = {}
+    for store, p in (pos_set_paths or {}).items():
+        if p and p.exists():
+            pos_set_qty.update(load_pos_set_sales(p))
+
     return GrossMarginInputs(
         year=year, month=month,
         cur_pnl=cur_pnl,
@@ -558,11 +585,16 @@ def load_inputs_from_paths(
         pos_sales=pos_sales,
         pos_prev_sales=pos_prev_sales,
         pos_yoy_sales=pos_yoy_sales,
+        pos_set_qty=pos_set_qty,
         pos_prices_cur=pos_prices_cur,
         pos_prices_prev=pos_prices_prev,
         pos_prices_yoy=pos_prices_yoy,
         bom_rows=bom_rows,
         zfi_cur=load_zfi0156(zfi_cur_path) if zfi_cur_path.exists() else {},
+        zfi_prev=(load_zfi0156(zfi_prev_path)
+                  if zfi_prev_path and zfi_prev_path.exists() else {}),
+        zfi_yoy=(load_zfi0156(zfi_yoy_path)
+                 if zfi_yoy_path and zfi_yoy_path.exists() else {}),
         mb5b_cur=load_mb5b_prices(mb5b_cur_path) if mb5b_cur_path.exists() else {},
         mb5b_prev=(load_mb5b_prices(mb5b_prev_path)
                    if mb5b_prev_path and mb5b_prev_path.exists() else {}),

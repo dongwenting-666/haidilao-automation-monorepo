@@ -403,6 +403,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Current-month MB5B export")
     p.add_argument("--mb5b-prev", type=Path, required=False)
     p.add_argument("--mb5b-yoy", type=Path, required=False)
+    p.add_argument("--zfi0156-prev", type=Path, required=False,
+                   help="Prev-month ZFI0156 export — used for 表1 col 33 损耗")
+    p.add_argument("--zfi0156-yoy", type=Path, required=False,
+                   help="YoY-month ZFI0156 export — used for 表1 col 35 损耗")
+    p.add_argument("--pos-set-dir", type=Path, required=False,
+                   help="Directory containing per-store POS 菜品套餐汇总 xlsx files")
+    p.add_argument("--pos-set-period", default=None,
+                   help="POS set-meal filename period suffix (e.g. 20260301-20260331)")
     p.add_argument("--canada-pnl", type=Path, required=False,
                    help="Current-month canada_pnl xlsx (from zfi0049_report)")
     p.add_argument("--canada-pnl-prev", type=Path, required=False)
@@ -499,6 +507,13 @@ def main(argv: list[str] | None = None) -> int:
 
     pos_paths = (discover_pos_paths(args.pos_dir, args.pos_period)
                  if args.pos_dir else {})
+    # POS 菜品套餐汇总 — filename pattern: {store}-菜品套餐汇总-{period}.xlsx
+    pos_set_paths: dict[str, Path] = {}
+    if args.pos_set_dir and args.pos_set_period:
+        for store in STORE_ORDER:
+            cand = args.pos_set_dir / f"{store}-菜品套餐汇总-{args.pos_set_period}.xlsx"
+            if cand.exists():
+                pos_set_paths[store] = cand
     pos_prev_paths = (
         discover_pos_paths(args.pos_prev_dir, args.pos_prev_period)
         if args.pos_prev_dir and args.pos_prev_period else {}
@@ -557,8 +572,11 @@ def main(argv: list[str] | None = None) -> int:
         pos_sales_paths=pos_paths,
         pos_prev_paths=pos_prev_paths,
         pos_yoy_paths=pos_yoy_paths,
+        pos_set_paths=pos_set_paths,
         bom_rows=bom_rows,
         zfi_cur_path=args.zfi0156 or Path("/nonexistent"),
+        zfi_prev_path=args.zfi0156_prev,
+        zfi_yoy_path=args.zfi0156_yoy,
         mb5b_cur_path=args.mb5b or Path("/nonexistent"),
         monthly_gp=monthly_gp,
         prev_pnl=prev_pnl,

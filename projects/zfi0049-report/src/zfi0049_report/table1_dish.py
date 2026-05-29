@@ -659,6 +659,152 @@ def apply_canonical_blanking(rows: list[Table1Row],
 # ── Revenue impact (cols 24-25) ─────────────────────────────────────────────
 
 
+def load_pos_set_sales(path: Path) -> dict[tuple[str, int, str], float]:
+    """Read a POS 菜品套餐汇总 xlsx → {(store, dish_code, spec) → Σ 应收数量}.
+
+    Used to fill 表1 col 22 (套餐拼盘用量) per (dish, spec). The set-meal
+    breakdown is by SPEC — a given dish may appear in some set meals as
+    单锅, others as 拼锅, with different 应收数量. Key includes spec so
+    enrichment matches the right row.
+
+    Manual workbook for 加拿大一店 1060066 confirms per-spec keying:
+      canonical 单锅 row col 22 = 0  (no set meals use 单锅)
+      拼锅 row col 22 = 1.2          (portion 0.6 × 2)
+      四宫格 row col 22 = 210.9      (portion 0.3 × 703)
+    """
+    out: dict[tuple[str, int, str], float] = {}
+    if not path.exists():
+        return out
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    ws = wb[wb.sheetnames[0]]
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        return out
+    hdr = list(rows[0])
+
+    def col(name: str) -> int | None:
+        try:
+            return hdr.index(name)
+        except ValueError:
+            return None
+
+    store_i = col("门店名称")
+    dish_i = col("菜品编码")
+    spec_i = col("菜品规格名称")
+    qty_i = col("应收数量")
+    if store_i is None or dish_i is None or qty_i is None:
+        return out
+
+    for r in rows[1:]:
+        store = r[store_i] if store_i < len(r) else None
+        dish = r[dish_i] if dish_i < len(r) else None
+        spec = r[spec_i] if spec_i is not None and spec_i < len(r) else None
+        qty = r[qty_i] if qty_i < len(r) else None
+        if not store or dish is None or not isinstance(qty, (int, float)):
+            continue
+        try:
+            dish_int = int(str(dish).strip().lstrip("0") or "0")
+        except (TypeError, ValueError):
+            continue
+        spec_str = str(spec).strip() if spec else ""
+        key = (str(store).strip(), dish_int, spec_str)
+        out[key] = out.get(key, 0.0) + float(qty)
+    return out
+
+
+def enrich_with_set_meals(
+    rows: list[Table1Row],
+    set_qty_by_key: dict[tuple[str, int, str], float],
+) -> None:
+    """Populate 表1 col 22 (套餐拼盘用量) = portion × Σ应收数量 per
+    (store, dish, spec). Col 23 套餐销量 stays None in our pipeline —
+    the manual workbook itself leaves it empty on every row checked.
+    """
+    for r in rows:
+        qty = set_qty_by_key.get((r.store, r.dish_code, r.spec), 0.0)
+        if r.portion is not None:
+            r.set_meal_usage = r.portion * qty
+
+
+def compute_loss_impact(
+    cur_rows: list[Table1Row],
+    *,
+    prev_rows: list[Table1Row] | None = None,
+    yoy_rows: list[Table1Row] | None = None,
+) -> None:
+    """Populate cols 32-36 (loss-impact cost) on canonical cur rows.
+
+    Formula (verified against manual 加拿大一店 March 2026):
+      col 32 本月损耗影响成本金额
+        = (actual_usage − Σ theoretical_per_row) × material_unit_price
+      where actual_usage = col 31 (ZFI0156 数量 for the material)
+            Σ theoretical_per_row = sum over (store, material) of
+                                    sales × portion × loss_factor
+      col 33 上月损耗 = same formula with prev_rows
+      col 34 损耗环比变动 = col 32 − col 33
+      col 35 可比期间损耗 = same with yoy_rows (when available)
+      col 36 损耗同比变动 = col 32 − col 35
+
+    Only the canonical row (largest-portion per (store, dish, material))
+    carries cols 32-36; non-canonical rows get None.
+    """
+    def per_material_theoretical(rows: list[Table1Row]) -> dict[tuple, float]:
+        out: dict[tuple, float] = {}
+        for r in rows:
+            if r.material_code is None:
+                continue
+            key = (r.store, r.material_code)
+            out[key] = out.get(key, 0.0) + r.theoretical_usage
+        return out
+
+    def per_material_actual_and_price(rows: list[Table1Row]) -> dict[tuple, tuple]:
+        """Lookup (actual_usage, unit_price) per (store, material).
+        Canonical rows carry the non-None actual_usage."""
+        out: dict[tuple, tuple] = {}
+        for r in rows:
+            if r.material_code is None or r.actual_usage is None:
+                continue
+            key = (r.store, r.material_code)
+            if key not in out:
+                out[key] = (r.actual_usage, r.material_unit_price)
+        return out
+
+    cur_theo = per_material_theoretical(cur_rows)
+    prev_theo = per_material_theoretical(prev_rows) if prev_rows else {}
+    yoy_theo = per_material_theoretical(yoy_rows) if yoy_rows else {}
+    prev_actual = per_material_actual_and_price(prev_rows) if prev_rows else {}
+    yoy_actual = per_material_actual_and_price(yoy_rows) if yoy_rows else {}
+
+    canonical = find_canonical_rows(cur_rows)
+
+    for idx, r in enumerate(cur_rows):
+        if idx not in canonical or r.material_code is None:
+            continue
+        key = (r.store, r.material_code)
+        # col 32 — current
+        if (r.actual_usage is not None
+                and r.material_unit_price is not None
+                and key in cur_theo):
+            r.loss_cost_cur = (r.actual_usage - cur_theo[key]) * r.material_unit_price
+        # col 33 — prev
+        if key in prev_actual and key in prev_theo:
+            p_actual, p_price = prev_actual[key]
+            if p_price is not None:
+                r.loss_cost_prev = (p_actual - prev_theo[key]) * p_price
+        # col 34 — MoM delta
+        if r.loss_cost_cur is not None and r.loss_cost_prev is not None:
+            r.loss_cost_mom_delta = r.loss_cost_cur - r.loss_cost_prev
+        # col 35 — YoY comparable
+        if key in yoy_actual and key in yoy_theo:
+            y_actual, y_price = yoy_actual[key]
+            if y_price is not None:
+                r.loss_cost_comparable = (y_actual - yoy_theo[key]) * y_price
+        # col 36 — YoY delta
+        if r.loss_cost_cur is not None and r.loss_cost_comparable is not None:
+            r.loss_cost_yoy_delta = r.loss_cost_cur - r.loss_cost_comparable
+
+
 def compute_revenue_impact(rows: list[Table1Row]) -> None:
     """Populate cols 24 (环比影响收入) and 25 (同比影响收入).
 
